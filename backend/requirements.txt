@@ -1,0 +1,8 @@
+Django>=5.0,<5.1
+psycopg2-binary
+django-environ
+django-redis
+redis
+django-redis
+Pillow
+django-jazzmin

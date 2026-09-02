@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Queens Garden Hotel{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    {% load static %}
+    <link rel="icon" href="{% static 'img/queens_Garden_Logo.jpg' %}">
+    <style>
+        .nav-link { position: relative; }
+        .nav-link::after {
+            content: "";
+            position: absolute;
+            left: 0; bottom: -4px;
+            width: 0; height: 2px;
+            background: #C9A227;
+            transition: width 0.25s ease;
+        }
+        .nav-link:hover::after { width: 100%; }
+
+        #mobile-menu {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.35s ease;
+        }
+        #mobile-menu.open { max-height: 420px; }
+    </style>
+</head>
+<body class="bg-white text-gray-800">
+
+    <!-- Navbar -->
+    <nav class="bg-white shadow-sm sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+            <a href="{% url 'home' %}" class="flex items-center gap-3">
+                <img src="{% static 'img/queens_Garden_Logo.jpg' %}" alt="Queens Garden Hotel"
+                     class="w-11 h-11 rounded-full object-cover border-2 border-[#C9A227]">
+                <div class="leading-tight">
+                    <span class="block text-lg font-bold text-[#0B6B3A]">Queens Garden</span>
+                    <span class="block text-[10px] tracking-[0.2em] uppercase text-gray-500">Home Away From Home</span>
+                </div>
+            </a>
+
+            <div class="hidden md:flex items-center gap-7 text-sm font-medium text-gray-700">
+                <a href="{% url 'home' %}#rooms" class="nav-link hover:text-[#0B6B3A]">Rooms</a>
+                <a href="{% url 'home' %}#dining" class="nav-link hover:text-[#0B6B3A]">Restaurant</a>
+                <a href="{% url 'home' %}#bar" class="nav-link hover:text-[#0B6B3A]">Bar</a>
+                <a href="{% url 'home' %}#conference" class="nav-link hover:text-[#0B6B3A]">Conference</a>
+                <a href="{% url 'about' %}" class="nav-link hover:text-[#0B6B3A]">About</a>
+                <a href="{% url 'contact' %}" class="nav-link hover:text-[#0B6B3A]">Contact</a>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <a href="{% url 'home' %}#rooms"
+                   class="hidden sm:inline-block bg-[#C9A227] text-black px-5 py-2 rounded-full text-sm font-semibold hover:bg-[#b8931f] transition">
+                    Book Now
+                </a>
+                <button id="menu-toggle" aria-label="Toggle menu" aria-expanded="false"
+                        class="md:hidden text-[#0B6B3A] text-2xl">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Mobile menu -->
+        <div id="mobile-menu" class="md:hidden bg-white border-t border-gray-100">
+            <div class="px-6 py-4 flex flex-col gap-4 text-sm font-medium text-gray-700">
+                <a href="{% url 'home' %}#rooms" class="hover:text-[#0B6B3A]">Rooms</a>
+                <a href="{% url 'home' %}#dining" class="hover:text-[#0B6B3A]">Restaurant</a>
+                <a href="{% url 'home' %}#bar" class="hover:text-[#0B6B3A]">Bar</a>
+                <a href="{% url 'home' %}#conference" class="hover:text-[#0B6B3A]">Conference</a>
+                <a href="{% url 'about' %}" class="hover:text-[#0B6B3A]">About</a>
+                <a href="{% url 'contact' %}" class="hover:text-[#0B6B3A]">Contact</a>
+                <a href="{% url 'home' %}#rooms"
+                   class="bg-[#C9A227] text-black text-center px-5 py-2 rounded-full font-semibold hover:bg-[#b8931f] transition">
+                    Book Now
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-[#06140b] text-gray-300">
+        <div class="max-w-7xl mx-auto px-6 py-14 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-10">
+            <div>
+                <div class="flex items-center gap-3 mb-4">
+                    <img src="{% static 'img/queens_Garden_Logo.jpg' %}" alt="Queens Garden Hotel"
+                         class="w-10 h-10 rounded-full object-cover border-2 border-[#C9A227]">
+                    <span class="text-white font-bold text-lg">Queens Garden Hotel</span>
+                </div>
+                <p class="text-sm leading-relaxed text-gray-400">
+                    A home away from home in the heart of Eldoret, comfortable rooms, good food,
+                    and gardens made for slowing down.
+                </p>
+            </div>
+            <div>
+                <h4 class="text-white font-semibold mb-4 text-sm uppercase tracking-wide">Quick Links</h4>
+                <ul class="space-y-2 text-sm">
+                    <li><a href="{% url 'home' %}#rooms" class="hover:text-[#C9A227] transition">Rooms</a></li>
+                    <li><a href="{% url 'home' %}#dining" class="hover:text-[#C9A227] transition">Restaurant</a></li>
+                    <li><a href="{% url 'home' %}#bar" class="hover:text-[#C9A227] transition">Bar</a></li>
+                    <li><a href="{% url 'home' %}#conference" class="hover:text-[#C9A227] transition">Conference</a></li>
+                    <li><a href="{% url 'about' %}" class="hover:text-[#C9A227] transition">About Us</a></li>
+                    <li><a href="{% url 'contact' %}" class="hover:text-[#C9A227] transition">Contact</a></li>
+                </ul>
+            </div>
+            <div>
+                <h4 class="text-white font-semibold mb-4 text-sm uppercase tracking-wide">Contact</h4>
+                <ul class="space-y-3 text-sm text-gray-400">
+                    <li class="flex items-start gap-2">
+                        <i class="fa-solid fa-location-dot text-[#C9A227] mt-1"></i>
+                        <span>Kisumu Road, Langas, Eldoret, Kenya</span>
+                    </li>
+                    <li class="flex items-center gap-2">
+                        <i class="fa-solid fa-phone text-[#C9A227]"></i>
+                        <a href="tel:+254707641625" class="hover:text-[#C9A227] transition">+254 707 641625</a>
+                    </li>
+                    <li class="flex items-center gap-2">
+                        <i class="fa-solid fa-envelope text-[#C9A227]"></i>
+                        <a href="mailto:info@queensgardenhotel.co.ke" class="hover:text-[#C9A227] transition">info@queensgardenhotel.co.ke</a>
+                    </li>
+                </ul>
+            </div>
+            <div>
+                <h4 class="text-white font-semibold mb-4 text-sm uppercase tracking-wide">Follow Us</h4>
+                <div class="flex gap-4 text-lg">
+                    <a href="#" class="hover:text-[#C9A227] transition"><i class="fa-brands fa-facebook"></i></a>
+                    <a href="#" class="hover:text-[#C9A227] transition"><i class="fa-brands fa-instagram"></i></a>
+                    <a href="#" class="hover:text-[#C9A227] transition"><i class="fa-brands fa-x-twitter"></i></a>
+                    <a href="#" class="hover:text-[#C9A227] transition"><i class="fa-brands fa-tiktok"></i></a>
+                </div>
+            </div>
+        </div>
+        <div class="border-t border-white/10 text-center text-xs py-5 text-gray-500">
+            &copy; {% now "Y" %} Queens Garden Hotel. All rights reserved. Home Away From Home since 2010.
+        </div>
+    </footer>
+
+    <script>
+        const menuToggle = document.getElementById('menu-toggle');
+        const mobileMenu = document.getElementById('mobile-menu');
+        menuToggle.addEventListener('click', function () {
+            const isOpen = mobileMenu.classList.toggle('open');
+            menuToggle.innerHTML = isOpen
+                ? '<i class="fa-solid fa-xmark"></i>'
+                : '<i class="fa-solid fa-bars"></i>';
+            menuToggle.setAttribute('aria-expanded', isOpen);
+        });
+    </script>
+
+</body>
+</html>

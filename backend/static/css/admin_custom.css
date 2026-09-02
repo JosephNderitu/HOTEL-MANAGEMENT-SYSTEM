@@ -1,0 +1,73 @@
+:root {
+    --qg-green: #0B6B3A;
+    --qg-green-dark: #095430;
+    --qg-gold: #C9A227;
+}
+
+/* ---------- Navbar & brand ---------- */
+.main-header.navbar {
+    background-color: var(--qg-green) !important;
+}
+.brand-link {
+    background-color: var(--qg-green-dark) !important;
+    border-bottom: 1px solid rgba(255,255,255,0.1) !important;
+}
+.brand-link .brand-text {
+    color: #ffffff !important;
+    font-weight: 700;
+}
+
+/* ---------- Sidebar: fixed active/hover behavior ----------
+   Only the exact current page gets the solid gold highlight.
+   The parent app section gets a subtle tint, not full green,
+   so it's clear which one you're actually on. Hover never
+   overrides the active state, and clears itself when you
+   move the mouse away, since it's a plain CSS :hover rule. */
+.nav-sidebar .nav-treeview .nav-link.active {
+    background-color: var(--qg-gold) !important;
+    color: #000 !important;
+    font-weight: 600;
+}
+.nav-sidebar > .nav-item > .nav-link.active {
+    background-color: rgba(201, 162, 39, 0.15) !important;
+    color: var(--qg-gold) !important;
+}
+.nav-sidebar .nav-link:hover {
+    background-color: rgba(255, 255, 255, 0.06) !important;
+    color: var(--qg-gold) !important;
+}
+.nav-sidebar .nav-link:not(:hover):not(.active) {
+    background-color: transparent !important;
+    color: rgba(255, 255, 255, 0.85) !important;
+}
+
+/* ---------- Buttons ---------- */
+.btn-success, .btn-success:hover {
+    background-color: var(--qg-green) !important;
+    border-color: var(--qg-green) !important;
+}
+a, a:visited {
+    color: var(--qg-green-dark);
+}
+
+/* ---------- Visible input borders, always, not just on click ---------- */
+.form-control,
+select.form-control,
+textarea.form-control,
+.select2-selection {
+    border: 1px solid #9ca3af !important;
+    background-color: #ffffff !important;
+}
+.form-control:focus,
+.select2-selection:focus {
+    border-color: var(--qg-green) !important;
+    box-shadow: 0 0 0 2px rgba(11, 107, 58, 0.15) !important;
+}
+::placeholder {
+    color: #6b7280 !important;
+    opacity: 1 !important;
+}
+
+.small-box.bg-success, .card-success .card-header {
+    background-color: var(--qg-green) !important;
+}

@@ -1,0 +1,138 @@
+import json
+from datetime import datetime
+
+from django.shortcuts import render
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
+
+from .models import RoomType, MenuItem, Booking, Order, OrderItem
+from .services import get_available_rooms
+
+
+def home(request):
+    room_types = RoomType.objects.filter(is_active=True).prefetch_related('images')
+    food_items = MenuItem.objects.filter(item_type='food', is_available=True).prefetch_related('images')
+    drink_items = MenuItem.objects.filter(item_type='drink', is_available=True).prefetch_related('images')
+    context = {
+        'room_types': room_types,
+        'food_items': food_items,
+        'drink_items': drink_items,
+    }
+    return render(request, 'public_site/home.html', context)
+
+
+def about(request):
+    return render(request, 'public_site/about.html')
+
+
+def contact(request):
+    return render(request, 'public_site/contact.html')
+
+
+def check_availability(request):
+    check_in_str = request.GET.get('check_in')
+    check_out_str = request.GET.get('check_out')
+
+    if not check_in_str or not check_out_str:
+        return JsonResponse({'error': 'Both check_in and check_out are required.'}, status=400)
+
+    try:
+        check_in = datetime.strptime(check_in_str, '%Y-%m-%d').date()
+        check_out = datetime.strptime(check_out_str, '%Y-%m-%d').date()
+    except ValueError:
+        return JsonResponse({'error': 'Dates must be in YYYY-MM-DD format.'}, status=400)
+
+    if check_out <= check_in:
+        return JsonResponse({'error': 'Check-out must be after check-in.'}, status=400)
+
+    results = []
+    for rt in RoomType.objects.filter(is_active=True):
+        available = get_available_rooms(rt, check_in, check_out)
+        results.append({
+            'id': rt.id,
+            'name': rt.name,
+            'price_min': str(rt.price_min),
+            'price_max': str(rt.price_max),
+            'capacity': rt.capacity,
+            'available': available,
+        })
+
+    return JsonResponse({'room_types': results})
+
+
+@require_POST
+def submit_booking(request):
+    room_type_id = request.POST.get('room_type_id')
+    check_in_str = request.POST.get('check_in')
+    check_out_str = request.POST.get('check_out')
+    guest_name = request.POST.get('guest_name', '').strip()
+    guest_phone = request.POST.get('guest_phone', '').strip()
+    guest_id_no = request.POST.get('guest_id_no', '').strip()
+
+    if not all([room_type_id, check_in_str, check_out_str, guest_name, guest_phone]):
+        return JsonResponse({'error': 'Missing required fields.'}, status=400)
+
+    try:
+        room_type = RoomType.objects.get(id=room_type_id, is_active=True)
+        check_in = datetime.strptime(check_in_str, '%Y-%m-%d').date()
+        check_out = datetime.strptime(check_out_str, '%Y-%m-%d').date()
+    except (RoomType.DoesNotExist, ValueError):
+        return JsonResponse({'error': 'Invalid room type or dates.'}, status=400)
+
+    available = get_available_rooms(room_type, check_in, check_out)
+    if available < 1:
+        return JsonResponse({'error': 'Sorry, that room type is no longer available for those dates.'}, status=409)
+
+    # amount is the per-night rate, not the total stay cost, kept within
+    # the room type's price_min/price_max range. Online bookings default
+    # to the advertised starting rate; front desk can adjust it later.
+    booking = Booking.objects.create(
+        booking_type='room',
+        guest_name=guest_name,
+        guest_phone=guest_phone,
+        guest_id_no=guest_id_no,
+        room_type=room_type,
+        check_in=check_in,
+        check_out=check_out,
+        amount=room_type.price_min,
+        status='pending',
+        source='online',
+    )
+    return JsonResponse({'success': True, 'booking_id': booking.id})
+
+
+@require_POST
+def submit_order(request):
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid request.'}, status=400)
+
+    customer_name = data.get('customer_name', '').strip()
+    customer_phone = data.get('customer_phone', '').strip()
+    notes = data.get('notes', '').strip()
+    items = data.get('items', [])
+
+    if not customer_name or not customer_phone or not items:
+        return JsonResponse({'error': 'Name, phone, and at least one item are required.'}, status=400)
+
+    order = Order.objects.create(
+        customer_name=customer_name,
+        customer_phone=customer_phone,
+        notes=notes,
+        status='pending',
+    )
+    for item in items:
+        try:
+            menu_item = MenuItem.objects.get(id=item['id'], is_available=True)
+        except (MenuItem.DoesNotExist, KeyError):
+            continue
+        tier = item.get('tier') if item.get('tier') in ('regular', 'vip') else 'regular'
+        OrderItem.objects.create(
+            order=order,
+            menu_item=menu_item,
+            tier=tier,
+            quantity=max(int(item.get('qty', 1)), 1),
+        )
+
+    return JsonResponse({'success': True, 'order_id': order.id})

@@ -1,0 +1,773 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Queens Garden Hotel - Home Away From Home{% endblock %}
+
+{% block content %}
+
+<style>
+    [data-animate] {
+        opacity: 0;
+        transform: translateY(24px);
+        transition: opacity 0.7s ease, transform 0.7s ease;
+    }
+    [data-animate].is-visible { opacity: 1; transform: translateY(0); }
+
+    .gold-underline { position: relative; display: inline-block; }
+    .gold-underline::after {
+        content: "";
+        position: absolute;
+        left: 0; bottom: -8px;
+        width: 48px; height: 3px;
+        background: #C9A227;
+    }
+
+    .img-zoom { overflow: hidden; }
+    .img-zoom img { transition: transform 0.6s ease; }
+    .img-zoom:hover img { transform: scale(1.06); }
+
+    .tier-toggle {
+        position: relative;
+        width: 200px;
+        height: 44px;
+        background: #e5e7eb;
+        border-radius: 9999px;
+        cursor: pointer;
+    }
+    .tier-toggle .tier-slider {
+        position: absolute;
+        top: 3px; left: 3px;
+        width: 97px; height: 38px;
+        background: #0B6B3A;
+        border-radius: 9999px;
+        transition: transform 0.3s ease;
+    }
+    .tier-toggle.vip .tier-slider { transform: translateX(97px); background: #C9A227; }
+    .tier-toggle .tier-label {
+        position: relative; z-index: 2;
+        width: 50%; text-align: center;
+        font-size: 13px; font-weight: 600;
+        color: #374151;
+        transition: color 0.3s ease;
+    }
+    .tier-toggle.vip .tier-label.regular { color: #374151; }
+    .tier-toggle:not(.vip) .tier-label.regular { color: white; }
+    .tier-toggle.vip .tier-label.vip { color: black; }
+    .tier-toggle:not(.vip) .tier-label.vip { color: #374151; }
+
+    .cart-badge {
+        position: absolute;
+        top: -6px; right: -6px;
+        background: #C9A227;
+        color: black;
+        font-size: 11px;
+        font-weight: 700;
+        width: 20px; height: 20px;
+        border-radius: 9999px;
+        display: flex; align-items: center; justify-content: center;
+    }
+
+    #cart-drawer {
+        transform: translateX(100%);
+        transition: transform 0.3s ease;
+    }
+    #cart-drawer.open { transform: translateX(0); }
+
+    .modal-backdrop {
+        display: none;
+    }
+    .modal-backdrop.open {
+        display: flex;
+    }
+
+    .gallery { position: relative; }
+    .gallery-img {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        transition: opacity 0.35s ease, transform 0.6s ease;
+    }
+    .gallery-img.active { opacity: 1; position: relative; }
+    .gallery:hover .gallery-img.active { transform: scale(1.06); }
+
+    .gallery-nav-btn {
+        opacity: 0.7;
+        transition: opacity 0.25s ease, background 0.25s ease;
+    }
+    @media (min-width: 768px) {
+        .gallery-nav-btn { opacity: 0; }
+        .gallery:hover .gallery-nav-btn { opacity: 1; }
+    }
+
+    .gallery-dot { transition: background 0.25s ease, width 0.25s ease; }
+    .gallery-dot.active { background: white; width: 14px; border-radius: 9999px; }
+</style>
+
+<!-- ============ HERO ============ -->
+<section class="relative min-h-[560px] flex items-end"
+         style="background: linear-gradient(rgba(6,20,11,0.35), rgba(6,20,11,0.85)), url('{% static "img/Queens_Garden_Hotel.webp" %}') center/cover no-repeat;">
+    <div class="max-w-7xl mx-auto px-6 pb-16 pt-32 w-full">
+        <p class="uppercase tracking-[0.3em] text-[#C9A227] text-xs font-semibold mb-3">Est. 2010, Eldoret, Kenya</p>
+        <h1 class="text-4xl md:text-6xl font-bold text-white max-w-2xl leading-tight">
+            Where the garden <span class="text-[#C9A227]">welcomes</span> you home
+        </h1>
+        <p class="text-white/85 max-w-xl mt-4 text-base md:text-lg">
+            Comfortable rooms, honest Kenyan food, and a bar that stays warm until late.
+            Queens Garden is the address you keep coming back to.
+        </p>
+        <div class="flex flex-wrap gap-4 mt-8">
+            <a href="#rooms" class="bg-[#C9A227] text-black font-semibold px-7 py-3 rounded-full hover:bg-[#b8931f] transition">Book Your Stay</a>
+            <a href="#dining" class="border-2 border-white text-white font-semibold px-7 py-3 rounded-full hover:bg-white hover:text-[#0B6B3A] transition">Explore Dining</a>
+        </div>
+    </div>
+</section>
+
+<!-- ============ AVAILABILITY SEARCH ============ -->
+<section class="bg-white shadow-xl -mt-10 relative z-10 max-w-5xl mx-auto rounded-2xl px-6 py-6 border border-gray-100" data-animate>
+    <form id="availability-form" class="grid sm:grid-cols-2 md:grid-cols-4 gap-4">
+        <div>
+            <label class="block text-xs font-semibold text-gray-500 mb-1">Check In</label>
+            <input type="date" id="check_in" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+        </div>
+        <div>
+            <label class="block text-xs font-semibold text-gray-500 mb-1">Check Out</label>
+            <input type="date" id="check_out" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+        </div>
+        <div class="md:col-span-2 flex items-end">
+            <button type="submit" class="w-full bg-[#0B6B3A] text-white font-semibold py-2.5 rounded-lg hover:bg-[#095430] transition">
+                <i class="fa-solid fa-magnifying-glass mr-2"></i>Check Availability
+            </button>
+        </div>
+    </form>
+    <p id="availability-note" class="text-xs text-gray-400 mt-3">
+        <i class="fa-solid fa-circle-info mr-1"></i>Live availability, online and front desk bookings share one calendar.
+    </p>
+    <div id="availability-results" class="mt-5 grid sm:grid-cols-2 md:grid-cols-4 gap-4 hidden"></div>
+</section>
+
+<!-- ============ ROOMS & SUITES ============ -->
+<section id="rooms" class="max-w-7xl mx-auto px-6 py-16 md:py-20" data-animate>
+    <div class="text-center mb-12">
+        <p class="text-[#0B6B3A] font-semibold uppercase tracking-wider text-sm mb-2">Stay With Us</p>
+        <h2 class="gold-underline text-3xl md:text-4xl font-bold text-black">Rooms &amp; Suites</h2>
+        <p class="text-gray-600 max-w-xl mx-auto mt-5">Every room opens to our gardens. Rates are per night, breakfast included.</p>
+    </div>
+    <div class="grid sm:grid-cols-2 md:grid-cols-3 gap-8">
+        {% for room in room_types %}
+        <div class="bg-white rounded-2xl shadow-md hover:shadow-xl transition overflow-hidden border border-gray-100">
+            <div class="gallery aspect-[4/3] overflow-hidden" data-gallery>
+                {% for img in room.images.all %}
+                <img src="{{ img.image.url }}" alt="{{ room.name }}" class="gallery-img w-full h-full object-cover {% if forloop.first %}active{% endif %}">
+                {% empty %}
+                <div class="w-full h-full bg-gray-100 flex items-center justify-center text-gray-400">
+                    <i class="fa-solid fa-bed text-3xl"></i>
+                </div>
+                {% endfor %}
+                {% if room.images.count > 1 %}
+                <button type="button" class="gallery-prev gallery-nav-btn absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 z-10">
+                    <i class="fa-solid fa-chevron-left text-xs"></i>
+                </button>
+                <button type="button" class="gallery-next gallery-nav-btn absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 z-10">
+                    <i class="fa-solid fa-chevron-right text-xs"></i>
+                </button>
+                <div class="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
+                    {% for img in room.images.all %}
+                    <span class="gallery-dot w-1.5 h-1.5 rounded-full bg-white/50 {% if forloop.first %}active{% endif %}"></span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            <div class="p-6">
+                <h3 class="text-xl font-bold text-black mb-2">{{ room.name }}</h3>
+                <p class="text-gray-600 text-sm mb-4 line-clamp-2">{{ room.description }}</p>
+                <p class="text-xs text-gray-500 mb-4"><i class="fa-solid fa-user-group mr-1"></i>{{ room.capacity }} guests</p>
+                <div class="flex items-center justify-between">
+                    <p class="text-lg font-bold text-[#0B6B3A]">From KSh {{ room.price_min|floatformat:0 }} <span class="text-xs font-normal text-gray-400">/ night</span></p>
+                    <button type="button"
+                            class="book-room-btn bg-[#C9A227] text-black text-sm font-semibold px-5 py-2 rounded-full hover:bg-[#b8931f] transition"
+                            data-room-id="{{ room.id }}" data-room-name="{{ room.name }}">
+                        Book
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <p class="text-gray-500 col-span-3 text-center">Room types will appear here once added in the admin panel.</p>
+        {% endfor %}
+    </div>
+</section>
+
+<!-- ============ CONFERENCE ============ -->
+<section id="conference" class="bg-[#F7F5EE] py-16 md:py-20" data-animate>
+    <div class="max-w-6xl mx-auto px-6">
+        <div class="text-center mb-12">
+            <p class="text-[#0B6B3A] font-semibold uppercase tracking-wider text-sm mb-2">Meetings &amp; Conferences</p>
+            <h2 class="gold-underline text-3xl md:text-4xl font-bold text-black">Space for business, big or small</h2>
+        </div>
+        <div class="grid md:grid-cols-2 gap-6">
+            <div class="bg-white rounded-2xl p-8 shadow-md border-t-4 border-[#0B6B3A]">
+                <i class="fa-solid fa-users text-2xl text-[#0B6B3A] mb-3"></i>
+                <h3 class="text-xl font-bold text-black mb-2">Regular Conference Room</h3>
+                <p class="text-gray-600 text-sm leading-relaxed mb-4">Comfortable, well equipped space for everyday meetings and trainings, with standard catering on request.</p>
+                <a href="{% url 'contact' %}" class="inline-block text-[#0B6B3A] font-semibold text-sm hover:underline">Enquire Now <i class="fa-solid fa-arrow-right ml-1"></i></a>
+            </div>
+            <div class="bg-white rounded-2xl p-8 shadow-md border-t-4 border-[#C9A227] relative overflow-hidden">
+                <span class="absolute top-0 right-0 bg-[#C9A227] text-black text-xs font-bold uppercase px-4 py-1 rounded-bl-lg">VIP</span>
+                <i class="fa-solid fa-crown text-2xl text-[#C9A227] mb-3"></i>
+                <h3 class="text-xl font-bold text-black mb-2">VIP Conference Room</h3>
+                <p class="text-gray-600 text-sm leading-relaxed mb-4">A premium setting for executive meetings and private functions, with premium catering included.</p>
+                <a href="{% url 'contact' %}" class="inline-block text-[#0B6B3A] font-semibold text-sm hover:underline">Enquire Now <i class="fa-solid fa-arrow-right ml-1"></i></a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ============ DINING ============ -->
+<section id="dining" class="max-w-7xl mx-auto px-6 py-16 md:py-20" data-animate>
+    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-10">
+        <div>
+            <p class="text-[#0B6B3A] font-semibold uppercase tracking-wider text-sm mb-2">The Restaurant</p>
+            <h2 class="gold-underline text-3xl md:text-4xl font-bold text-black">Food worth the drive</h2>
+            <p class="text-gray-600 mt-5 max-w-lg">Open 6:30am to 11pm daily. Call ahead for takeaway.</p>
+        </div>
+        <div class="tier-toggle" id="food-toggle">
+            <div class="tier-slider"></div>
+            <div class="absolute inset-0 flex">
+                <span class="tier-label regular flex items-center justify-center">Regular</span>
+                <span class="tier-label vip flex items-center justify-center">VIP</span>
+            </div>
+        </div>
+    </div>
+    <div id="food-grid" class="grid sm:grid-cols-2 md:grid-cols-3 gap-6">
+        {% for item in food_items %}
+        <div class="menu-card bg-white rounded-2xl shadow-md hover:shadow-xl transition overflow-hidden border border-gray-100">
+            <div class="gallery aspect-video overflow-hidden" data-gallery>
+                {% for img in item.images.all %}
+                <img src="{{ img.image.url }}" alt="{{ item.name }}" class="gallery-img w-full h-full object-cover {% if forloop.first %}active{% endif %}">
+                {% empty %}
+                <div class="w-full h-full bg-gray-100 flex items-center justify-center text-gray-400">
+                    <i class="fa-solid fa-utensils text-2xl"></i>
+                </div>
+                {% endfor %}
+                {% if item.images.count > 1 %}
+                <button type="button" class="gallery-prev gallery-nav-btn absolute left-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 z-10">
+                    <i class="fa-solid fa-chevron-left text-[10px]"></i>
+                </button>
+                <button type="button" class="gallery-next gallery-nav-btn absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 z-10">
+                    <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                </button>
+                <div class="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
+                    {% for img in item.images.all %}
+                    <span class="gallery-dot w-1.5 h-1.5 rounded-full bg-white/50 {% if forloop.first %}active{% endif %}"></span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            <div class="p-5">
+                <p class="text-[10px] uppercase tracking-wide text-[#C9A227] font-semibold mb-1">{{ item.category }}</p>
+                <div class="flex items-center justify-between mb-2">
+                    <h3 class="font-bold text-black">{{ item.name }}</h3>
+                    <span class="item-price font-bold text-[#0B6B3A] text-sm">KSh {{ item.regular_price|floatformat:0 }}</span>
+                </div>
+                <p class="text-gray-500 text-xs leading-relaxed mb-4">{{ item.description }}</p>
+                <button type="button" class="add-to-cart-btn w-full bg-[#0B6B3A] text-white text-sm font-semibold py-2 rounded-full hover:bg-[#095430] transition"
+                        data-id="{{ item.id }}" data-name="{{ item.name }}"
+                        data-regular-price="{{ item.regular_price }}"
+                        data-vip-price="{% if item.vip_price %}{{ item.vip_price }}{% else %}{{ item.regular_price }}{% endif %}"
+                        data-price="{{ item.regular_price }}" data-current-tier="regular">
+                    <i class="fa-solid fa-cart-plus mr-1"></i>Add to Cart
+                </button>
+            </div>
+        </div>
+        {% empty %}
+        <p class="text-gray-500 col-span-3 text-center">Menu items will appear here once added in the admin panel.</p>
+        {% endfor %}
+    </div>
+    <div class="text-center mt-8">
+        <button type="button" id="food-view-more" class="border-2 border-[#0B6B3A] text-[#0B6B3A] font-semibold px-8 py-2.5 rounded-full hover:bg-[#0B6B3A] hover:text-white transition hidden">
+            View More
+        </button>
+    </div>
+</section>
+
+<!-- ============ BAR ============ -->
+<section id="bar" class="bg-[#06140b] py-16 md:py-20" data-animate>
+    <div class="max-w-7xl mx-auto px-6">
+        <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-10">
+            <div>
+                <p class="text-[#C9A227] font-semibold uppercase tracking-wider text-sm mb-2">The Bar &amp; Lounge</p>
+                <h2 class="text-3xl md:text-4xl font-bold text-white">Golden hour, every hour</h2>
+                <p class="text-white/60 mt-5 max-w-lg">Signature cocktails, cold beers, and a wine list poured from 11am until late.</p>
+            </div>
+            <div class="tier-toggle" id="drink-toggle">
+                <div class="tier-slider"></div>
+                <div class="absolute inset-0 flex">
+                    <span class="tier-label regular flex items-center justify-center">Regular</span>
+                    <span class="tier-label vip flex items-center justify-center">VIP</span>
+                </div>
+            </div>
+        </div>
+        <div id="drink-grid" class="grid sm:grid-cols-2 md:grid-cols-4 gap-6">
+            {% for item in drink_items %}
+            <div class="menu-card bg-[#0d1f13] rounded-2xl overflow-hidden border border-white/10 hover:border-[#C9A227]/50 transition">
+                <div class="gallery aspect-square overflow-hidden" data-gallery>
+                    {% for img in item.images.all %}
+                    <img src="{{ img.image.url }}" alt="{{ item.name }}" class="gallery-img w-full h-full object-cover {% if forloop.first %}active{% endif %}">
+                    {% empty %}
+                    <div class="w-full h-full bg-white/5 flex items-center justify-center text-white/30">
+                        <i class="fa-solid fa-martini-glass-citrus text-2xl"></i>
+                    </div>
+                    {% endfor %}
+                    {% if item.images.count > 1 %}
+                    <button type="button" class="gallery-prev gallery-nav-btn absolute left-1 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 z-10">
+                        <i class="fa-solid fa-chevron-left text-[9px]"></i>
+                    </button>
+                    <button type="button" class="gallery-next gallery-nav-btn absolute right-1 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 z-10">
+                        <i class="fa-solid fa-chevron-right text-[9px]"></i>
+                    </button>
+                    <div class="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex gap-1 z-10">
+                        {% for img in item.images.all %}
+                        <span class="gallery-dot w-1 h-1 rounded-full bg-white/50 {% if forloop.first %}active{% endif %}"></span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="p-4">
+                    <p class="text-[10px] uppercase tracking-wide text-[#C9A227] font-semibold mb-1">{{ item.category }}</p>
+                    <h3 class="font-bold text-white text-sm mb-1">{{ item.name }}</h3>
+                    <p class="item-price text-white/50 text-xs mb-3">KSh {{ item.regular_price|floatformat:0 }}</p>
+                    <button type="button" class="add-to-cart-btn w-full bg-[#C9A227] text-black text-xs font-semibold py-2 rounded-full hover:bg-[#b8931f] transition"
+                            data-id="{{ item.id }}" data-name="{{ item.name }}"
+                            data-regular-price="{{ item.regular_price }}"
+                            data-vip-price="{% if item.vip_price %}{{ item.vip_price }}{% else %}{{ item.regular_price }}{% endif %}"
+                            data-price="{{ item.regular_price }}" data-current-tier="regular">
+                        <i class="fa-solid fa-cart-plus mr-1"></i>Add
+                    </button>
+                </div>
+            </div>
+            {% empty %}
+            <p class="text-white/50 col-span-4 text-center">Drinks will appear here once added in the admin panel.</p>
+            {% endfor %}
+        </div>
+        <div class="text-center mt-8">
+            <button type="button" id="drink-view-more" class="border-2 border-[#C9A227] text-[#C9A227] font-semibold px-8 py-2.5 rounded-full hover:bg-[#C9A227] hover:text-black transition hidden">
+                View More
+            </button>
+        </div>
+    </div>
+</section>
+
+<!-- ============ TESTIMONIALS (placeholder, swap for real guest reviews) ============ -->
+<section class="max-w-6xl mx-auto px-6 py-16 md:py-20" data-animate>
+    <div class="text-center mb-12">
+        <p class="text-[#0B6B3A] font-semibold uppercase tracking-wider text-sm mb-2">Guest Voices</p>
+        <h2 class="gold-underline text-3xl md:text-4xl font-bold text-black">Loved by our regulars</h2>
+    </div>
+    <div class="grid md:grid-cols-3 gap-6">
+        <div class="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
+            <i class="fa-solid fa-quote-left text-[#C9A227] text-xl mb-3"></i>
+            <p class="text-gray-600 text-sm italic mb-4">Placeholder review text, replace with a real guest quote once available.</p>
+            <p class="font-bold text-black text-sm">Guest Name</p>
+        </div>
+        <div class="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
+            <i class="fa-solid fa-quote-left text-[#C9A227] text-xl mb-3"></i>
+            <p class="text-gray-600 text-sm italic mb-4">Placeholder review text, replace with a real guest quote once available.</p>
+            <p class="font-bold text-black text-sm">Guest Name</p>
+        </div>
+        <div class="bg-white rounded-2xl p-6 shadow-md border border-gray-100">
+            <i class="fa-solid fa-quote-left text-[#C9A227] text-xl mb-3"></i>
+            <p class="text-gray-600 text-sm italic mb-4">Placeholder review text, replace with a real guest quote once available.</p>
+            <p class="font-bold text-black text-sm">Guest Name</p>
+        </div>
+    </div>
+</section>
+
+<!-- ============ CLOSING CTA ============ -->
+<section class="bg-[#0B6B3A] py-16 text-center" data-animate>
+    <h2 class="text-2xl md:text-3xl font-bold text-white mb-3">Ready when you are</h2>
+    <p class="text-white/80 max-w-xl mx-auto mb-8 text-sm md:text-base">Reserve a room, book a table, or plan something bigger. We will take it from there.</p>
+    <div class="flex flex-wrap justify-center gap-4">
+        <a href="#rooms" class="bg-[#C9A227] text-black font-semibold px-8 py-3 rounded-full hover:bg-[#b8931f] transition">Book A Room</a>
+        <a href="{% url 'contact' %}" class="border-2 border-white text-white font-semibold px-8 py-3 rounded-full hover:bg-white hover:text-[#0B6B3A] transition">Contact Us</a>
+    </div>
+</section>
+
+<!-- ============ FLOATING CART BUTTON ============ -->
+<button id="cart-toggle" class="fixed bottom-6 right-6 z-40 bg-[#0B6B3A] text-white w-14 h-14 rounded-full shadow-xl flex items-center justify-center hover:bg-[#095430] transition">
+    <i class="fa-solid fa-cart-shopping text-lg"></i>
+    <span id="cart-count" class="cart-badge hidden">0</span>
+</button>
+
+<!-- ============ CART DRAWER ============ -->
+<div id="cart-drawer" class="fixed top-0 right-0 h-full w-full sm:w-96 bg-white shadow-2xl z-50 flex flex-col">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+        <h3 class="font-bold text-black">Your Order</h3>
+        <button id="cart-close" class="text-gray-400 hover:text-black"><i class="fa-solid fa-xmark text-xl"></i></button>
+    </div>
+    <div id="cart-items" class="flex-1 overflow-y-auto px-5 py-4 space-y-4"></div>
+    <div class="border-t border-gray-100 px-5 py-4">
+        <div class="flex justify-between font-bold text-black mb-4">
+            <span>Total</span>
+            <span id="cart-total">KSh 0</span>
+        </div>
+        <button id="order-now-btn" class="w-full bg-[#C9A227] text-black font-semibold py-3 rounded-full hover:bg-[#b8931f] transition disabled:opacity-40" disabled>
+            Order Now
+        </button>
+    </div>
+</div>
+
+<!-- ============ BOOKING MODAL ============ -->
+<div id="booking-modal" class="modal-backdrop fixed inset-0 bg-black/60 z-50 items-center justify-center px-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 relative">
+        <button class="modal-close absolute top-4 right-4 text-gray-400 hover:text-black" data-target="booking-modal"><i class="fa-solid fa-xmark text-xl"></i></button>
+        <h3 class="text-xl font-bold text-black mb-1">Reserve <span id="booking-room-name"></span></h3>
+        <p class="text-sm text-gray-500 mb-5" id="booking-summary"></p>
+        <form id="booking-form" class="space-y-3">
+            <input type="text" id="guest_name" placeholder="Full name" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            <input type="tel" id="guest_phone" placeholder="Phone number" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            <input type="text" id="guest_id_no" placeholder="National ID or Passport number" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            <p id="booking-error" class="text-red-600 text-xs hidden"></p>
+            <button type="submit" class="w-full bg-[#0B6B3A] text-white font-semibold py-2.5 rounded-full hover:bg-[#095430] transition">Confirm Reservation</button>
+        </form>
+        <div id="booking-success" class="hidden text-center py-6">
+            <i class="fa-solid fa-circle-check text-4xl text-[#0B6B3A] mb-3"></i>
+            <p class="font-semibold text-black">Reservation received</p>
+            <p class="text-sm text-gray-500 mt-1">Our front desk will confirm shortly by phone.</p>
+        </div>
+    </div>
+</div>
+
+<!-- ============ ORDER MODAL ============ -->
+<div id="order-modal" class="modal-backdrop fixed inset-0 bg-black/60 z-50 items-center justify-center px-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 relative">
+        <button class="modal-close absolute top-4 right-4 text-gray-400 hover:text-black" data-target="order-modal"><i class="fa-solid fa-xmark text-xl"></i></button>
+        <h3 class="text-xl font-bold text-black mb-5">Complete Your Order</h3>
+        <form id="order-form" class="space-y-3">
+            <input type="text" id="customer_name" placeholder="Full name" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            <input type="tel" id="customer_phone" placeholder="Phone number" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            <textarea id="order_notes" placeholder="Notes, room number for room service, etc (optional)" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"></textarea>
+            <p id="order-error" class="text-red-600 text-xs hidden"></p>
+            <button type="submit" class="w-full bg-[#C9A227] text-black font-semibold py-2.5 rounded-full hover:bg-[#b8931f] transition">Place Order</button>
+        </form>
+        <div id="order-success" class="hidden text-center py-6">
+            <i class="fa-solid fa-circle-check text-4xl text-[#0B6B3A] mb-3"></i>
+            <p class="font-semibold text-black">Order received</p>
+            <p class="text-sm text-gray-500 mt-1">Our team will call you shortly to confirm.</p>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+
+    // ---------- Scroll reveal ----------
+    const observer = new IntersectionObserver(entries => {
+        entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('is-visible'); });
+    }, { threshold: 0.12 });
+    document.querySelectorAll('[data-animate]').forEach(el => observer.observe(el));
+
+    // ---------- CSRF helper ----------
+    function getCookie(name) {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+    }
+    const csrftoken = getCookie('csrftoken');
+
+    // ---------- Tier toggles ----------
+    function setupToggle(toggleId, gridId, viewMoreId) {
+    const toggle = document.getElementById(toggleId);
+    const grid = document.getElementById(gridId);
+    const viewMoreBtn = document.getElementById(viewMoreId);
+    let currentTier = 'regular';
+    let expanded = false;
+
+    function applyTier() {
+        grid.querySelectorAll('.menu-card').forEach(card => {
+            const btn = card.querySelector('.add-to-cart-btn');
+            const priceEl = card.querySelector('.item-price');
+            if (!btn) return;
+            const price = currentTier === 'vip' ? btn.dataset.vipPrice : btn.dataset.regularPrice;
+            btn.dataset.price = price;
+            btn.dataset.currentTier = currentTier;
+            if (priceEl) priceEl.textContent = `KSh ${parseFloat(price).toLocaleString()}`;
+        });
+    }
+
+    function applyVisibility() {
+            const cards = grid.querySelectorAll('.menu-card');
+            cards.forEach((card, index) => {
+                card.classList.toggle('hidden', !expanded && index >= 6);
+            });
+            viewMoreBtn.classList.toggle('hidden', cards.length <= 6 || expanded);
+        }
+
+        toggle.addEventListener('click', function () {
+            currentTier = currentTier === 'regular' ? 'vip' : 'regular';
+            toggle.classList.toggle('vip', currentTier === 'vip');
+            applyTier();
+        });
+
+        viewMoreBtn.addEventListener('click', function () {
+            expanded = true;
+            applyVisibility();
+        });
+
+        applyTier();
+        applyVisibility();
+    }
+    setupToggle('food-toggle', 'food-grid', 'food-view-more');
+    setupToggle('drink-toggle', 'drink-grid', 'drink-view-more');
+
+    // ---------- Cart (persisted in localStorage) ----------
+    const CART_KEY = 'qgh_cart';
+    function getCart() {
+        try { return JSON.parse(localStorage.getItem(CART_KEY)) || []; }
+        catch (e) { return []; }
+    }
+    function saveCart(cart) { localStorage.setItem(CART_KEY, JSON.stringify(cart)); }
+
+    function renderCart() {
+        const cart = getCart();
+        const container = document.getElementById('cart-items');
+        const countEl = document.getElementById('cart-count');
+        const totalEl = document.getElementById('cart-total');
+        const orderBtn = document.getElementById('order-now-btn');
+
+        container.innerHTML = '';
+        let total = 0;
+        let count = 0;
+
+        if (cart.length === 0) {
+            container.innerHTML = '<p class="text-gray-400 text-sm text-center mt-10">Your cart is empty</p>';
+        }
+
+        cart.forEach((item, index) => {
+            total += item.price * item.qty;
+            count += item.qty;
+            const row = document.createElement('div');
+            row.className = 'flex items-center justify-between border-b border-gray-100 pb-3';
+            row.innerHTML = `
+                <div>
+                    <p class="font-semibold text-black text-sm">${item.name}</p>
+                    <p class="text-xs text-gray-500">KSh ${item.price} x ${item.qty}</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button class="cart-qty-btn text-gray-400 hover:text-black" data-index="${index}" data-delta="-1">-</button>
+                    <span class="text-sm w-5 text-center">${item.qty}</span>
+                    <button class="cart-qty-btn text-gray-400 hover:text-black" data-index="${index}" data-delta="1">+</button>
+                </div>
+            `;
+            container.appendChild(row);
+        });
+
+        totalEl.textContent = `KSh ${total.toLocaleString()}`;
+        orderBtn.disabled = cart.length === 0;
+        countEl.classList.toggle('hidden', count === 0);
+        countEl.textContent = count;
+
+        container.querySelectorAll('.cart-qty-btn').forEach(btn => {
+            btn.addEventListener('click', function () {
+                const cart = getCart();
+                const idx = parseInt(this.dataset.index);
+                const delta = parseInt(this.dataset.delta);
+                cart[idx].qty += delta;
+                if (cart[idx].qty <= 0) cart.splice(idx, 1);
+                saveCart(cart);
+                renderCart();
+            });
+        });
+    }
+
+    document.querySelectorAll('.add-to-cart-btn').forEach(btn => {
+        btn.addEventListener('click', function () {
+            const cart = getCart();
+            const id = this.dataset.id;
+            const tier = this.dataset.currentTier || 'regular';
+            const price = parseFloat(this.dataset.price);
+            const existing = cart.find(i => i.id === id && i.tier === tier);
+            if (existing) { existing.qty += 1; }
+            else { cart.push({ id, name: this.dataset.name, price, tier, qty: 1 }); }
+            saveCart(cart);
+            renderCart();
+            document.getElementById('cart-drawer').classList.add('open');
+        });
+    });
+
+    document.getElementById('cart-toggle').addEventListener('click', () => document.getElementById('cart-drawer').classList.add('open'));
+    document.getElementById('cart-close').addEventListener('click', () => document.getElementById('cart-drawer').classList.remove('open'));
+
+    renderCart();
+
+    // ---------- Modal open/close helpers ----------
+    function openModal(id) { document.getElementById(id).classList.add('open'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+    document.querySelectorAll('.modal-close').forEach(btn => {
+        btn.addEventListener('click', () => closeModal(btn.dataset.target));
+    });
+
+    // ---------- Availability search ----------
+    const availabilityForm = document.getElementById('availability-form');
+    availabilityForm.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const checkIn = document.getElementById('check_in').value;
+        const checkOut = document.getElementById('check_out').value;
+        const resultsEl = document.getElementById('availability-results');
+
+        const res = await fetch(`/api/check-availability/?check_in=${checkIn}&check_out=${checkOut}`);
+        const data = await res.json();
+
+        if (data.error) {
+            resultsEl.innerHTML = `<p class="text-red-600 text-sm col-span-4">${data.error}</p>`;
+            resultsEl.classList.remove('hidden');
+            return;
+        }
+
+        resultsEl.innerHTML = '';
+        data.room_types.forEach(rt => {
+            const card = document.createElement('div');
+            card.className = 'border border-gray-200 rounded-xl p-4';
+            card.innerHTML = `
+                <p class="font-bold text-black text-sm mb-1">${rt.name}</p>
+                <p class="text-xs text-gray-500 mb-2">${rt.available > 0 ? rt.available + ' rooms left' : 'Fully booked'}</p>
+                <p class="text-[#0B6B3A] font-bold text-sm mb-3">From KSh ${parseFloat(rt.price_min).toLocaleString()} / night</p>
+                <button class="reserve-btn w-full bg-[#C9A227] text-black text-xs font-semibold py-2 rounded-full hover:bg-[#b8931f] transition disabled:opacity-40"
+                        data-room-id="${rt.id}" data-room-name="${rt.name}" ${rt.available === 0 ? 'disabled' : ''}>
+                    ${rt.available > 0 ? 'Reserve' : 'Unavailable'}
+                </button>
+            `;
+            resultsEl.appendChild(card);
+        });
+        resultsEl.classList.remove('hidden');
+
+        resultsEl.querySelectorAll('.reserve-btn').forEach(btn => {
+            btn.addEventListener('click', function () {
+                openBookingModal(this.dataset.roomId, this.dataset.roomName, checkIn, checkOut);
+            });
+        });
+    });
+
+    // ---------- Booking modal ----------
+    let activeBooking = {};
+    function openBookingModal(roomId, roomName, checkIn, checkOut) {
+        activeBooking = { roomId, checkIn, checkOut };
+        document.getElementById('booking-room-name').textContent = roomName;
+        document.getElementById('booking-summary').textContent = checkIn && checkOut
+            ? `${checkIn} to ${checkOut}`
+            : 'Select your dates using the search above, then confirm your details.';
+        document.getElementById('booking-form').classList.remove('hidden');
+        document.getElementById('booking-success').classList.add('hidden');
+        document.getElementById('booking-error').classList.add('hidden');
+        openModal('booking-modal');
+    }
+
+    document.querySelectorAll('.book-room-btn').forEach(btn => {
+        btn.addEventListener('click', function () {
+            const checkIn = document.getElementById('check_in').value;
+            const checkOut = document.getElementById('check_out').value;
+            openBookingModal(this.dataset.roomId, this.dataset.roomName, checkIn, checkOut);
+        });
+    });
+
+    document.getElementById('booking-form').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const errorEl = document.getElementById('booking-error');
+        errorEl.classList.add('hidden');
+
+        if (!activeBooking.checkIn || !activeBooking.checkOut) {
+            errorEl.textContent = 'Please choose your check in and check out dates using the search box above first.';
+            errorEl.classList.remove('hidden');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('room_type_id', activeBooking.roomId);
+        formData.append('check_in', activeBooking.checkIn);
+        formData.append('check_out', activeBooking.checkOut);
+        formData.append('guest_name', document.getElementById('guest_name').value);
+        formData.append('guest_phone', document.getElementById('guest_phone').value);
+        formData.append('guest_id_no', document.getElementById('guest_id_no').value);
+
+        const res = await fetch("{% url 'submit_booking' %}", {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrftoken },
+            body: formData,
+        });
+        const data = await res.json();
+
+        if (data.error) {
+            errorEl.textContent = data.error;
+            errorEl.classList.remove('hidden');
+            return;
+        }
+
+        document.getElementById('booking-form').classList.add('hidden');
+        document.getElementById('booking-success').classList.remove('hidden');
+    });
+
+    // ---------- Order submission ----------
+    document.getElementById('order-now-btn').addEventListener('click', function () {
+        document.getElementById('order-form').classList.remove('hidden');
+        document.getElementById('order-success').classList.add('hidden');
+        document.getElementById('order-error').classList.add('hidden');
+        openModal('order-modal');
+    });
+
+    document.getElementById('order-form').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const errorEl = document.getElementById('order-error');
+        errorEl.classList.add('hidden');
+
+        const cart = getCart();
+        const payload = {
+            customer_name: document.getElementById('customer_name').value,
+            customer_phone: document.getElementById('customer_phone').value,
+            notes: document.getElementById('order_notes').value,
+            items: cart.map(i => ({ id: i.id, qty: i.qty, tier: i.tier })),
+        };
+
+        const res = await fetch("{% url 'submit_order' %}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+
+        if (data.error) {
+            errorEl.textContent = data.error;
+            errorEl.classList.remove('hidden');
+            return;
+        }
+
+        localStorage.removeItem(CART_KEY);
+        renderCart();
+        document.getElementById('order-form').classList.add('hidden');
+        document.getElementById('order-success').classList.remove('hidden');
+        setTimeout(() => document.getElementById('cart-drawer').classList.remove('open'), 2000);
+    });
+
+});
+
+// ---------- Image galleries (room, food, drink cards) ----------
+document.querySelectorAll('[data-gallery]').forEach(function (gallery) {
+    const images = gallery.querySelectorAll('.gallery-img');
+    const dots = gallery.querySelectorAll('.gallery-dot');
+    if (images.length <= 1) return;
+
+    let current = 0;
+
+    function show(index) {
+        images[current].classList.remove('active');
+        if (dots.length) dots[current].classList.remove('active');
+        current = (index + images.length) % images.length;
+        images[current].classList.add('active');
+        if (dots.length) dots[current].classList.add('active');
+    }
+
+    const prevBtn = gallery.querySelector('.gallery-prev');
+    const nextBtn = gallery.querySelector('.gallery-next');
+    if (prevBtn) prevBtn.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); show(current - 1); });
+    if (nextBtn) nextBtn.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); show(current + 1); });
+});
+</script>
+
+{% endblock %}

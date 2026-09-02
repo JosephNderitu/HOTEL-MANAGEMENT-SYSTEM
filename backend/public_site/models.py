@@ -1,0 +1,227 @@
+import io
+from PIL import Image
+from django.core.files.base import ContentFile
+from django.core.exceptions import ValidationError
+from django.db import models
+
+MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
+MAX_IMAGES_PER_ITEM = 4
+
+
+def compress_image_if_needed(image_field):
+    """If an uploaded image exceeds 10MB, re-encode it down under that limit."""
+    if image_field.size <= MAX_IMAGE_SIZE_BYTES:
+        return image_field
+
+    img = Image.open(image_field)
+    img_format = img.format or 'JPEG'
+    if img.mode in ('RGBA', 'P') and img_format == 'JPEG':
+        img = img.convert('RGB')
+
+    quality = 90
+    buffer = io.BytesIO()
+    img.save(buffer, format=img_format, quality=quality, optimize=True)
+
+    while buffer.tell() > MAX_IMAGE_SIZE_BYTES and quality > 20:
+        quality -= 10
+        buffer.seek(0)
+        buffer.truncate()
+        img.save(buffer, format=img_format, quality=quality, optimize=True)
+
+    buffer.seek(0)
+    return ContentFile(buffer.read(), name=image_field.name)
+
+
+class RoomType(models.Model):
+    name = models.CharField(max_length=100)
+    slug = models.SlugField(unique=True)
+    description = models.TextField(blank=True)
+    price_min = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    price_max = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    capacity = models.PositiveIntegerField(default=2)
+    total_rooms = models.PositiveIntegerField(default=1)
+    is_active = models.BooleanField(default=True)
+
+    def clean(self):
+        if self.price_min and self.price_max and self.price_min > self.price_max:
+            raise ValidationError("Minimum price cannot be greater than maximum price.")
+
+    def __str__(self):
+        return self.name
+
+
+class RoomTypeImage(models.Model):
+    room_type = models.ForeignKey(RoomType, on_delete=models.CASCADE, related_name='images')
+    image = models.ImageField(upload_to='room_types/')
+
+    def clean(self):
+        if self.room_type_id:
+            existing = self.room_type.images.exclude(pk=self.pk).count()
+            if existing >= MAX_IMAGES_PER_ITEM:
+                raise ValidationError(f"A room type can have at most {MAX_IMAGES_PER_ITEM} images.")
+
+    def save(self, *args, **kwargs):
+        if self.image and hasattr(self.image, 'file'):
+            self.image = compress_image_if_needed(self.image)
+        super().save(*args, **kwargs)
+
+
+class ConferenceRoom(models.Model):
+    TIER_CHOICES = [
+        ('regular', 'Regular'),
+        ('vip', 'VIP'),
+    ]
+    name = models.CharField(max_length=100)
+    tier = models.CharField(max_length=10, choices=TIER_CHOICES)
+    description = models.TextField(blank=True)
+    price_min = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    price_max = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    capacity = models.PositiveIntegerField(default=20)
+    is_active = models.BooleanField(default=True)
+
+    def clean(self):
+        if self.price_min and self.price_max and self.price_min > self.price_max:
+            raise ValidationError("Minimum price cannot be greater than maximum price.")
+
+    def __str__(self):
+        return f"{self.name} ({self.get_tier_display()})"
+
+
+class Booking(models.Model):
+    BOOKING_TYPE_CHOICES = [
+        ('room', 'Room'),
+        ('conference', 'Conference'),
+    ]
+    SOURCE_CHOICES = [
+        ('online', 'Online'),
+        ('phone', 'Phone'),
+        ('walkin', 'Walk-in'),
+    ]
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('confirmed', 'Confirmed'),
+        ('checked_in', 'Checked In'),
+        ('checked_out', 'Checked Out'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    booking_type = models.CharField(max_length=12, choices=BOOKING_TYPE_CHOICES, default='room')
+    guest_name = models.CharField(max_length=150)
+    guest_phone = models.CharField(max_length=20)
+    guest_id_no = models.CharField(max_length=20, default='', help_text="National ID or Passport number")
+
+    room_type = models.ForeignKey(RoomType, on_delete=models.PROTECT, related_name='bookings', null=True, blank=True)
+    conference_room = models.ForeignKey(ConferenceRoom, on_delete=models.PROTECT, related_name='bookings', null=True, blank=True)
+
+    check_in = models.DateField()
+    check_out = models.DateField()
+    amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default='online')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def clean(self):
+        if self.booking_type == 'room':
+            if not self.room_type_id:
+                raise ValidationError("Select a room type for a room booking.")
+            self.conference_room = None
+            price_min, price_max = self.room_type.price_min, self.room_type.price_max
+        elif self.booking_type == 'conference':
+            if not self.conference_room_id:
+                raise ValidationError("Select a conference room for a conference booking.")
+            self.room_type = None
+            price_min, price_max = self.conference_room.price_min, self.conference_room.price_max
+        else:
+            return
+
+        if self.amount is not None and not (price_min <= self.amount <= price_max):
+            raise ValidationError(
+                f"Amount must be between KSh {price_min:,.0f} and KSh {price_max:,.0f} for the selected option."
+            )
+
+    def __str__(self):
+        target = self.room_type or self.conference_room
+        return f"{self.guest_name} — {target} ({self.check_in} to {self.check_out})"
+
+
+class MenuItem(models.Model):
+    ITEM_TYPE_CHOICES = [
+        ('food', 'Food'),
+        ('drink', 'Drink'),
+    ]
+    name = models.CharField(max_length=150)
+    item_type = models.CharField(max_length=10, choices=ITEM_TYPE_CHOICES)
+    category = models.CharField(max_length=100, blank=True)
+    regular_price = models.DecimalField(max_digits=10, decimal_places=2)
+    vip_price = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text="Leave blank if this item has no separate VIP price"
+    )
+    description = models.TextField(blank=True)
+    is_available = models.BooleanField(default=True)
+
+    def clean(self):
+        if self.vip_price is not None and self.vip_price < self.regular_price:
+            raise ValidationError("VIP price should not be lower than the regular price.")
+
+    def __str__(self):
+        return self.name
+
+
+class MenuItemImage(models.Model):
+    menu_item = models.ForeignKey(MenuItem, on_delete=models.CASCADE, related_name='images')
+    image = models.ImageField(upload_to='menu_items/')
+
+    def clean(self):
+        if self.menu_item_id:
+            existing = self.menu_item.images.exclude(pk=self.pk).count()
+            if existing >= MAX_IMAGES_PER_ITEM:
+                raise ValidationError(f"A menu item can have at most {MAX_IMAGES_PER_ITEM} images.")
+
+    def save(self, *args, **kwargs):
+        if self.image and hasattr(self.image, 'file'):
+            self.image = compress_image_if_needed(self.image)
+        super().save(*args, **kwargs)
+
+
+class Order(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('confirmed', 'Confirmed'),
+        ('cancelled', 'Cancelled'),
+    ]
+    customer_name = models.CharField(max_length=150)
+    customer_phone = models.CharField(max_length=20)
+    notes = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Order #{self.id} — {self.customer_name}"
+
+
+class OrderItem(models.Model):
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
+    menu_item = models.ForeignKey(MenuItem, on_delete=models.PROTECT)
+    tier = models.CharField(max_length=10, choices=[('regular', 'Regular'), ('vip', 'VIP')], default='regular')
+    quantity = models.PositiveIntegerField(default=1)
+
+    @property
+    def unit_price(self):
+        if self.tier == 'vip' and self.menu_item.vip_price is not None:
+            return self.menu_item.vip_price
+        return self.menu_item.regular_price
+
+    def __str__(self):
+        return f"{self.quantity} x {self.menu_item.name} ({self.get_tier_display()})"
+
+
+class ContactMessage(models.Model):
+    name = models.CharField(max_length=150)
+    email = models.EmailField()
+    phone = models.CharField(max_length=20, blank=True)
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Message from {self.name}"

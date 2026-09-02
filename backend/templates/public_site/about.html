@@ -1,0 +1,340 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}About Us - Queens Garden Hotel{% endblock %}
+
+{% block content %}
+
+<style>
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .hero-fade { animation: fadeIn 1s ease forwards; }
+
+    [data-animate] {
+        opacity: 0;
+        transform: translateY(24px);
+        transition: opacity 0.7s ease, transform 0.7s ease;
+    }
+    [data-animate].is-visible { opacity: 1; transform: translateY(0); }
+
+    .img-zoom { overflow: hidden; }
+    .img-zoom img { transition: transform 0.6s ease; }
+    .img-zoom:hover img { transform: scale(1.06); }
+
+    .gold-underline { position: relative; display: inline-block; }
+    .gold-underline::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        bottom: -8px;
+        width: 48px;
+        height: 3px;
+        background: #C9A227;
+    }
+
+    .timeline-line {
+        background: linear-gradient(to bottom, #C9A227, #0B6B3A);
+    }
+</style>
+
+<!-- Hero -->
+<div class="relative h-[420px] flex items-center justify-center text-center"
+     style="background: linear-gradient(rgba(6,40,20,0.65), rgba(6,40,20,0.75)), url('{% static "img/Queens_Garden_Hotel.webp" %}') center/cover no-repeat;">
+    <div class="px-6 hero-fade">
+        <img src="{% static 'img/queens_Garden_Logo.jpg' %}" alt="Queens Garden Hotel crest"
+             class="w-20 h-20 md:w-24 md:h-24 rounded-full mx-auto mb-5 border-4 border-[#C9A227] object-cover">
+        <p class="uppercase tracking-[0.3em] text-[#C9A227] text-xs font-semibold mb-3">Est. 2010, Eldoret, Kenya</p>
+        <h1 class="text-3xl md:text-5xl font-bold text-white">About Queens Garden Hotel</h1>
+        <p class="text-white/85 mt-3 text-base md:text-lg">Home Away From Home</p>
+    </div>
+</div>
+
+<!-- Stats bar -->
+<section class="bg-[#0B6B3A] py-8" data-animate>
+    <div class="max-w-6xl mx-auto px-6 grid grid-cols-2 md:grid-cols-4 gap-6 text-center text-white">
+        <div>
+            <i class="fa-solid fa-calendar-days text-[#C9A227] text-xl mb-2"></i>
+            <p class="text-2xl font-bold">15+ Years</p>
+            <p class="text-white/70 text-xs uppercase tracking-wide">Serving Eldoret</p>
+        </div>
+        <div>
+            <i class="fa-solid fa-utensils text-[#C9A227] text-xl mb-2"></i>
+            <p class="text-2xl font-bold">Restaurant &amp; Bar</p>
+            <p class="text-white/70 text-xs uppercase tracking-wide">On Site</p>
+        </div>
+        <div>
+            <i class="fa-solid fa-seedling text-[#C9A227] text-xl mb-2"></i>
+            <p class="text-2xl font-bold">Lush Gardens</p>
+            <p class="text-white/70 text-xs uppercase tracking-wide">For Every Guest</p>
+        </div>
+        <div>
+            <i class="fa-solid fa-clock text-[#C9A227] text-xl mb-2"></i>
+            <p class="text-2xl font-bold">24/7</p>
+            <p class="text-white/70 text-xs uppercase tracking-wide">Front Desk</p>
+        </div>
+    </div>
+</section>
+
+<!-- Our Story -->
+<section class="max-w-6xl mx-auto px-6 py-14 md:py-16 grid md:grid-cols-2 gap-10 items-center" data-animate>
+    <div>
+        <p class="text-[#0B6B3A] font-semibold uppercase tracking-wider text-sm mb-2">Our Story</p>
+        <h2 class="gold-underline text-2xl md:text-3xl font-bold text-black mb-6">A garden retreat in the heart of Eldoret</h2>
+        <p class="text-gray-700 leading-relaxed mb-4">
+            Since 2010, Queens Garden Hotel has been the place travelers to Eldoret turn to for
+            a warm welcome and a comfortable stay. Just off Kisumu Road, our gardens, restaurant,
+            and rooms were built around one simple idea, that a guest should feel at home the
+            moment they walk through our gates.
+        </p>
+        <p class="text-gray-700 leading-relaxed">
+            That idea still shapes everything we do today, from the meals we serve to the way
+            our staff greet every guest by name.
+        </p>
+    </div>
+    <div class="img-zoom rounded-2xl shadow-xl border-4 border-white ring-1 ring-[#C9A227]/40 aspect-[4/3]">
+        <img src="{% static 'img/Queens_Garden_Hotel_Gate.webp' %}" alt="Queens Garden Hotel entrance gate"
+             class="w-full h-full object-cover">
+    </div>
+</section>
+
+<!-- Our Journey timeline -->
+<section class="bg-[#F7F5EE] py-14 md:py-16" data-animate>
+    <div class="max-w-4xl mx-auto px-6">
+        <div class="text-center mb-12">
+            <p class="text-[#0B6B3A] font-semibold uppercase tracking-wider text-sm mb-2">Our Journey</p>
+            <h2 class="gold-underline text-2xl md:text-3xl font-bold text-black">Fifteen years of growing with Eldoret</h2>
+        </div>
+        <div class="relative pl-8">
+            <div class="absolute left-2 top-2 bottom-2 w-0.5 timeline-line"></div>
+
+            <div class="relative mb-10">
+                <div class="absolute -left-8 top-1 w-4 h-4 rounded-full bg-[#C9A227] border-2 border-white shadow"></div>
+                <p class="text-[#0B6B3A] font-bold text-sm mb-1">2010</p>
+                <h3 class="text-lg font-bold text-black mb-1">Queens Garden Hotel opens its gates</h3>
+                <p class="text-gray-600 text-sm leading-relaxed">Founded on Kisumu Road with a simple promise, treat every guest like family.</p>
+            </div>
+
+            <div class="relative mb-10">
+                <div class="absolute -left-8 top-1 w-4 h-4 rounded-full bg-[#0B6B3A] border-2 border-white shadow"></div>
+                <p class="text-[#0B6B3A] font-bold text-sm mb-1">Growing Years</p>
+                <h3 class="text-lg font-bold text-black mb-1">Gardens, restaurant, and bar take shape</h3>
+                <p class="text-gray-600 text-sm leading-relaxed">Word of mouth turned first time guests into regulars, and Eldoret took notice.</p>
+            </div>
+
+            <div class="relative mb-10">
+                <div class="absolute -left-8 top-1 w-4 h-4 rounded-full bg-[#C9A227] border-2 border-white shadow"></div>
+                <p class="text-[#0B6B3A] font-bold text-sm mb-1">2023</p>
+                <h3 class="text-lg font-bold text-black mb-1">Recognition beyond hospitality</h3>
+                <p class="text-gray-600 text-sm leading-relaxed">Our founder earned an honorary doctorate for his work in community peace and reconciliation.</p>
+            </div>
+
+            <div class="relative">
+                <div class="absolute -left-8 top-1 w-4 h-4 rounded-full bg-[#0B6B3A] border-2 border-white shadow"></div>
+                <p class="text-[#0B6B3A] font-bold text-sm mb-1">Today</p>
+                <h3 class="text-lg font-bold text-black mb-1">A home away from home for the North Rift</h3>
+                <p class="text-gray-600 text-sm leading-relaxed">Still family run, still guided by the same hospitality that opened our doors in 2010.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- What We're Known For -->
+<section class="max-w-6xl mx-auto px-6 py-14 md:py-16" data-animate>
+    <div class="text-center mb-10">
+        <p class="text-[#0B6B3A] font-semibold uppercase tracking-wider text-sm mb-2">What We're Known For</p>
+        <h2 class="gold-underline text-2xl md:text-3xl font-bold text-black">More than just a room for the night</h2>
+    </div>
+    <div class="grid sm:grid-cols-2 md:grid-cols-3 gap-6">
+        <div class="bg-white rounded-2xl p-6 shadow-md hover:shadow-xl transition border border-gray-100">
+            <i class="fa-solid fa-bed text-2xl text-[#0B6B3A] mb-3"></i>
+            <h3 class="font-bold text-black mb-2">Comfortable Rooms</h3>
+            <p class="text-gray-600 text-sm leading-relaxed">Clean, quiet, and well kept, built for both business travelers and families.</p>
+        </div>
+        <div class="bg-white rounded-2xl p-6 shadow-md hover:shadow-xl transition border border-gray-100">
+            <i class="fa-solid fa-utensils text-2xl text-[#C9A227] mb-3"></i>
+            <h3 class="font-bold text-black mb-2">Restaurant &amp; Bar</h3>
+            <p class="text-gray-600 text-sm leading-relaxed">Local Kenyan dishes and international favorites, with drinks served out in the gardens.</p>
+        </div>
+        <div class="bg-white rounded-2xl p-6 shadow-md hover:shadow-xl transition border border-gray-100">
+            <i class="fa-solid fa-champagne-glasses text-2xl text-black mb-3"></i>
+            <h3 class="font-bold text-black mb-2">Events &amp; Celebrations</h3>
+            <p class="text-gray-600 text-sm leading-relaxed">Our gardens and event spaces have hosted weddings, meetings, and family celebrations.</p>
+        </div>
+        <div class="bg-white rounded-2xl p-6 shadow-md hover:shadow-xl transition border border-gray-100">
+            <i class="fa-solid fa-people-group text-2xl text-[#0B6B3A] mb-3"></i>
+            <h3 class="font-bold text-black mb-2">Genuine Hospitality</h3>
+            <p class="text-gray-600 text-sm leading-relaxed">Our staff remember returning guests by name, not just by room number.</p>
+        </div>
+        <div class="bg-white rounded-2xl p-6 shadow-md hover:shadow-xl transition border border-gray-100">
+            <i class="fa-solid fa-location-dot text-2xl text-[#C9A227] mb-3"></i>
+            <h3 class="font-bold text-black mb-2">Prime Location</h3>
+            <p class="text-gray-600 text-sm leading-relaxed">Easy to reach off Kisumu Road, close to Eldoret's main attractions and business hubs.</p>
+        </div>
+        <div class="bg-white rounded-2xl p-6 shadow-md hover:shadow-xl transition border border-gray-100">
+            <i class="fa-solid fa-shield-heart text-2xl text-black mb-3"></i>
+            <h3 class="font-bold text-black mb-2">Safe &amp; Welcoming</h3>
+            <p class="text-gray-600 text-sm leading-relaxed">A gated, well kept property where guests can relax without a second thought.</p>
+        </div>
+    </div>
+</section>
+
+<!-- Conference Rooms -->
+<section class="bg-[#F7F5EE] py-14 md:py-16" data-animate>
+    <div class="max-w-6xl mx-auto px-6">
+        <div class="text-center mb-10">
+            <p class="text-[#0B6B3A] font-semibold uppercase tracking-wider text-sm mb-2">Meetings &amp; Conferences</p>
+            <h2 class="gold-underline text-2xl md:text-3xl font-bold text-black">Space for business, big or small</h2>
+            <p class="text-gray-600 max-w-xl mx-auto mt-5 text-sm md:text-base">
+                From board meetings to full day trainings, Queens Garden Hotel offers two
+                conference room options to match the occasion.
+            </p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-6">
+            <div class="bg-white rounded-2xl p-8 shadow-md border-t-4 border-[#0B6B3A] hover:shadow-xl transition">
+                <i class="fa-solid fa-users text-2xl text-[#0B6B3A] mb-3"></i>
+                <h3 class="text-xl font-bold text-black mb-2">Regular Conference Room</h3>
+                <p class="text-gray-600 text-sm leading-relaxed mb-4">
+                    A comfortable, well equipped space suited to everyday business meetings,
+                    trainings, and workshops, with standard catering available on request.
+                </p>
+                <ul class="text-sm text-gray-700 space-y-2">
+                    <li><i class="fa-solid fa-check text-[#0B6B3A] mr-2"></i>Flexible seating arrangements</li>
+                    <li><i class="fa-solid fa-check text-[#0B6B3A] mr-2"></i>Standard catering options</li>
+                    <li><i class="fa-solid fa-check text-[#0B6B3A] mr-2"></i>Essential presentation equipment</li>
+                </ul>
+            </div>
+            <div class="bg-white rounded-2xl p-8 shadow-md border-t-4 border-[#C9A227] hover:shadow-xl transition relative overflow-hidden">
+                <span class="absolute top-0 right-0 bg-[#C9A227] text-black text-xs font-bold uppercase tracking-wide px-4 py-1 rounded-bl-lg">VIP</span>
+                <i class="fa-solid fa-crown text-2xl text-[#C9A227] mb-3"></i>
+                <h3 class="text-xl font-bold text-black mb-2">VIP Conference Room</h3>
+                <p class="text-gray-600 text-sm leading-relaxed mb-4">
+                    A premium setting for executive meetings, private functions, and events
+                    that call for a more polished touch, with premium catering included.
+                </p>
+                <ul class="text-sm text-gray-700 space-y-2">
+                    <li><i class="fa-solid fa-check text-[#C9A227] mr-2"></i>Premium amenities and furnishings</li>
+                    <li><i class="fa-solid fa-check text-[#C9A227] mr-2"></i>Premium catering service</li>
+                    <li><i class="fa-solid fa-check text-[#C9A227] mr-2"></i>Priority booking support</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Video tour -->
+<section class="max-w-6xl mx-auto px-6 pb-14 md:pb-16" data-animate>
+    <div class="text-center mb-8">
+        <p class="text-[#0B6B3A] font-semibold uppercase tracking-wider text-sm mb-2">Take A Look Around</p>
+        <h2 class="gold-underline text-2xl md:text-3xl font-bold text-black">A quick walk through Queens Garden</h2>
+    </div>
+    <div class="rounded-2xl overflow-hidden shadow-2xl border-4 border-white ring-1 ring-[#C9A227]/40 aspect-video bg-black">
+        <video
+            class="w-full h-full object-cover"
+            autoplay muted loop playsinline
+            poster="{% static 'img/Queens_Garden_Hotel_Gate.webp' %}">
+            <source src="{% static 'video/queens_garden_tour.mp4' %}" type="video/mp4">
+        </video>
+    </div>
+</section>
+
+<!-- Founder -->
+<section class="bg-[#F7F5EE] py-14 md:py-16" data-animate>
+    <div class="max-w-6xl mx-auto px-6 grid md:grid-cols-2 gap-10 items-center">
+        <div class="md:order-1">
+            <p class="text-[#0B6B3A] font-semibold uppercase tracking-wider text-sm mb-2">Meet the Founder</p>
+            <h2 class="gold-underline text-2xl md:text-3xl font-bold text-black mb-6">Hon. Joseph Wainaina Iraya</h2>
+            <p class="text-gray-700 leading-relaxed mb-4">
+                Hon. Joseph Wainaina Iraya's journey to becoming one of Eldoret's most respected
+                hoteliers did not start in hospitality at all. He rose from humble beginnings,
+                once working as a taxi driver in the North Rift, and built that early hustle into
+                real entrepreneurship. That drive eventually led him to found Queens Garden Hotel,
+                a home away from home for everyone who walks through its doors.
+            </p>
+            <p class="text-gray-700 leading-relaxed mb-6">
+                Beyond the hotel, Hon. Wainaina is well known across Uasin Gishu County for his
+                work bringing communities together, especially in the years following the 2007
+                to 2008 post election period. That work in peace and reconciliation earned him
+                an honorary doctorate in December 2023.
+            </p>
+            <div class="flex flex-wrap gap-3">
+                <span class="inline-flex items-center gap-2 bg-white text-[#0B6B3A] text-xs font-semibold px-4 py-2 rounded-full shadow-sm">
+                    <i class="fa-solid fa-landmark"></i> UDA Nominated MP
+                </span>
+                <span class="inline-flex items-center gap-2 bg-white text-[#0B6B3A] text-xs font-semibold px-4 py-2 rounded-full shadow-sm">
+                    <i class="fa-solid fa-graduation-cap"></i> Honorary Doctorate, 2023
+                </span>
+                <span class="inline-flex items-center gap-2 bg-white text-[#0B6B3A] text-xs font-semibold px-4 py-2 rounded-full shadow-sm">
+                    <i class="fa-solid fa-handshake"></i> Peace &amp; Reconciliation
+                </span>
+            </div>
+        </div>
+        <div class="md:order-2 img-zoom rounded-2xl shadow-xl border-4 border-white ring-1 ring-[#C9A227]/40 aspect-[4/5] max-w-sm mx-auto md:max-w-none">
+            <img src="{% static 'img/Founder_Queens_Garden.jpg' %}" alt="Hon. Joseph Wainaina Iraya, Founder"
+                 class="w-full h-full object-cover">
+        </div>
+    </div>
+</section>
+
+<!-- Mission / Vision / Values -->
+<section class="max-w-6xl mx-auto px-6 py-14 md:py-16" data-animate>
+    <div class="text-center mb-10">
+        <p class="text-[#0B6B3A] font-semibold uppercase tracking-wider text-sm mb-2">What Guides Us</p>
+        <h2 class="gold-underline text-2xl md:text-3xl font-bold text-black">Mission, Vision &amp; Values</h2>
+    </div>
+    <div class="grid sm:grid-cols-2 md:grid-cols-3 gap-6">
+        <div class="bg-white rounded-2xl p-6 shadow-md border-t-4 border-[#0B6B3A] hover:shadow-xl transition">
+            <i class="fa-solid fa-bullseye text-2xl text-[#0B6B3A] mb-3"></i>
+            <h3 class="text-lg font-bold text-black mb-2">Our Mission</h3>
+            <p class="text-gray-600 text-sm leading-relaxed">
+                To welcome every guest with genuine Kenyan hospitality and comfort that feels
+                like coming home.
+            </p>
+        </div>
+        <div class="bg-white rounded-2xl p-6 shadow-md border-t-4 border-[#C9A227] hover:shadow-xl transition">
+            <i class="fa-solid fa-eye text-2xl text-[#C9A227] mb-3"></i>
+            <h3 class="text-lg font-bold text-black mb-2">Our Vision</h3>
+            <p class="text-gray-600 text-sm leading-relaxed">
+                To be the name people in Eldoret and beyond think of first as a true home away
+                from home.
+            </p>
+        </div>
+        <div class="bg-white rounded-2xl p-6 shadow-md border-t-4 border-black hover:shadow-xl transition sm:col-span-2 md:col-span-1">
+            <i class="fa-solid fa-hand-holding-heart text-2xl text-black mb-3"></i>
+            <h3 class="text-lg font-bold text-black mb-2">Our Values</h3>
+            <p class="text-gray-600 text-sm leading-relaxed">
+                Hospitality, integrity, community, and doing right by every guest, every single time.
+            </p>
+        </div>
+    </div>
+</section>
+
+<!-- Closing CTA with normal, accessible links -->
+<section class="bg-[#0B6B3A] py-14 text-center" data-animate>
+    <h2 class="text-2xl md:text-3xl font-bold text-white mb-3">More than a place to sleep</h2>
+    <p class="text-white/80 max-w-xl mx-auto mb-8 text-sm md:text-base">
+        Cozy rooms, a restaurant and bar full of local flavor, and gardens made for slowing down.
+        Come see why Eldoret calls this place home.
+    </p>
+    <div class="flex flex-wrap justify-center gap-4">
+        <a href="{% url 'home' %}"
+           class="inline-block bg-[#C9A227] text-black font-semibold px-8 py-3 rounded-full hover:bg-[#b8931f] transition">
+            Explore Rooms &amp; Menu
+        </a>
+        <a href="{% url 'contact' %}"
+           class="inline-block bg-transparent border-2 border-white text-white font-semibold px-8 py-3 rounded-full hover:bg-white hover:text-[#0B6B3A] transition">
+            Get In Touch
+        </a>
+    </div>
+</section>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const revealEls = document.querySelectorAll('[data-animate]');
+    const observer = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+            if (entry.isIntersecting) entry.target.classList.add('is-visible');
+        });
+    }, { threshold: 0.15 });
+    revealEls.forEach(function (el) { observer.observe(el); });
+});
+</script>
+
+{% endblock %}
