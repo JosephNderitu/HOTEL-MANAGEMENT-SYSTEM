@@ -8,6 +8,12 @@ from django.views.decorators.http import require_POST
 from .models import RoomType, MenuItem, Booking, Order, OrderItem
 from .services import get_available_rooms
 
+import random
+from django.core.mail import send_mail
+from django.conf import settings
+from django.utils import timezone
+from .models import Conversation, ChatMessage, EmailVerification
+
 
 def home(request):
     room_types = RoomType.objects.filter(is_active=True).prefetch_related('images')
@@ -23,10 +29,6 @@ def home(request):
 
 def about(request):
     return render(request, 'public_site/about.html')
-
-
-def contact(request):
-    return render(request, 'public_site/contact.html')
 
 
 def check_availability(request):
@@ -136,3 +138,105 @@ def submit_order(request):
         )
 
     return JsonResponse({'success': True, 'order_id': order.id})
+
+def contact(request):
+    session_email = request.session.get('contact_email')
+    conversation = None
+    messages = []
+    if session_email:
+        conversation = Conversation.objects.filter(email=session_email).first()
+        if conversation:
+            messages = list(conversation.messages.values('sender', 'body', 'created_at'))
+    return render(request, 'public_site/contact.html', {
+        'session_email': session_email,
+        'messages': messages,
+    })
+    
+@require_POST
+def send_verification_code(request):
+    data = json.loads(request.body)
+    email = data.get('email', '').strip().lower()
+    if not email or '@' not in email:
+        return JsonResponse({'error': 'Please enter a valid email address.'}, status=400)
+
+    code = str(random.randint(100000, 999999))
+    EmailVerification.objects.create(email=email, code=code)
+
+    send_mail(
+        subject="Your Queens Garden Hotel verification code",
+        message=(
+            f"Your verification code is: {code}\n\n"
+            f"This code expires in 10 minutes.\n\n"
+            f"Queens Garden Hotel"
+        ),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[email],
+        fail_silently=False,
+    )
+    return JsonResponse({'success': True})
+
+
+@require_POST
+def verify_code(request):
+    data = json.loads(request.body)
+    email = data.get('email', '').strip().lower()
+    code = data.get('code', '').strip()
+    name = data.get('name', '').strip()
+
+    verification = EmailVerification.objects.filter(
+        email=email, code=code, is_used=False
+    ).order_by('-created_at').first()
+
+    if not verification:
+        return JsonResponse({'error': 'Invalid code.'}, status=400)
+    if verification.is_expired():
+        return JsonResponse({'error': 'That code has expired. Request a new one.'}, status=400)
+
+    verification.is_used = True
+    verification.save(update_fields=['is_used'])
+
+    conversation, created = Conversation.objects.get_or_create(email=email)
+    if name and not conversation.name:
+        conversation.name = name
+        conversation.save(update_fields=['name'])
+
+    request.session['contact_email'] = email
+    request.session.set_expiry(60 * 60 * 24 * 30)  # keep them logged in for 30 days on this browser
+
+    messages = list(conversation.messages.values('sender', 'body', 'created_at'))
+    return JsonResponse({'success': True, 'messages': messages})
+
+
+def get_messages(request):
+    email = request.session.get('contact_email')
+    if not email:
+        return JsonResponse({'error': 'Not verified.'}, status=401)
+    conversation = Conversation.objects.filter(email=email).first()
+    if not conversation:
+        return JsonResponse({'messages': []})
+    messages = list(conversation.messages.values('sender', 'body', 'created_at'))
+    return JsonResponse({'messages': messages})
+
+
+@require_POST
+def send_message(request):
+    email = request.session.get('contact_email')
+    if not email:
+        return JsonResponse({'error': 'Not verified.'}, status=401)
+
+    data = json.loads(request.body)
+    body = data.get('body', '').strip()
+    if not body:
+        return JsonResponse({'error': 'Message cannot be empty.'}, status=400)
+
+    conversation, _ = Conversation.objects.get_or_create(email=email)
+    ChatMessage.objects.create(conversation=conversation, sender='guest', body=body)
+    conversation.last_message_at = timezone.now()
+    conversation.save(update_fields=['last_message_at'])
+
+    return JsonResponse({'success': True})
+
+
+def contact_logout(request):
+    request.session.pop('contact_email', None)
+    return JsonResponse({'success': True})

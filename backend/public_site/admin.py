@@ -3,7 +3,7 @@ from django.contrib import admin
 from django.utils.html import format_html
 from .models import (
     RoomType, RoomTypeImage, ConferenceRoom, Booking,
-    MenuItem, MenuItemImage, Order, OrderItem, ContactMessage,
+    MenuItem, MenuItemImage, Order, OrderItem
 )
 
 
@@ -273,18 +273,88 @@ class OrderAdmin(admin.ModelAdmin):
 # ---------------------------------------------------------------------------
 # ContactMessage — read-only inbox
 # ---------------------------------------------------------------------------
+    
+from .models import Conversation, ChatMessage
 
-@admin.register(ContactMessage)
-class ContactMessageAdmin(admin.ModelAdmin):
-    list_display = ('name', 'email', 'phone', 'short_message', 'created_at')
-    search_fields = ('name', 'email', 'message')
-    date_hierarchy = 'created_at'
-    ordering = ('-created_at',)
-    readonly_fields = ('name', 'email', 'phone', 'message', 'created_at')
 
-    @admin.display(description='Message')
-    def short_message(self, obj):
-        return obj.message[:60] + ('…' if len(obj.message) > 60 else '')
+class ChatMessageInline(admin.TabularInline):
+    model = ChatMessage
+    extra = 1
+    fields = ('sender', 'body', 'created_at', 'notified')
+    readonly_fields = ('created_at', 'notified')
+    ordering = ('created_at',)
 
-    def has_add_permission(self, request):
-        return False
+
+import json
+from django.contrib import admin
+from django.urls import path
+from django.http import JsonResponse
+from .models import Conversation, ChatMessage
+
+
+@admin.register(Conversation)
+class ConversationAdmin(admin.ModelAdmin):
+    list_display = ('email', 'name', 'message_count', 'last_message_display')
+    search_fields = ('email', 'name')
+    ordering = ('last_message_at',)
+    change_form_template = 'admin/public_site/conversation/change_form.html'
+    fields = ('email', 'name')
+
+    @admin.display(description='Messages')
+    def message_count(self, obj):
+        return obj.messages.count()
+
+    @admin.display(description='Last Activity', ordering='last_message_at')
+    def last_message_display(self, obj):
+        return obj.last_message_at.strftime('%b %d, %Y %H:%M')
+
+    def get_urls(self):
+        custom = [
+            path(
+                '<int:conversation_id>/send-reply/',
+                self.admin_site.admin_view(self.send_reply),
+                name='public_site_conversation_send_reply',
+            ),
+        ]
+        return custom + super().get_urls()
+
+    def change_view(self, request, object_id, form_url='', extra_context=None):
+        conversation = self.get_object(request, object_id)
+        extra_context = extra_context or {}
+        extra_context['conversation'] = conversation
+        extra_context['chat_messages'] = (
+            conversation.messages.order_by('created_at') if conversation else []
+        )
+        return super().change_view(request, object_id, form_url, extra_context=extra_context)
+
+    def send_reply(self, request, conversation_id):
+        if request.method != 'POST':
+            return JsonResponse({'error': 'POST required'}, status=405)
+        if not self.has_change_permission(request):
+            return JsonResponse({'error': 'Permission denied'}, status=403)
+
+        conversation = self.get_object(request, conversation_id)
+        if not conversation:
+            return JsonResponse({'error': 'Conversation not found'}, status=404)
+
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid request'}, status=400)
+
+        body = data.get('body', '').strip()
+        if not body:
+            return JsonResponse({'error': 'Message cannot be empty'}, status=400)
+
+        # This create() is what triggers the existing signal, live WebSocket
+        # push to the guest plus the email fallback, nothing new to wire up.
+        msg = ChatMessage.objects.create(conversation=conversation, sender='staff', body=body)
+
+        return JsonResponse({
+            'success': True,
+            'message': {
+                'sender': msg.sender,
+                'body': msg.body,
+                'created_at': msg.created_at.strftime('%b %d, %H:%M'),
+            },
+        })

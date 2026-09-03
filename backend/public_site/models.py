@@ -3,10 +3,19 @@ from PIL import Image
 from django.core.files.base import ContentFile
 from django.core.exceptions import ValidationError
 from django.db import models
+import random
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+from django.core.mail import send_mail
+from django.conf import settings
+from django.utils import timezone
+from datetime import timedelta
 
 MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
 MAX_IMAGES_PER_ITEM = 4
 
+def group_name_for_email(email):
+    return f"chat_{email.replace('@', '_at_').replace('.', '_dot_')}"
 
 def compress_image_if_needed(image_field):
     """If an uploaded image exceeds 10MB, re-encode it down under that limit."""
@@ -216,12 +225,83 @@ class OrderItem(models.Model):
         return f"{self.quantity} x {self.menu_item.name} ({self.get_tier_display()})"
 
 
-class ContactMessage(models.Model):
-    name = models.CharField(max_length=150)
-    email = models.EmailField()
-    phone = models.CharField(max_length=20, blank=True)
-    message = models.TextField()
+
+class Conversation(models.Model):
+    email = models.EmailField(unique=True)
+    name = models.CharField(max_length=150, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    last_message_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"Message from {self.name}"
+        return f"Conversation with {self.email}"
+
+
+class ChatMessage(models.Model):
+    SENDER_CHOICES = [('guest', 'Guest'), ('staff', 'Staff')]
+    conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='messages')
+    sender = models.CharField(max_length=10, choices=SENDER_CHOICES)
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    notified = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"{self.sender}: {self.body[:30]}"
+
+
+class EmailVerification(models.Model):
+    email = models.EmailField()
+    code = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_used = models.BooleanField(default=False)
+
+    def is_expired(self):
+        return timezone.now() > self.created_at + timedelta(minutes=10)
+
+    def __str__(self):
+        return f"{self.email} — {self.code}"
+
+
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+
+
+@receiver(post_save, sender=ChatMessage)
+def notify_guest_on_staff_reply(sender, instance, created, **kwargs):
+    if not created or instance.sender != 'staff':
+        return
+
+    # Push it live over WebSocket first, this is what makes it feel instant.
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        group_name_for_email(instance.conversation.email),
+        {
+            'type': 'chat_message',
+            'message': {
+                'sender': instance.sender,
+                'body': instance.body,
+                'created_at': instance.created_at.isoformat(),
+            },
+        },
+    )
+
+    # Still email them too, in case they've closed the tab entirely.
+    if not instance.notified:
+        send_mail(
+            subject="New reply from Queens Garden Hotel",
+            message=(
+                f"Hi {instance.conversation.name or ''},\n\n"
+                f"You have a new reply from Queens Garden Hotel:\n\n"
+                f"\"{instance.body}\"\n\n"
+                f"Visit {settings.SITE_URL}/contact/ and verify with this email "
+                f"to continue the conversation.\n\n"
+                f"Queens Garden Hotel"
+            ),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[instance.conversation.email],
+            fail_silently=True,
+        )
+        instance.notified = True
+        instance.save(update_fields=['notified'])

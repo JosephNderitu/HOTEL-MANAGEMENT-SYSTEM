@@ -1,0 +1,222 @@
+{% extends "admin/change_form.html" %}
+{% load static %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    .qg-chat-wrapper {
+        margin-top: 24px;
+        border: 1px solid #0B6B3A;
+        border-radius: 14px;
+        overflow: hidden;
+        background: #ffffff;
+        max-width: 720px;
+    }
+    .qg-chat-header {
+        background: linear-gradient(135deg, #0B6B3A, #095430);
+        padding: 16px 20px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    .qg-chat-avatar {
+        width: 42px; height: 42px;
+        border-radius: 50%;
+        background: #C9A227;
+        color: #000;
+        font-weight: 700;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 16px;
+        flex-shrink: 0;
+    }
+    .qg-chat-title { color: #fff; font-weight: 700; font-size: 14px; }
+    .qg-chat-subtitle { color: rgba(255,255,255,0.7); font-size: 12px; margin-top: 2px; }
+
+    .qg-chat-thread {
+        max-height: 420px;
+        overflow-y: auto;
+        padding: 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        background: #FAFAF8;
+        background-image: radial-gradient(#E5E7EB 1px, transparent 1px);
+        background-size: 18px 18px;
+    }
+    .qg-chat-thread::-webkit-scrollbar { width: 6px; }
+    .qg-chat-thread::-webkit-scrollbar-thumb { background: #0B6B3A; border-radius: 9999px; }
+
+    .qg-bubble-row { display: flex; }
+    .qg-bubble-row.qg-bubble-staff { justify-content: flex-end; }
+    .qg-bubble-row.qg-bubble-guest { justify-content: flex-start; }
+
+    .qg-bubble {
+        max-width: 70%;
+        padding: 10px 14px;
+        font-size: 13px;
+        line-height: 1.5;
+    }
+    .qg-bubble-staff .qg-bubble {
+        background: #0B6B3A;
+        color: #fff;
+        border-radius: 14px 14px 3px 14px;
+    }
+    .qg-bubble-guest .qg-bubble {
+        background: #fff;
+        color: #111827;
+        border: 1px solid #0B6B3A;
+        border-radius: 14px 14px 14px 3px;
+    }
+    .qg-bubble-time {
+        display: block;
+        font-size: 10px;
+        opacity: 0.7;
+        margin-top: 4px;
+    }
+    .qg-chat-empty { text-align: center; color: #9ca3af; font-size: 13px; margin: auto; }
+
+    .qg-chat-input-row {
+        display: flex;
+        gap: 8px;
+        padding: 14px;
+        border-top: 1px solid #0B6B3A;
+        background: #fff;
+    }
+    .qg-chat-input-row input {
+        flex: 1;
+        border: 1px solid #0B6B3A !important;
+        border-radius: 9999px;
+        padding: 10px 16px;
+        font-size: 13px;
+        outline: none;
+    }
+    .qg-chat-input-row input:focus {
+        box-shadow: 0 0 0 3px rgba(11,107,58,0.15);
+    }
+    .qg-chat-send-btn {
+        width: 42px; height: 42px;
+        border-radius: 50%;
+        background: #0B6B3A;
+        color: #fff;
+        border: none;
+        flex-shrink: 0;
+        cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        transition: background 0.2s ease;
+    }
+    .qg-chat-send-btn:hover { background: #095430; }
+    .qg-chat-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Mobile */
+    @media (max-width: 768px) {
+        .qg-chat-wrapper { max-width: 100%; }
+        .qg-bubble { max-width: 85%; }
+        .qg-chat-thread { max-height: 340px; padding: 12px; }
+    }
+</style>
+{% endblock %}
+
+{% block after_field_sets %}
+{{ block.super }}
+{% if conversation %}
+<div class="qg-chat-wrapper"
+     data-send-url="{% url 'admin:public_site_conversation_send_reply' conversation.id %}">
+    <div class="qg-chat-header">
+        <div class="qg-chat-avatar">{{ conversation.email|slice:":1"|upper }}</div>
+        <div>
+            <div class="qg-chat-title">{{ conversation.name|default:conversation.email }}</div>
+            <div class="qg-chat-subtitle">{{ conversation.email }} &middot; {{ chat_messages|length }} message{{ chat_messages|length|pluralize }}</div>
+        </div>
+    </div>
+
+    <div id="qg-chat-thread" class="qg-chat-thread">
+        {% for msg in chat_messages %}
+        <div class="qg-bubble-row qg-bubble-{{ msg.sender }}">
+            <div class="qg-bubble">
+                <p>{{ msg.body }}</p>
+                <span class="qg-bubble-time">{{ msg.created_at|date:"M d, H:i" }}</span>
+            </div>
+        </div>
+        {% empty %}
+        <p class="qg-chat-empty">No messages yet.</p>
+        {% endfor %}
+    </div>
+
+    <div class="qg-chat-input-row">
+        <input type="text" id="qg-chat-input" placeholder="Type a reply and press Enter..." autocomplete="off">
+        <button type="button" id="qg-chat-send-btn" class="qg-chat-send-btn">
+            <i class="fas fa-paper-plane"></i>
+        </button>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    function getCookie(name) {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+    }
+    const csrftoken = getCookie('csrftoken');
+
+    const wrapper = document.querySelector('.qg-chat-wrapper');
+    const sendUrl = wrapper.dataset.sendUrl;
+    const thread = document.getElementById('qg-chat-thread');
+    const input = document.getElementById('qg-chat-input');
+    const sendBtn = document.getElementById('qg-chat-send-btn');
+
+    function prependBubble(msg) {
+        const empty = thread.querySelector('.qg-chat-empty');
+        if (empty) empty.remove();
+
+        const row = document.createElement('div');
+        row.className = `qg-bubble-row qg-bubble-${msg.sender}`;
+        row.innerHTML = `
+            <div class="qg-bubble">
+                <p></p>
+                <span class="qg-bubble-time">${msg.created_at}</span>
+            </div>
+        `;
+        row.querySelector('p').textContent = msg.body;
+        thread.insertBefore(row, thread.firstChild);
+        thread.scrollTop = 0;
+    }
+
+    async function sendReply() {
+        const body = input.value.trim();
+        if (!body) return;
+
+        sendBtn.disabled = true;
+        input.disabled = true;
+
+        try {
+            const res = await fetch(sendUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+                body: JSON.stringify({ body }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                prependBubble(data.message);
+                input.value = '';
+            } else {
+                alert(data.error || 'Could not send reply.');
+            }
+        } finally {
+            sendBtn.disabled = false;
+            input.disabled = false;
+            input.focus();
+        }
+    }
+
+    sendBtn.addEventListener('click', sendReply);
+    input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            sendReply();
+        }
+    });
+});
+</script>
+{% endif %}
+{% endblock %}
