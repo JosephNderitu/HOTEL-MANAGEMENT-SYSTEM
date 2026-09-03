@@ -4,41 +4,47 @@
 {% block extrastyle %}
 {{ block.super }}
 <style>
-    .qg-chat-wrapper {
+    .qg-chat-page {
+        display: flex;
+        justify-content: center;
         margin-top: 24px;
+    }
+    .qg-chat-wrapper {
+        width: 100%;
+        max-width: 760px;
         border: 1px solid #0B6B3A;
-        border-radius: 14px;
+        border-radius: 16px;
         overflow: hidden;
         background: #ffffff;
-        max-width: 720px;
+        box-shadow: 0 12px 32px -16px rgba(11,107,58,0.25);
     }
     .qg-chat-header {
         background: linear-gradient(135deg, #0B6B3A, #095430);
-        padding: 16px 20px;
+        padding: 18px 22px;
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: 14px;
     }
     .qg-chat-avatar {
-        width: 42px; height: 42px;
+        width: 46px; height: 46px;
         border-radius: 50%;
         background: #C9A227;
         color: #000;
         font-weight: 700;
         display: flex; align-items: center; justify-content: center;
-        font-size: 16px;
+        font-size: 17px;
         flex-shrink: 0;
     }
-    .qg-chat-title { color: #fff; font-weight: 700; font-size: 14px; }
-    .qg-chat-subtitle { color: rgba(255,255,255,0.7); font-size: 12px; margin-top: 2px; }
+    .qg-chat-title { color: #fff; font-weight: 700; font-size: 15px; }
+    .qg-chat-subtitle { color: rgba(255,255,255,0.72); font-size: 12px; margin-top: 3px; }
 
     .qg-chat-thread {
-        max-height: 420px;
+        max-height: 480px;
         overflow-y: auto;
-        padding: 18px;
+        padding: 20px;
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 4px;
         background: #FAFAF8;
         background-image: radial-gradient(#E5E7EB 1px, transparent 1px);
         background-size: 18px 18px;
@@ -46,15 +52,38 @@
     .qg-chat-thread::-webkit-scrollbar { width: 6px; }
     .qg-chat-thread::-webkit-scrollbar-thumb { background: #0B6B3A; border-radius: 9999px; }
 
-    .qg-bubble-row { display: flex; }
+    .qg-date-divider {
+        text-align: center;
+        font-size: 11px;
+        color: #9ca3af;
+        margin: 14px 0 10px;
+        position: relative;
+    }
+
+    .qg-bubble-row { display: flex; margin: 3px 0; }
     .qg-bubble-row.qg-bubble-staff { justify-content: flex-end; }
     .qg-bubble-row.qg-bubble-guest { justify-content: flex-start; }
 
+    .qg-bubble-col { max-width: 70%; display: flex; flex-direction: column; }
+    .qg-bubble-row.qg-bubble-staff .qg-bubble-col { align-items: flex-end; }
+    .qg-bubble-row.qg-bubble-guest .qg-bubble-col { align-items: flex-start; }
+
+    .qg-bubble-label {
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin-bottom: 3px;
+        padding: 0 4px;
+    }
+    .qg-bubble-staff .qg-bubble-label { color: #0B6B3A; }
+    .qg-bubble-guest .qg-bubble-label { color: #92722a; }
+
     .qg-bubble {
-        max-width: 70%;
         padding: 10px 14px;
         font-size: 13px;
         line-height: 1.5;
+        word-break: break-word;
     }
     .qg-bubble-staff .qg-bubble {
         background: #0B6B3A;
@@ -70,7 +99,7 @@
     .qg-bubble-time {
         display: block;
         font-size: 10px;
-        opacity: 0.7;
+        opacity: 0.65;
         margin-top: 4px;
     }
     .qg-chat-empty { text-align: center; color: #9ca3af; font-size: 13px; margin: auto; }
@@ -78,7 +107,7 @@
     .qg-chat-input-row {
         display: flex;
         gap: 8px;
-        padding: 14px;
+        padding: 16px;
         border-top: 1px solid #0B6B3A;
         background: #fff;
     }
@@ -86,7 +115,7 @@
         flex: 1;
         border: 1px solid #0B6B3A !important;
         border-radius: 9999px;
-        padding: 10px 16px;
+        padding: 11px 18px;
         font-size: 13px;
         outline: none;
     }
@@ -94,7 +123,7 @@
         box-shadow: 0 0 0 3px rgba(11,107,58,0.15);
     }
     .qg-chat-send-btn {
-        width: 42px; height: 42px;
+        width: 44px; height: 44px;
         border-radius: 50%;
         background: #0B6B3A;
         color: #fff;
@@ -107,11 +136,11 @@
     .qg-chat-send-btn:hover { background: #095430; }
     .qg-chat-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-    /* Mobile */
     @media (max-width: 768px) {
-        .qg-chat-wrapper { max-width: 100%; }
-        .qg-bubble { max-width: 85%; }
-        .qg-chat-thread { max-height: 340px; padding: 12px; }
+        .qg-chat-page { margin-top: 16px; padding: 0 8px; }
+        .qg-bubble-col { max-width: 88%; }
+        .qg-chat-thread { max-height: 380px; padding: 14px; }
+        .qg-chat-header { padding: 14px 16px; }
     }
 </style>
 {% endblock %}
@@ -119,6 +148,7 @@
 {% block after_field_sets %}
 {{ block.super }}
 {% if conversation %}
+<div class="qg-chat-page">
 <div class="qg-chat-wrapper"
      data-send-url="{% url 'admin:public_site_conversation_send_reply' conversation.id %}">
     <div class="qg-chat-header">
@@ -130,13 +160,20 @@
     </div>
 
     <div id="qg-chat-thread" class="qg-chat-thread">
-        {% for msg in chat_messages %}
+        {% regroup chat_messages by created_at.date as message_days %}
+        {% for day in message_days %}
+        <div class="qg-date-divider">{{ day.grouper|date:"F j, Y" }}</div>
+        {% for msg in day.list %}
         <div class="qg-bubble-row qg-bubble-{{ msg.sender }}">
-            <div class="qg-bubble">
-                <p>{{ msg.body }}</p>
-                <span class="qg-bubble-time">{{ msg.created_at|date:"M d, H:i" }}</span>
+            <div class="qg-bubble-col">
+                <span class="qg-bubble-label">{% if msg.sender == 'staff' %}Front Desk{% else %}Guest{% endif %}</span>
+                <div class="qg-bubble">
+                    <p>{{ msg.body }}</p>
+                    <span class="qg-bubble-time">{{ msg.created_at|date:"H:i" }}</span>
+                </div>
             </div>
         </div>
+        {% endfor %}
         {% empty %}
         <p class="qg-chat-empty">No messages yet.</p>
         {% endfor %}
@@ -148,6 +185,7 @@
             <i class="fas fa-paper-plane"></i>
         </button>
     </div>
+</div>
 </div>
 
 <script>
@@ -165,21 +203,27 @@ document.addEventListener('DOMContentLoaded', function () {
     const input = document.getElementById('qg-chat-input');
     const sendBtn = document.getElementById('qg-chat-send-btn');
 
-    function prependBubble(msg) {
+    // Load already scrolled to the latest message, exactly like a real chat app.
+    thread.scrollTop = thread.scrollHeight;
+
+    function appendBubble(msg) {
         const empty = thread.querySelector('.qg-chat-empty');
         if (empty) empty.remove();
 
         const row = document.createElement('div');
         row.className = `qg-bubble-row qg-bubble-${msg.sender}`;
         row.innerHTML = `
-            <div class="qg-bubble">
-                <p></p>
-                <span class="qg-bubble-time">${msg.created_at}</span>
+            <div class="qg-bubble-col">
+                <span class="qg-bubble-label">${msg.sender === 'staff' ? 'Front Desk' : 'Guest'}</span>
+                <div class="qg-bubble">
+                    <p></p>
+                    <span class="qg-bubble-time">${msg.created_at}</span>
+                </div>
             </div>
         `;
         row.querySelector('p').textContent = msg.body;
-        thread.insertBefore(row, thread.firstChild);
-        thread.scrollTop = 0;
+        thread.appendChild(row);
+        thread.scrollTop = thread.scrollHeight;
     }
 
     async function sendReply() {
@@ -197,7 +241,7 @@ document.addEventListener('DOMContentLoaded', function () {
             });
             const data = await res.json();
             if (data.success) {
-                prependBubble(data.message);
+                appendBubble(data.message);
                 input.value = '';
             } else {
                 alert(data.error || 'Could not send reply.');

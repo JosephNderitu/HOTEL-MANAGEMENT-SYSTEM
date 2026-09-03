@@ -274,17 +274,6 @@ class OrderAdmin(admin.ModelAdmin):
 # ContactMessage — read-only inbox
 # ---------------------------------------------------------------------------
     
-from .models import Conversation, ChatMessage
-
-
-class ChatMessageInline(admin.TabularInline):
-    model = ChatMessage
-    extra = 1
-    fields = ('sender', 'body', 'created_at', 'notified')
-    readonly_fields = ('created_at', 'notified')
-    ordering = ('created_at',)
-
-
 import json
 from django.contrib import admin
 from django.urls import path
@@ -296,7 +285,7 @@ from .models import Conversation, ChatMessage
 class ConversationAdmin(admin.ModelAdmin):
     list_display = ('email', 'name', 'message_count', 'last_message_display')
     search_fields = ('email', 'name')
-    ordering = ('last_message_at',)
+    ordering = ('-last_message_at',)  # most recently active conversation first
     change_form_template = 'admin/public_site/conversation/change_form.html'
     fields = ('email', 'name')
 
@@ -323,7 +312,7 @@ class ConversationAdmin(admin.ModelAdmin):
         extra_context = extra_context or {}
         extra_context['conversation'] = conversation
         extra_context['chat_messages'] = (
-            conversation.messages.order_by('created_at') if conversation else []
+            conversation.messages.order_by('created_at') if conversation else []  # chronological, oldest first
         )
         return super().change_view(request, object_id, form_url, extra_context=extra_context)
 
@@ -346,8 +335,6 @@ class ConversationAdmin(admin.ModelAdmin):
         if not body:
             return JsonResponse({'error': 'Message cannot be empty'}, status=400)
 
-        # This create() is what triggers the existing signal, live WebSocket
-        # push to the guest plus the email fallback, nothing new to wire up.
         msg = ChatMessage.objects.create(conversation=conversation, sender='staff', body=body)
 
         return JsonResponse({
