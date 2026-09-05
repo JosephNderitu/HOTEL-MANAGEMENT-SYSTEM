@@ -76,6 +76,16 @@
                    class="bg-[#C9A227] text-black text-center px-5 py-2 rounded-full font-semibold hover:bg-[#b8931f] transition">
                     Book Now
                 </a>
+
+                {% if user.is_authenticated and user.is_staff %}
+                <a href="{% url 'dashboard:home' %}" class="hidden sm:inline-flex items-center gap-1.5 text-[#0B6B3A] text-sm font-semibold hover:underline">
+                    <i class="fa-solid fa-user-shield"></i> Staff Panel
+                </a>
+                {% else %}
+                <a href="{% url 'dashboard:staff_login' %}" class="hidden sm:inline-flex items-center gap-1.5 text-gray-500 text-sm font-semibold hover:text-[#0B6B3A]">
+                    <i class="fa-solid fa-user-shield"></i> Staff
+                </a>
+                {% endif %}
             </div>
         </div>
     </nav>
@@ -136,6 +146,7 @@
                 </div>
             </div>
         </div>
+        <a href="{% url 'dashboard:staff_login' %}" class="hover:text-[#C9A227] transition">Staff Login</a>
         <div class="border-t border-white/10 text-center text-xs py-5 text-gray-500">
             &copy; {% now "Y" %} Queens Garden Hotel. All rights reserved. Home Away From Home since 2010.
         </div>

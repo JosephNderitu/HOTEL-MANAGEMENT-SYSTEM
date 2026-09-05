@@ -1,0 +1,26 @@
+{# home.html #}
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+<h1 class="text-2xl font-bold text-black mb-1">Welcome back, {{ request.user.get_full_name|default:request.user.username }}</h1>
+<p class="text-gray-500 mb-8">Here's what you have access to today.</p>
+{% if gate_inside_count is not None %}
+<div class="mb-8 bg-white border border-[#0B6B3A] rounded-2xl p-5 flex items-center gap-4 max-w-sm">
+    <div class="w-12 h-12 rounded-full bg-[#0B6B3A]/10 flex items-center justify-center">
+        <i class="fa-solid fa-shield-halved text-xl text-[#0B6B3A]"></i>
+    </div>
+    <div>
+        <p class="text-2xl font-bold text-[#0B6B3A]">{{ gate_inside_count }}</p>
+        <p class="text-xs text-gray-500 uppercase tracking-wide">Vehicle{{ gate_inside_count|pluralize }} Currently Inside</p>
+    </div>
+</div>
+{% endif %}
+<div class="grid sm:grid-cols-2 md:grid-cols-3 gap-5">
+    {% for item in dashboard_nav_items %}
+    <a href="{% url item.url_name %}" class="p-5 rounded-2xl border {% if item.allowed %}border-[#0B6B3A] hover:shadow-md{% else %}border-gray-200 opacity-60{% endif %} transition bg-white">
+        <i class="fa-solid {{ item.icon }} text-xl {% if item.allowed %}text-[#0B6B3A]{% else %}text-gray-400{% endif %} mb-3"></i>
+        <p class="font-bold text-black text-sm">{{ item.label }}</p>
+        {% if not item.allowed %}<p class="text-xs text-gray-400 mt-1"><i class="fa-solid fa-lock mr-1"></i>Restricted</p>{% endif %}
+    </a>
+    {% endfor %}
+</div>
+{% endblock %}

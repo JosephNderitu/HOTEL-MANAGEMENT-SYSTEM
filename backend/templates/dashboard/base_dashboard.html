@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<style>
+    #dash-sidebar {
+        width: 240px;
+        background: #06140b;
+        transition: width 0.25s ease;
+        flex-shrink: 0;
+    }
+    #dash-sidebar.collapsed { width: 76px; }
+    #dash-sidebar.collapsed .dash-nav-label,
+    #dash-sidebar.collapsed .dash-user-info,
+    #dash-sidebar.collapsed .dash-brand-text { display: none; }
+
+    .dash-nav-link {
+        display: flex; align-items: center; gap: 12px;
+        padding: 11px 20px;
+        color: rgba(255,255,255,0.75);
+        font-size: 13.5px; font-weight: 500;
+        transition: background 0.2s ease, color 0.2s ease;
+        position: relative;
+    }
+    .dash-nav-link:hover { background: rgba(255,255,255,0.06); color: white; }
+    .dash-nav-link.active { background: rgba(201,162,39,0.15); color: #C9A227; border-right: 3px solid #C9A227; }
+    .dash-nav-link.locked { opacity: 0.5; }
+    .dash-nav-link i.dash-lock-icon { margin-left: auto; font-size: 11px; }
+    .dash-nav-link i:first-child { width: 18px; text-align: center; }
+
+    #dash-mobile-drawer {
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+    }
+    #dash-mobile-drawer.open { transform: translateX(0); }
+
+    @media (min-width: 768px) {
+        #dash-mobile-bar { display: none; }
+    }
+</style>
+
+<div class="flex" style="min-height: 70vh;">
+
+    <!-- Desktop sidebar -->
+    <aside id="dash-sidebar" class="hidden md:flex flex-col">
+        <div class="flex items-center justify-between px-5 py-5 border-b border-white/10">
+            <span class="dash-brand-text text-white font-bold text-sm">Staff Panel</span>
+            <button id="dash-collapse-toggle" class="text-white/60 hover:text-white">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+        </div>
+        <nav class="flex-1 py-3 overflow-y-auto">
+            {% for item in dashboard_nav_items %}
+                <a href="{% url item.url_name %}" class="dash-nav-link {% if item.allowed %}{% else %}locked{% endif %}" title="{{ item.label }}">
+                    <i class="fa-solid {{ item.icon }}"></i>
+                    <span class="dash-nav-label">{{ item.label }}</span>
+                    {% if not item.allowed %}<i class="fa-solid fa-lock dash-lock-icon"></i>{% endif %}
+                </a>
+            {% endfor %}
+        </nav>
+        <div class="border-t border-white/10 px-5 py-4">
+            <div class="dash-user-info mb-3">
+                <p class="text-white text-sm font-semibold">{{ request.user.get_full_name|default:request.user.username }}</p>
+                <p class="text-white/50 text-xs">
+                    {% for g in request.user.groups.all %}{{ g.name }}{% if not forloop.last %}, {% endif %}{% empty %}Staff{% endfor %}
+                </p>
+                {% if request.user.staff_profile.national_id %}
+                <p class="text-[#C9A227] text-[11px] font-mono mt-1">ID: {{ request.user.staff_profile.national_id }}</p>
+                {% endif %}
+            </div>
+            <a href="{% url 'dashboard:staff_logout' %}" class="dash-nav-link !px-0 hover:!bg-transparent hover:!text-[#C9A227]">
+                <i class="fa-solid fa-right-from-bracket"></i>
+                <span class="dash-nav-label">Log Out</span>
+            </a>
+        </div>
+    </aside>
+
+    <!-- Mobile drawer -->
+    <div id="dash-mobile-overlay" class="md:hidden fixed inset-0 bg-black/50 z-40 hidden"></div>
+    <aside id="dash-mobile-drawer" class="md:hidden fixed top-0 left-0 h-full w-64 z-50 flex flex-col" style="background:#06140b;">
+        <div class="flex items-center justify-between px-5 py-5 border-b border-white/10">
+            <span class="text-white font-bold text-sm">Staff Panel</span>
+            <button id="dash-mobile-close" class="text-white/60 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <nav class="flex-1 py-3 overflow-y-auto">
+            {% for item in dashboard_nav_items %}
+                <a href="{% url item.url_name %}" class="dash-nav-link {% if item.allowed %}{% else %}locked{% endif %}">
+                    <i class="fa-solid {{ item.icon }}"></i>
+                    <span class="dash-nav-label">{{ item.label }}</span>
+                    {% if not item.allowed %}<i class="fa-solid fa-lock dash-lock-icon"></i>{% endif %}
+                </a>
+            {% endfor %}
+        </nav>
+        <div class="border-t border-white/10 px-5 py-4">
+            <p class="text-white text-sm font-semibold">{{ request.user.get_full_name|default:request.user.username }}</p>
+            <a href="{% url 'dashboard:staff_logout' %}" class="dash-nav-link !px-0 hover:!bg-transparent hover:!text-[#C9A227] mt-2">
+                <i class="fa-solid fa-right-from-bracket"></i>
+                <span>Log Out</span>
+            </a>
+        </div>
+    </aside>
+
+    <!-- Main content -->
+    <div class="flex-1 min-w-0">
+        <div id="dash-mobile-bar" class="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
+            <button id="dash-mobile-open" class="text-[#0B6B3A] text-xl"><i class="fa-solid fa-bars"></i></button>
+            <span class="font-bold text-black text-sm">Staff Panel</span>
+        </div>
+        <main class="p-6 md:p-10">
+            {% block dashboard_content %}{% endblock %}
+        </main>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const sidebar = document.getElementById('dash-sidebar');
+    const collapseBtn = document.getElementById('dash-collapse-toggle');
+    if (collapseBtn) {
+        collapseBtn.addEventListener('click', () => sidebar.classList.toggle('collapsed'));
+    }
+
+    const drawer = document.getElementById('dash-mobile-drawer');
+    const overlay = document.getElementById('dash-mobile-overlay');
+    const openBtn = document.getElementById('dash-mobile-open');
+    const closeBtn = document.getElementById('dash-mobile-close');
+
+    function openDrawer() { drawer.classList.add('open'); overlay.classList.remove('hidden'); }
+    function closeDrawer() { drawer.classList.remove('open'); overlay.classList.add('hidden'); }
+
+    if (openBtn) openBtn.addEventListener('click', openDrawer);
+    if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
+    if (overlay) overlay.addEventListener('click', closeDrawer);
+});
+</script>
+{% endblock %}

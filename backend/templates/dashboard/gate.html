@@ -1,0 +1,222 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+
+<style>
+    .gate-stat { border: 1px solid #0B6B3A; border-radius: 14px; padding: 18px 20px; background: #fff; }
+    .gate-modal-backdrop { display: none; }
+    .gate-modal-backdrop.open { display: flex; }
+    .gate-table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #6b7280; text-align: left; padding: 10px 14px; border-bottom: 1px solid #e5e7eb; }
+    .gate-table td { padding: 12px 14px; font-size: 13px; border-bottom: 1px solid #f3f4f6; color: #111827; }
+    .gate-badge-inside { background: #0B6B3A; color: white; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 9999px; }
+</style>
+
+<div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+    <div>
+        <h1 class="text-2xl font-bold text-black">Gate</h1>
+        <p class="text-gray-500 text-sm">Vehicle and visitor entry/exit log</p>
+    </div>
+    <button id="new-entry-btn" class="bg-[#C9A227] text-black font-semibold px-5 py-2.5 rounded-full hover:bg-[#b8931f] transition flex items-center gap-2">
+        <i class="fa-solid fa-plus"></i> Log New Entry
+    </button>
+</div>
+
+{% if messages %}
+{% for message in messages %}
+<div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-5">
+    <i class="fa-solid fa-circle-check mr-1"></i>{{ message }}
+</div>
+{% endfor %}
+{% endif %}
+
+<!-- Stats -->
+<div class="grid sm:grid-cols-3 gap-4 mb-8">
+    <div class="gate-stat">
+        <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">Currently Inside</p>
+        <p class="text-2xl font-bold text-[#0B6B3A]">{{ currently_inside_count }}</p>
+    </div>
+    <div class="gate-stat">
+        <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">Today's Entries</p>
+        <p class="text-2xl font-bold text-[#0B6B3A]">{{ today_entries }}</p>
+    </div>
+    <div class="gate-stat">
+        <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">Today's Exits</p>
+        <p class="text-2xl font-bold text-[#0B6B3A]">{{ today_exits }}</p>
+    </div>
+</div>
+
+<!-- Currently inside -->
+<!-- Currently inside -->
+<div class="mb-10">
+    <div id="inside"></div>
+    <h2 class="font-bold text-black mb-3">Currently Inside</h2>
+    <div class="border border-gray-200 rounded-xl overflow-x-auto">
+        <table class="gate-table w-full">
+            <thead>
+                <tr>
+                    <th>Guest</th>
+                    <th>Vehicle</th>
+                    <th>Plate</th>
+                    <th>Parking</th>
+                    <th>Entry Time</th>
+                    <th>Logged By</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in inside_page_obj %}
+                <tr>
+                    <td class="font-semibold">{{ log.guest_name }}</td>
+                    <td>{{ log.vehicle_make|default:"—" }}</td>
+                    <td>{{ log.plate_number }}</td>
+                    <td>{{ log.parking_spot|default:"—" }}</td>
+                    <td>{{ log.entry_time|date:"M d, H:i" }}</td>
+                    <td>{{ log.logged_in_by.get_full_name|default:log.logged_in_by.username }}</td>
+                    <td>
+                        {% if log.logged_in_by_id == request.user.id or current_user_full_access %}
+                        <a href="{% url 'dashboard:gate_edit_entry' log.id %}" class="text-xs font-semibold text-[#0B6B3A] hover:underline mr-2">Edit</a>
+                        {% endif %}
+                        <form method="post" action="{% url 'dashboard:gate_log_exit' log.id %}" class="inline">
+                            {% csrf_token %}
+                            <button type="submit" class="text-xs font-semibold text-white bg-[#0B6B3A] px-3 py-1.5 rounded-full hover:bg-[#095430] transition">
+                                Log Exit
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="text-center text-gray-400 py-6">No vehicles currently inside.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if inside_page_obj.paginator.num_pages > 1 %}
+    <div class="flex items-center justify-between mt-3 text-sm">
+        <span class="text-gray-500">Page {{ inside_page_obj.number }} of {{ inside_page_obj.paginator.num_pages }}</span>
+        <div class="flex gap-2">
+            {% if inside_page_obj.has_previous %}
+            <a href="?inside_page={{ inside_page_obj.previous_page_number }}#inside" class="px-3 py-1.5 border border-[#0B6B3A] rounded-lg text-[#0B6B3A] hover:bg-[#0B6B3A] hover:text-white transition">Previous</a>
+            {% endif %}
+            {% if inside_page_obj.has_next %}
+            <a href="?inside_page={{ inside_page_obj.next_page_number }}#inside" class="px-3 py-1.5 border border-[#0B6B3A] rounded-lg text-[#0B6B3A] hover:bg-[#0B6B3A] hover:text-white transition">Next</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- History -->
+<div>
+    <div class="flex items-center justify-between mb-3 flex-wrap gap-3">
+        <div id="history"></div>
+        <h2 class="font-bold text-black">Recent History</h2>
+    </div>
+
+    <form method="get" class="grid sm:grid-cols-4 gap-2 mb-4">
+        <input type="text" name="q" value="{{ query }}" placeholder="Guest name or plate..."
+               class="border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B6B3A]/20 sm:col-span-2">
+        <input type="date" name="date_from" value="{{ date_from }}"
+               class="border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B6B3A]/20">
+        <input type="date" name="date_to" value="{{ date_to }}"
+               class="border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B6B3A]/20">
+        <div class="sm:col-span-4 flex gap-2">
+            <button type="submit" class="text-sm bg-[#0B6B3A] text-white px-5 py-2 rounded-lg hover:bg-[#095430] transition">
+                <i class="fa-solid fa-filter mr-1"></i> Filter
+            </button>
+            {% if query or date_from or date_to %}
+            <a href="{% url 'dashboard:gate' %}#history" class="text-sm border border-gray-300 text-gray-600 px-5 py-2 rounded-lg hover:bg-gray-50 transition">
+                Clear
+            </a>
+            {% endif %}
+            <a href="{% url 'dashboard:gate_export_pdf' %}?q={{ query }}&date_from={{ date_from }}&date_to={{ date_to }}"
+            class="text-sm bg-[#C9A227] text-black font-semibold px-5 py-2 rounded-lg hover:bg-[#b8931f] transition ml-auto">
+                <i class="fa-solid fa-file-pdf mr-1"></i> Download Report
+            </a>
+        </div>
+    </form>
+
+    <div class="border border-gray-200 rounded-xl overflow-x-auto">
+        <table class="gate-table w-full">
+            <thead>
+                <tr>
+                    <th>Guest</th>
+                    <th>Plate</th>
+                    <th>Entry</th>
+                    <th>Exit</th>
+                    <th>Duration</th>
+                    <th>Logged In By</th>
+                    <th>Logged Out By</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in history_page_obj %}
+                <tr>
+                    <td class="font-semibold">{{ log.guest_name }}</td>
+                    <td>{{ log.plate_number }}</td>
+                    <td>{{ log.entry_time|date:"M d, H:i" }}</td>
+                    <td>{{ log.exit_time|date:"M d, H:i" }}</td>
+                    <td>{{ log.duration_display }}</td>
+                    <td>{{ log.logged_in_by.get_full_name|default:log.logged_in_by.username }}</td>
+                    <td>{{ log.logged_out_by.get_full_name|default:log.logged_out_by.username|default:"—" }}</td>
+                    <td>
+                        {% if log.logged_in_by_id == request.user.id or current_user_full_access %}
+                        <a href="{% url 'dashboard:gate_edit_entry' log.id %}" class="text-xs font-semibold text-[#0B6B3A] hover:underline">Edit</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="text-center text-gray-400 py-6">No matching history found.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if history_page_obj.paginator.num_pages > 1 %}
+    <div class="flex items-center justify-between mt-3 text-sm">
+        <span class="text-gray-500">Page {{ history_page_obj.number }} of {{ history_page_obj.paginator.num_pages }}</span>
+        <div class="flex gap-2">
+            {% if history_page_obj.has_previous %}
+            <a href="?q={{ query }}&date_from={{ date_from }}&date_to={{ date_to }}&history_page={{ history_page_obj.previous_page_number }}#history" class="px-3 py-1.5 border border-[#0B6B3A] rounded-lg text-[#0B6B3A] hover:bg-[#0B6B3A] hover:text-white transition">Previous</a>
+            {% endif %}
+            {% if history_page_obj.has_next %}
+            <a href="?q={{ query }}&date_from={{ date_from }}&date_to={{ date_to }}&history_page={{ history_page_obj.next_page_number }}#history" class="px-3 py-1.5 border border-[#0B6B3A] rounded-lg text-[#0B6B3A] hover:bg-[#0B6B3A] hover:text-white transition">Next</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- New Entry Modal -->
+<div id="new-entry-modal" class="gate-modal-backdrop fixed inset-0 bg-black/60 z-50 items-center justify-center px-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 relative max-h-[90vh] overflow-y-auto">
+        <button id="close-modal-btn" class="absolute top-4 right-4 text-gray-400 hover:text-black"><i class="fa-solid fa-xmark text-xl"></i></button>
+        <h3 class="text-xl font-bold text-black mb-5">Log New Entry</h3>
+        <form method="post">
+            {% csrf_token %}
+            <div class="space-y-3">
+                {% for field in form %}
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.errors %}<p class="text-red-600 text-xs mt-1">{{ field.errors.0 }}</p>{% endif %}
+                </div>
+                {% endfor %}
+                <button type="submit" class="w-full bg-[#0B6B3A] text-white font-semibold py-3 rounded-full hover:bg-[#095430] transition mt-2">
+                    Log Entry
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const modal = document.getElementById('new-entry-modal');
+    document.getElementById('new-entry-btn').addEventListener('click', () => modal.classList.add('open'));
+    document.getElementById('close-modal-btn').addEventListener('click', () => modal.classList.remove('open'));
+    {% if form.errors %}
+    modal.classList.add('open');
+    {% endif %}
+});
+</script>
+
+{% endblock %}

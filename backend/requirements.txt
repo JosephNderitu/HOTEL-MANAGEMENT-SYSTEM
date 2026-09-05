@@ -10,3 +10,4 @@ channels
 channels-redis>=4.2.0
 daphne
 redis>=5.0.1
+weasyprint
