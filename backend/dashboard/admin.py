@@ -28,7 +28,7 @@ class CustomUserAdmin(UserAdmin):
 admin.site.unregister(User)
 admin.site.register(User, CustomUserAdmin)
 
-from .models import StaffProfile, GateLog
+from .models import StaffProfile, GateLog, Payment
 
 
 @admin.register(GateLog)
@@ -38,3 +38,19 @@ class GateLogAdmin(admin.ModelAdmin):
     search_fields = ('guest_name', 'plate_number', 'phone_number')
     date_hierarchy = 'entry_time'
     readonly_fields = ('logged_in_by', 'logged_out_by', 'entry_time', 'exit_time')
+
+
+@admin.register(Payment)
+class PaymentAdmin(admin.ModelAdmin):
+    list_display = ('id', 'target_display', 'amount', 'method', 'received_by', 'created_at')
+    list_filter = ('method',)
+    search_fields = ('reference',)
+    date_hierarchy = 'created_at'
+    readonly_fields = ('booking', 'order', 'amount', 'method', 'reference', 'received_by', 'created_at')
+
+    @admin.display(description='For')
+    def target_display(self, obj):
+        return obj.booking or obj.order
+
+    def has_add_permission(self, request):
+        return False

@@ -12,6 +12,12 @@ urlpatterns = [
     path('logout/', auth_views.LogoutView.as_view(next_page='home'), name='staff_logout'),
     path('dashboard/', views.dashboard_home, name='home'),
     path('reception/', views.reception_view, name='reception'),
+    
+    path('reception/booking/<int:booking_id>/<str:action>/', views.reception_booking_action, name='reception_booking_action'),
+    path('reception/order/<int:order_id>/<str:action>/', views.reception_order_action, name='reception_order_action'),
+    path('reception/booking/new/', views.reception_new_booking, name='reception_new_booking'),
+    path('reception/payment/<str:target_type>/<int:target_id>/', views.reception_record_payment, name='reception_record_payment'),
+
     path('rooms/', views.rooms_view, name='rooms'),
     path('restaurant-kitchen/', views.restaurant_kitchen_view, name='restaurant_kitchen'),
     path('bar/', views.bar_view, name='bar'),

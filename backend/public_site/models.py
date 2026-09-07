@@ -129,6 +129,24 @@ class Booking(models.Model):
     source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default='online')
     created_at = models.DateTimeField(auto_now_add=True)
 
+    @property
+    def nights(self):
+        return (self.check_out - self.check_in).days
+
+    @property
+    def total_amount(self):
+        if self.booking_type == 'room':
+            return self.amount * self.nights
+        return self.amount
+
+    @property
+    def amount_paid(self):
+        return sum(p.amount for p in self.payments.all())
+
+    @property
+    def balance_due(self):
+        return self.total_amount - self.amount_paid
+    
     def clean(self):
         if self.booking_type == 'room':
             if not self.room_type_id:
@@ -205,6 +223,18 @@ class Order(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
 
+    @property
+    def total_amount(self):
+        return sum(item.unit_price * item.quantity for item in self.items.all())
+
+    @property
+    def amount_paid(self):
+        return sum(p.amount for p in self.payments.all())
+
+    @property
+    def balance_due(self):
+        return self.total_amount - self.amount_paid
+    
     def __str__(self):
         return f"Order #{self.id} — {self.customer_name}"
 

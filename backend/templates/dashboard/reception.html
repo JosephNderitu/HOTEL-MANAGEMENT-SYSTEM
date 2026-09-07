@@ -1,0 +1,151 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+<style>
+    .rcp-stat { border: 1px solid #0B6B3A; border-radius: 14px; padding: 18px 20px; background: #fff; }
+    .rcp-table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #6b7280; text-align: left; padding: 10px 14px; border-bottom: 1px solid #e5e7eb; }
+    .rcp-table td { padding: 12px 14px; font-size: 13px; border-bottom: 1px solid #f3f4f6; color: #111827; vertical-align: top; }
+    .rcp-badge { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 9999px; display: inline-block; }
+    .rcp-badge-pending { background: #C9A227; color: #000; }
+    .rcp-badge-confirmed, .rcp-badge-checked_in { background: #0B6B3A; color: #fff; }
+    .rcp-badge-checked_out { background: #6b7280; color: #fff; }
+    .rcp-badge-cancelled { background: #dc2626; color: #fff; }
+    .rcp-action-btn { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 9999px; display: inline-block; margin: 2px 2px 0 0; }
+</style>
+
+<div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+    <div>
+        <h1 class="text-2xl font-bold text-black">Reception</h1>
+        <p class="text-gray-500 text-sm">Bookings, orders, and payments</p>
+    </div>
+    <a href="{% url 'dashboard:reception_new_booking' %}" class="bg-[#C9A227] text-black font-semibold px-5 py-2.5 rounded-full hover:bg-[#b8931f] transition flex items-center gap-2">
+        <i class="fa-solid fa-plus"></i> New Booking
+    </a>
+</div>
+
+{% if messages %}{% for message in messages %}
+<div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-5">
+    <i class="fa-solid fa-circle-check mr-1"></i>{{ message }}
+</div>
+{% endfor %}{% endif %}
+
+<div class="grid sm:grid-cols-4 gap-4 mb-8">
+    <div class="rcp-stat"><p class="text-xs text-gray-500 uppercase mb-1">Arrivals Today</p><p class="text-2xl font-bold text-[#0B6B3A]">{{ arrivals_today }}</p></div>
+    <div class="rcp-stat"><p class="text-xs text-gray-500 uppercase mb-1">Departures Today</p><p class="text-2xl font-bold text-[#0B6B3A]">{{ departures_today }}</p></div>
+    <div class="rcp-stat"><p class="text-xs text-gray-500 uppercase mb-1">Pending Orders</p><p class="text-2xl font-bold text-[#0B6B3A]">{{ pending_orders_count }}</p></div>
+    <div class="rcp-stat"><p class="text-xs text-gray-500 uppercase mb-1">Today's Revenue</p><p class="text-2xl font-bold text-[#0B6B3A]">KSh {{ today_revenue|floatformat:0 }}</p></div>
+</div>
+
+<!-- Bookings -->
+<div class="mb-12">
+    <div class="flex items-center justify-between mb-3 flex-wrap gap-3">
+        <h2 class="font-bold text-black">Bookings</h2>
+    </div>
+    <form method="get" class="flex flex-wrap gap-2 mb-4">
+        <input type="text" name="booking_q" value="{{ booking_query }}" placeholder="Search guest or phone..."
+               class="border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
+        <select name="booking_status" class="border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
+            <option value="">All Statuses</option>
+            {% for val, label in booking_page_obj.paginator.object_list.model.STATUS_CHOICES %}
+            <option value="{{ val }}" {% if booking_status == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="text-sm bg-[#0B6B3A] text-white px-5 py-2 rounded-lg hover:bg-[#095430] transition">Filter</button>
+    </form>
+    <div class="border border-gray-200 rounded-xl overflow-x-auto">
+        <table class="rcp-table w-full">
+            <thead><tr>
+                <th>Guest</th><th>Type</th><th>Dates</th><th>Total</th><th>Balance</th><th>Status</th><th>Source</th><th>Actions</th>
+            </tr></thead>
+            <tbody>
+                {% for booking in booking_page_obj %}
+                <tr>
+                    <td class="font-semibold">{{ booking.guest_name }}<br><span class="text-xs text-gray-400">{{ booking.guest_phone }}</span></td>
+                    <td>{{ booking.room_type|default:booking.conference_room }}</td>
+                    <td>{{ booking.check_in|date:"M d" }} – {{ booking.check_out|date:"M d" }}</td>
+                    <td>KSh {{ booking.total_amount|floatformat:0 }}</td>
+                    <td class="{% if booking.balance_due > 0 %}text-red-600 font-semibold{% else %}text-[#0B6B3A]{% endif %}">
+                        KSh {{ booking.balance_due|floatformat:0 }}
+                    </td>
+                    <td><span class="rcp-badge rcp-badge-{{ booking.status }}">{{ booking.get_status_display }}</span></td>
+                    <td class="text-xs text-gray-500">{{ booking.get_source_display }}</td>
+                    <td>
+                        {% if booking.status == 'pending' %}
+                        <form method="post" action="{% url 'dashboard:reception_booking_action' booking.id 'confirm' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn bg-[#0B6B3A] text-white">Confirm</button></form>
+                        {% endif %}
+                        {% if booking.status == 'confirmed' %}
+                        <form method="post" action="{% url 'dashboard:reception_booking_action' booking.id 'check-in' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn bg-[#0B6B3A] text-white">Check In</button></form>
+                        {% endif %}
+                        {% if booking.status == 'checked_in' %}
+                        <form method="post" action="{% url 'dashboard:reception_booking_action' booking.id 'check-out' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn bg-[#0B6B3A] text-white">Check Out</button></form>
+                        {% endif %}
+                        {% if booking.status in 'pending,confirmed' %}
+                        <form method="post" action="{% url 'dashboard:reception_booking_action' booking.id 'cancel' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn border border-red-400 text-red-500">Cancel</button></form>
+                        {% endif %}
+                        {% if booking.balance_due > 0 %}
+                        <a href="{% url 'dashboard:reception_record_payment' 'booking' booking.id %}" class="rcp-action-btn bg-[#C9A227] text-black">Record Payment</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}<tr><td colspan="8" class="text-center text-gray-400 py-6">No bookings found.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if booking_page_obj.paginator.num_pages > 1 %}
+    <div class="flex justify-between mt-3 text-sm">
+        <span class="text-gray-500">Page {{ booking_page_obj.number }} of {{ booking_page_obj.paginator.num_pages }}</span>
+        <div class="flex gap-2">
+            {% if booking_page_obj.has_previous %}<a href="?booking_page={{ booking_page_obj.previous_page_number }}" class="px-3 py-1.5 border border-[#0B6B3A] rounded-lg text-[#0B6B3A]">Previous</a>{% endif %}
+            {% if booking_page_obj.has_next %}<a href="?booking_page={{ booking_page_obj.next_page_number }}" class="px-3 py-1.5 border border-[#0B6B3A] rounded-lg text-[#0B6B3A]">Next</a>{% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Orders -->
+<div>
+    <h2 class="font-bold text-black mb-3">Orders</h2>
+    <form method="get" class="flex flex-wrap gap-2 mb-4">
+        <select name="order_status" class="border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
+            <option value="">All Statuses</option>
+            {% for val, label in order_page_obj.paginator.object_list.model.STATUS_CHOICES %}
+            <option value="{{ val }}" {% if order_status == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="text-sm bg-[#0B6B3A] text-white px-5 py-2 rounded-lg hover:bg-[#095430] transition">Filter</button>
+    </form>
+    <div class="border border-gray-200 rounded-xl overflow-x-auto">
+        <table class="rcp-table w-full">
+            <thead><tr><th>Customer</th><th>Items</th><th>Total</th><th>Balance</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody>
+                {% for order in order_page_obj %}
+                <tr>
+                    <td class="font-semibold">{{ order.customer_name }}<br><span class="text-xs text-gray-400">{{ order.customer_phone }}</span></td>
+                    <td>{% for item in order.items.all %}{{ item.quantity }}x {{ item.menu_item.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+                    <td>KSh {{ order.total_amount|floatformat:0 }}</td>
+                    <td class="{% if order.balance_due > 0 %}text-red-600 font-semibold{% else %}text-[#0B6B3A]{% endif %}">KSh {{ order.balance_due|floatformat:0 }}</td>
+                    <td><span class="rcp-badge rcp-badge-{{ order.status }}">{{ order.get_status_display }}</span></td>
+                    <td>
+                        {% if order.status == 'pending' %}
+                        <form method="post" action="{% url 'dashboard:reception_order_action' order.id 'confirm' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn bg-[#0B6B3A] text-white">Confirm</button></form>
+                        <form method="post" action="{% url 'dashboard:reception_order_action' order.id 'cancel' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn border border-red-400 text-red-500">Cancel</button></form>
+                        {% endif %}
+                        {% if order.balance_due > 0 %}
+                        <a href="{% url 'dashboard:reception_record_payment' 'order' order.id %}" class="rcp-action-btn bg-[#C9A227] text-black">Record Payment</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}<tr><td colspan="6" class="text-center text-gray-400 py-6">No orders found.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if order_page_obj.paginator.num_pages > 1 %}
+    <div class="flex justify-between mt-3 text-sm">
+        <span class="text-gray-500">Page {{ order_page_obj.number }} of {{ order_page_obj.paginator.num_pages }}</span>
+        <div class="flex gap-2">
+            {% if order_page_obj.has_previous %}<a href="?order_page={{ order_page_obj.previous_page_number }}" class="px-3 py-1.5 border border-[#0B6B3A] rounded-lg text-[#0B6B3A]">Previous</a>{% endif %}
+            {% if order_page_obj.has_next %}<a href="?order_page={{ order_page_obj.next_page_number }}" class="px-3 py-1.5 border border-[#0B6B3A] rounded-lg text-[#0B6B3A]">Next</a>{% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.core.exceptions import ValidationError
 
 
 class StaffProfile(models.Model):
@@ -54,3 +55,31 @@ class GateLog(models.Model):
 
     def __str__(self):
         return f"{self.guest_name} — {self.plate_number} ({self.get_status_display()})"
+
+
+class Payment(models.Model):
+    METHOD_CHOICES = [
+        ('cash', 'Cash'),
+        ('mpesa', 'M-Pesa'),
+        ('bank_equity', 'Bank - Equity'),
+        ('bank_family', 'Bank - Family'),
+        ('bank_coop', 'Bank - Cooperative'),
+        ('swipe', 'Swipe'),
+    ]
+    booking = models.ForeignKey('public_site.Booking', on_delete=models.PROTECT, null=True, blank=True, related_name='payments')
+    order = models.ForeignKey('public_site.Order', on_delete=models.PROTECT, null=True, blank=True, related_name='payments')
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    method = models.CharField(max_length=20, choices=METHOD_CHOICES)
+    reference = models.CharField(max_length=100, blank=True, help_text="M-Pesa code, bank reference, etc (optional)")
+    received_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='payments_received')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def clean(self):
+        if not self.booking_id and not self.order_id:
+            raise ValidationError("A payment must be linked to either a booking or an order.")
+        if self.booking_id and self.order_id:
+            raise ValidationError("A payment can't be linked to both a booking and an order.")
+
+    def __str__(self):
+        target = self.booking or self.order
+        return f"KSh {self.amount} — {target} ({self.get_method_display()})"
