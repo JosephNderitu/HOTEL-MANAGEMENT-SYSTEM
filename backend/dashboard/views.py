@@ -66,6 +66,9 @@ def reception_view(request):
     })
 
 
+from public_site.models import Booking, Order, Room
+
+
 @staff_module_required('reception')
 def reception_booking_action(request, booking_id, action):
     if request.method != 'POST':
@@ -90,11 +93,26 @@ def reception_booking_action(request, booking_id, action):
         messages.error(request, f"Cannot {action.replace('-', ' ')} a booking that is currently '{booking.get_status_display()}'.")
         return redirect('dashboard:reception')
 
+    if action == 'check-in':
+        if booking.booking_type != 'room':
+            messages.error(request, "Only room bookings need a room assignment.")
+            return redirect('dashboard:reception')
+        available_room = Room.objects.filter(room_type=booking.room_type, status='available').first()
+        if not available_room:
+            messages.error(request, f"No physical rooms of type '{booking.room_type.name}' are currently marked available. Check the Rooms records in admin.")
+            return redirect('dashboard:reception')
+        available_room.status = 'occupied'
+        available_room.save(update_fields=['status'])
+        booking.assigned_room = available_room
+
+    if action == 'check-out' and booking.assigned_room:
+        booking.assigned_room.status = 'cleaning'
+        booking.assigned_room.save(update_fields=['status'])
+
     booking.status = new_status
-    booking.save(update_fields=['status'])
+    booking.save()
     messages.success(request, f"Booking for {booking.guest_name} marked as {booking.get_status_display()}.")
     return redirect('dashboard:reception')
-
 
 @staff_module_required('reception')
 def reception_order_action(request, order_id, action):
@@ -143,10 +161,10 @@ def reception_record_payment(request, target_type, target_id):
     target = get_object_or_404(Booking if target_type == 'booking' else Order, id=target_id)
 
     if request.method == 'POST':
-        form = PaymentForm(request.POST)
+        instance = Payment(booking=target) if target_type == 'booking' else Payment(order=target)
+        form = PaymentForm(request.POST, instance=instance)
         if form.is_valid():
             payment = form.save(commit=False)
-            setattr(payment, target_type, target)
             payment.received_by = request.user
             payment.save()
             messages.success(request, f"Payment of KSh {payment.amount:,.0f} recorded.")

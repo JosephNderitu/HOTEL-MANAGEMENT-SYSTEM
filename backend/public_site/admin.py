@@ -1,10 +1,7 @@
 from django import forms
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import (
-    RoomType, RoomTypeImage, ConferenceRoom, Booking,
-    MenuItem, MenuItemImage, Order, OrderItem
-)
+from .models import *
 
 
 # ---------------------------------------------------------------------------
@@ -345,3 +342,10 @@ class ConversationAdmin(admin.ModelAdmin):
                 'created_at': msg.created_at.strftime('%b %d, %H:%M'),
             },
         })
+        
+@admin.register(Room)
+class RoomAdmin(admin.ModelAdmin):
+    list_display = ('number', 'room_type', 'status')
+    list_editable = ('status',)
+    list_filter = ('room_type', 'status')
+    ordering = ('room_type', 'number')

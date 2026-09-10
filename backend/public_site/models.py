@@ -74,6 +74,19 @@ class RoomTypeImage(models.Model):
             self.image = compress_image_if_needed(self.image)
         super().save(*args, **kwargs)
 
+class Room(models.Model):
+    STATUS_CHOICES = [
+        ('available', 'Available'),
+        ('occupied', 'Occupied'),
+        ('cleaning', 'Cleaning'),
+        ('maintenance', 'Maintenance'),
+    ]
+    room_type = models.ForeignKey(RoomType, on_delete=models.CASCADE, related_name='rooms')
+    number = models.CharField(max_length=20, unique=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='available')
+
+    def __str__(self):
+        return f"Room {self.number} ({self.room_type.name})"
 
 class ConferenceRoom(models.Model):
     TIER_CHOICES = [
@@ -121,6 +134,7 @@ class Booking(models.Model):
 
     room_type = models.ForeignKey(RoomType, on_delete=models.PROTECT, related_name='bookings', null=True, blank=True)
     conference_room = models.ForeignKey(ConferenceRoom, on_delete=models.PROTECT, related_name='bookings', null=True, blank=True)
+    assigned_room = models.ForeignKey(Room, on_delete=models.SET_NULL, null=True, blank=True, related_name='bookings_history')
 
     check_in = models.DateField()
     check_out = models.DateField()
@@ -335,3 +349,4 @@ def notify_guest_on_staff_reply(sender, instance, created, **kwargs):
         )
         instance.notified = True
         instance.save(update_fields=['notified'])
+        

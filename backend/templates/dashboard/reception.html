@@ -60,7 +60,10 @@
                 {% for booking in booking_page_obj %}
                 <tr>
                     <td class="font-semibold">{{ booking.guest_name }}<br><span class="text-xs text-gray-400">{{ booking.guest_phone }}</span></td>
-                    <td>{{ booking.room_type|default:booking.conference_room }}</td>
+                    <td>
+                        {{ booking.room_type|default:booking.conference_room }}
+                        {% if booking.assigned_room %}<br><span class="text-xs text-gray-400">Room {{ booking.assigned_room.number }}</span>{% endif %}
+                    </td>
                     <td>{{ booking.check_in|date:"M d" }} – {{ booking.check_out|date:"M d" }}</td>
                     <td>KSh {{ booking.total_amount|floatformat:0 }}</td>
                     <td class="{% if booking.balance_due > 0 %}text-red-600 font-semibold{% else %}text-[#0B6B3A]{% endif %}">
