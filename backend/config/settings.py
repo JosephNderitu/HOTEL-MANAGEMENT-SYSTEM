@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     'channels',
     'public_site',
     'dashboard',
+    'store',
 ]
 
 ASGI_APPLICATION = 'config.asgi.application'

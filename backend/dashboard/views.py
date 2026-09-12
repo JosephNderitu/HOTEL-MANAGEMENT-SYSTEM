@@ -19,6 +19,13 @@ from public_site.models import Booking, Order, RoomType, ConferenceRoom
 from public_site.services import get_available_rooms
 from dashboard.models import Payment
 
+#store imports
+from store.models import Disbursement, DisbursementPurchase, StockItem
+from store.forms import DisbursementRequestForm, DisbursementRequestForm, QuickPurchaseForm
+from .permissions import has_full_access
+
+from public_site.models import MenuItem
+
 @login_required
 def dashboard_home(request):
     context = {
@@ -327,4 +334,150 @@ def hrm_view(request):
 
 @staff_module_required('store')
 def store_view(request):
-    return render(request, 'dashboard/module_placeholder.html', {'module_label': 'Store & Inventory'})
+    department_filter = request.GET.get('department', '')
+    status_filter = request.GET.get('status', '')
+
+    disbursements_qs = Disbursement.objects.select_related('requested_by', 'approved_by', 'disbursed_by').order_by('-created_at')
+    if department_filter:
+        disbursements_qs = disbursements_qs.filter(department=department_filter)
+    if status_filter:
+        disbursements_qs = disbursements_qs.filter(status=status_filter)
+    disbursement_page_obj = Paginator(disbursements_qs, 10).get_page(request.GET.get('d_page'))
+
+    low_stock_items = [item for item in StockItem.objects.filter(is_active=True) if item.is_low_stock]
+
+    if request.method == 'POST':
+        form = DisbursementRequestForm(request.POST)
+        if form.is_valid():
+            Disbursement.objects.create(
+                department=form.cleaned_data['department'],
+                purpose=form.cleaned_data['purpose'],
+                amount=form.cleaned_data['amount'],
+                requested_by=request.user,
+            )
+            messages.success(request, "Disbursement request submitted.")
+            return redirect('dashboard:store')
+    else:
+        form = DisbursementRequestForm()
+
+    return render(request, 'dashboard/store.html', {
+        'form': form,
+        'disbursement_page_obj': disbursement_page_obj,
+        'department_filter': department_filter,
+        'status_filter': status_filter,
+        'low_stock_items': low_stock_items,
+        'can_approve': has_full_access(request.user),
+    })
+
+
+@staff_module_required('store')
+def store_disbursement_approve(request, disbursement_id):
+    if request.method != 'POST' or not has_full_access(request.user):
+        messages.error(request, "Only managers can approve disbursement requests.")
+        return redirect('dashboard:store')
+    d = get_object_or_404(Disbursement, id=disbursement_id, status='requested')
+    d.status = 'approved'
+    d.approved_by = request.user
+    d.approved_at = timezone.now()
+    d.save()
+    messages.success(request, f"Disbursement for {d.get_department_display()} approved.")
+    return redirect('dashboard:store')
+
+
+@staff_module_required('store')
+def store_disbursement_reject(request, disbursement_id):
+    if request.method != 'POST' or not has_full_access(request.user):
+        messages.error(request, "Only managers can reject disbursement requests.")
+        return redirect('dashboard:store')
+    d = get_object_or_404(Disbursement, id=disbursement_id, status='requested')
+    d.status = 'rejected'
+    d.approved_by = request.user
+    d.approved_at = timezone.now()
+    d.save()
+    messages.success(request, "Disbursement request rejected.")
+    return redirect('dashboard:store')
+
+
+@staff_module_required('store')
+def store_disbursement_disburse(request, disbursement_id):
+    if request.method != 'POST':
+        return redirect('dashboard:store')
+    d = get_object_or_404(Disbursement, id=disbursement_id, status='approved')
+    d.status = 'disbursed'
+    d.disbursed_by = request.user
+    d.disbursed_at = timezone.now()
+    d.save()
+    messages.success(request, f"KSh {d.amount:,.0f} marked as disbursed to {d.get_department_display()}.")
+    return redirect('dashboard:store')
+
+
+@staff_module_required('store')
+def store_disbursement_detail(request, disbursement_id):
+    d = get_object_or_404(Disbursement, id=disbursement_id)
+
+    if request.method == 'POST':
+        if d.status != 'disbursed':
+            messages.error(request, "Purchases can only be recorded against a disbursed fund.")
+            return redirect('dashboard:store_disbursement_detail', disbursement_id=d.id)
+
+        form = QuickPurchaseForm(request.POST, department=d.department)
+        if form.is_valid():
+            data = form.cleaned_data
+
+            if data['mode'] == 'existing':
+                stock_item = data['stock_item']
+            else:
+                menu_item = None
+                if data['add_to_menu']:
+                    menu_item = MenuItem.objects.create(
+                        name=data['new_item_name'],
+                        item_type='drink' if d.department == 'bar' else 'food',
+                        category=data.get('menu_category', ''),
+                        regular_price=data['menu_regular_price'],
+                        vip_price=data.get('menu_vip_price') or None,
+                        description=data.get('menu_description', ''),
+                        is_available=False,
+                    )
+                stock_item = StockItem.objects.create(
+                    name=data['new_item_name'],
+                    department=d.department,
+                    unit=data['new_item_unit'],
+                    reorder_level=data.get('reorder_level') or 0,
+                    linked_menu_item=menu_item,
+                )
+
+            DisbursementPurchase.objects.create(
+                disbursement=d,
+                stock_item=stock_item,
+                quantity=data['quantity'],
+                unit_cost=data['unit_cost'],
+                receipt_reference=data.get('receipt_reference', ''),
+                recorded_by=request.user,
+            )
+
+            msg = "Purchase recorded and stock updated."
+            if data['mode'] == 'new' and data.get('add_to_menu'):
+                msg += " New menu item saved as a draft, add photos and publish it from the admin panel."
+            messages.success(request, msg)
+            return redirect('dashboard:store_disbursement_detail', disbursement_id=d.id)
+    else:
+        form = QuickPurchaseForm(department=d.department)
+
+    return render(request, 'dashboard/store_disbursement_detail.html', {
+        'disbursement': d,
+        'form': form,
+        'purchases': d.purchases.select_related('stock_item', 'recorded_by'),
+        'is_menu_department': d.department in ('kitchen', 'bar'),
+    })
+
+
+@staff_module_required('store')
+def store_disbursement_reconcile(request, disbursement_id):
+    if request.method != 'POST':
+        return redirect('dashboard:store')
+    d = get_object_or_404(Disbursement, id=disbursement_id, status='disbursed')
+    d.status = 'reconciled'
+    d.reconciled_at = timezone.now()
+    d.save()
+    messages.success(request, f"Reconciled. Variance: KSh {d.variance:,.0f}.")
+    return redirect('dashboard:store_disbursement_detail', disbursement_id=d.id)

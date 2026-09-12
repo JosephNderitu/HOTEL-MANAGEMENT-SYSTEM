@@ -1,0 +1,109 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+<style>
+    .str-stat { border: 1px solid #0B6B3A; border-radius: 14px; padding: 18px 20px; background: #fff; }
+    .str-table th { font-size: 11px; text-transform: uppercase; color: #6b7280; text-align: left; padding: 10px 14px; border-bottom: 1px solid #e5e7eb; }
+    .str-table td { padding: 12px 14px; font-size: 13px; border-bottom: 1px solid #f3f4f6; }
+    .str-badge { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 9999px; }
+    .str-badge-requested { background: #C9A227; color: #000; }
+    .str-badge-approved { background: #3b82f6; color: #fff; }
+    .str-badge-rejected { background: #dc2626; color: #fff; }
+    .str-badge-disbursed { background: #0B6B3A; color: #fff; }
+    .str-badge-reconciled { background: #6b7280; color: #fff; }
+    .str-action-btn { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 9999px; display: inline-block; margin: 2px 2px 0 0; }
+</style>
+
+<div class="flex items-center justify-between mb-6">
+    <div>
+        <h1 class="text-2xl font-bold text-black">Store & Inventory</h1>
+        <p class="text-gray-500 text-sm">Fund disbursement and stock tracking</p>
+    </div>
+</div>
+
+{% if messages %}{% for message in messages %}
+<div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
+{% endfor %}{% endif %}
+
+{% if low_stock_items %}
+<div class="bg-red-50 border border-red-300 text-red-700 text-sm rounded-lg px-4 py-3 mb-6">
+    <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+    <strong>{{ low_stock_items|length }} item{{ low_stock_items|length|pluralize }} at or below reorder level:</strong>
+    {% for item in low_stock_items %}{{ item.name }} ({{ item.quantity_on_hand }} {{ item.unit }}){% if not forloop.last %}, {% endif %}{% endfor %}
+</div>
+{% endif %}
+
+<!-- Request form -->
+<div class="bg-white border border-[#0B6B3A] rounded-2xl p-6 mb-10 max-w-lg">
+    <h2 class="font-bold text-black mb-4">Request Disbursement</h2>
+    <form method="post" class="space-y-3">
+        {% csrf_token %}
+        {% for field in form %}
+        <div>
+            <label class="block text-xs font-semibold text-gray-500 mb-1 uppercase">{{ field.label }}</label>
+            {{ field }}
+        </div>
+        {% endfor %}
+        <button type="submit" class="w-full bg-[#0B6B3A] text-white font-semibold py-2.5 rounded-full hover:bg-[#095430] transition">Submit Request</button>
+    </form>
+</div>
+
+<!-- Disbursements list -->
+<h2 class="font-bold text-black mb-3">Disbursements</h2>
+<form method="get" class="flex flex-wrap gap-2 mb-4">
+    <select name="department" class="border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
+        <option value="">All Departments</option>
+        {% for val, label in form.fields.department.choices %}
+        <option value="{{ val }}" {% if department_filter == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+    </select>
+    <select name="status" class="border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
+        <option value="">All Statuses</option>
+        {% for val, label in disbursement_page_obj.paginator.object_list.model.STATUS_CHOICES %}
+        <option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+    </select>
+    <button type="submit" class="text-sm bg-[#0B6B3A] text-white px-5 py-2 rounded-lg hover:bg-[#095430] transition">Filter</button>
+</form>
+
+<div class="border border-gray-200 rounded-xl overflow-x-auto">
+    <table class="str-table w-full">
+        <thead><tr><th>Department</th><th>Purpose</th><th>Amount</th><th>Spent</th><th>Variance</th><th>Status</th><th>Requested By</th><th>Actions</th></tr></thead>
+        <tbody>
+            {% for d in disbursement_page_obj %}
+            <tr>
+                <td class="font-semibold">{{ d.get_department_display }}</td>
+                <td>{{ d.purpose }}</td>
+                <td>KSh {{ d.amount|floatformat:0 }}</td>
+                <td>KSh {{ d.total_spent|floatformat:0 }}</td>
+                <td class="{% if d.variance > 0 and d.status == 'reconciled' %}text-red-600 font-semibold{% endif %}">
+                    {% if d.status == 'reconciled' %}KSh {{ d.variance|floatformat:0 }}{% else %}—{% endif %}
+                </td>
+                <td><span class="str-badge str-badge-{{ d.status }}">{{ d.get_status_display }}</span></td>
+                <td class="text-xs text-gray-500">{{ d.requested_by.get_full_name|default:d.requested_by.username }}</td>
+                <td>
+                    {% if d.status == 'requested' and can_approve %}
+                    <form method="post" action="{% url 'dashboard:store_disbursement_approve' d.id %}" class="inline">{% csrf_token %}<button class="str-action-btn bg-[#0B6B3A] text-white">Approve</button></form>
+                    <form method="post" action="{% url 'dashboard:store_disbursement_reject' d.id %}" class="inline">{% csrf_token %}<button class="str-action-btn border border-red-400 text-red-500">Reject</button></form>
+                    {% endif %}
+                    {% if d.status == 'approved' %}
+                    <form method="post" action="{% url 'dashboard:store_disbursement_disburse' d.id %}" class="inline">{% csrf_token %}<button class="str-action-btn bg-[#C9A227] text-black">Mark Disbursed</button></form>
+                    {% endif %}
+                    {% if d.status == 'disbursed' or d.status == 'reconciled' %}
+                    <a href="{% url 'dashboard:store_disbursement_detail' d.id %}" class="str-action-btn border border-[#0B6B3A] text-[#0B6B3A]">Log Purchases</a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}<tr><td colspan="8" class="text-center text-gray-400 py-6">No disbursement requests yet.</td></tr>{% endfor %}
+        </tbody>
+    </table>
+</div>
+{% if disbursement_page_obj.paginator.num_pages > 1 %}
+<div class="flex justify-between mt-3 text-sm">
+    <span class="text-gray-500">Page {{ disbursement_page_obj.number }} of {{ disbursement_page_obj.paginator.num_pages }}</span>
+    <div class="flex gap-2">
+        {% if disbursement_page_obj.has_previous %}<a href="?d_page={{ disbursement_page_obj.previous_page_number }}" class="px-3 py-1.5 border border-[#0B6B3A] rounded-lg text-[#0B6B3A]">Previous</a>{% endif %}
+        {% if disbursement_page_obj.has_next %}<a href="?d_page={{ disbursement_page_obj.next_page_number }}" class="px-3 py-1.5 border border-[#0B6B3A] rounded-lg text-[#0B6B3A]">Next</a>{% endif %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

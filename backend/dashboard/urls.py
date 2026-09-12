@@ -29,4 +29,11 @@ urlpatterns = [
     
     path('hrm/', views.hrm_view, name='hrm'),
     path('store/', views.store_view, name='store'),
+    
+    # Store Management URLs
+    path('store/disbursement/<int:disbursement_id>/', views.store_disbursement_detail, name='store_disbursement_detail'),
+    path('store/disbursement/<int:disbursement_id>/approve/', views.store_disbursement_approve, name='store_disbursement_approve'),
+    path('store/disbursement/<int:disbursement_id>/reject/', views.store_disbursement_reject, name='store_disbursement_reject'),
+    path('store/disbursement/<int:disbursement_id>/disburse/', views.store_disbursement_disburse, name='store_disbursement_disburse'),
+    path('store/disbursement/<int:disbursement_id>/reconcile/', views.store_disbursement_reconcile, name='store_disbursement_reconcile'),
 ]
