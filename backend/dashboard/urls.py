@@ -17,6 +17,8 @@ urlpatterns = [
     path('reception/order/<int:order_id>/<str:action>/', views.reception_order_action, name='reception_order_action'),
     path('reception/booking/new/', views.reception_new_booking, name='reception_new_booking'),
     path('reception/payment/<str:target_type>/<int:target_id>/', views.reception_record_payment, name='reception_record_payment'),
+    path('reception/settle-stay/<int:booking_id>/', views.reception_settle_stay, name='reception_settle_stay'),
+    path('reception/confirm-all-orders/<int:booking_id>/', views.reception_confirm_all_orders, name='reception_confirm_all_orders'),
 
     path('rooms/', views.rooms_view, name='rooms'),
     path('restaurant-kitchen/', views.restaurant_kitchen_view, name='restaurant_kitchen'),

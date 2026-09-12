@@ -1,0 +1,36 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+<div class="max-w-lg mx-auto">
+    <h1 class="text-2xl font-bold text-black mb-1">Settle Full Stay</h1>
+    <p class="text-gray-500 text-sm mb-6">{{ booking.guest_name }} — Room {{ booking.assigned_room.number }}</p>
+
+    <div class="bg-white border border-[#0B6B3A] rounded-2xl p-6 mb-6">
+        <h2 class="font-bold text-black text-sm mb-3">Outstanding Charges</h2>
+        <div class="space-y-2 text-sm">
+            {% for kind, target, owed in debts %}
+            <div class="flex justify-between">
+                <span class="text-gray-600">
+                    {% if kind == 'booking' %}Room charge{% else %}Order #{{ target.id }} ({{ target.items.count }} items){% endif %}
+                </span>
+                <span class="font-semibold">KSh {{ owed|floatformat:0 }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="border-t border-gray-100 mt-3 pt-3 flex justify-between font-bold text-black">
+            <span>Total Due</span><span>KSh {{ total_due|floatformat:0 }}</span>
+        </div>
+    </div>
+
+    <form method="post" class="bg-white border border-[#0B6B3A] rounded-2xl p-6 space-y-4">
+        {% csrf_token %}
+        {% for field in form %}
+        <div>
+            <label class="block text-xs font-semibold text-gray-500 mb-1 uppercase">{{ field.label }}</label>
+            {{ field }}
+        </div>
+        {% endfor %}
+        <button type="submit" class="w-full bg-[#C9A227] text-black font-semibold py-3 rounded-full hover:bg-[#b8931f] transition">Record Settlement</button>
+        <a href="{% url 'dashboard:reception' %}" class="block text-center text-gray-500 text-sm hover:underline">Cancel</a>
+    </form>
+</div>
+{% endblock %}

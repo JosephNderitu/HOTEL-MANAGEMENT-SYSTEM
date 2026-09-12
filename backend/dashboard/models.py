@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
 from django.core.exceptions import ValidationError
+import uuid
 
 
 class StaffProfile(models.Model):
@@ -72,6 +73,7 @@ class Payment(models.Model):
     method = models.CharField(max_length=20, choices=METHOD_CHOICES)
     reference = models.CharField(max_length=100, blank=True, help_text="M-Pesa code, bank reference, etc (optional)")
     received_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='payments_received')
+    settlement_group = models.UUIDField(null=True, blank=True, db_index=True, help_text="Groups payments made together as one settlement, e.g. room + all room service in one go.")
     created_at = models.DateTimeField(auto_now_add=True)
 
     def clean(self):

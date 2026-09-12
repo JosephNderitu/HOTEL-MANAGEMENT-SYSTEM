@@ -1,17 +1,42 @@
 {% extends "dashboard/base_dashboard.html" %}
 {% block dashboard_content %}
 <style>
-    .rcp-stat { border: 1px solid #0B6B3A; border-radius: 14px; padding: 18px 20px; background: #fff; }
+    .rcp-stat { border: 1px solid #0B6B3A; border-radius: 14px; padding: 16px 18px; background: #fff; transition: box-shadow 0.2s ease; }
+    .rcp-stat:hover { box-shadow: 0 4px 14px rgba(11,107,58,0.08); }
     .rcp-table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #6b7280; text-align: left; padding: 10px 14px; border-bottom: 1px solid #e5e7eb; }
     .rcp-table td { padding: 12px 14px; font-size: 13px; border-bottom: 1px solid #f3f4f6; color: #111827; vertical-align: top; }
+    .rcp-table tbody tr { transition: background 0.15s ease; }
+    .rcp-table tbody tr:hover { background: #FAFAF8; }
     .rcp-badge { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 9999px; display: inline-block; }
     .rcp-badge-pending { background: #C9A227; color: #000; }
     .rcp-badge-confirmed, .rcp-badge-checked_in { background: #0B6B3A; color: #fff; }
     .rcp-badge-checked_out { background: #6b7280; color: #fff; }
     .rcp-badge-cancelled { background: #dc2626; color: #fff; }
     .rcp-action-btn { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 9999px; display: inline-block; margin: 2px 2px 0 0; }
+    .rcp-section-title { display: flex; align-items: center; gap: 8px; }
+    .rcp-section-title i { color: #C9A227; }
+
+    .rs-toggle { font-size: 11px; font-weight: 600; color: #0B6B3A; cursor: pointer; }
+    .rs-toggle:hover { text-decoration: underline; }
+    .rs-detail-row { display: none; }
+    .rs-detail-row.open { display: table-row; }
+    .rs-detail-row td { background: #FAFAF8; padding: 14px 18px; }
+
+    /* Responsive: tables collapse into stacked cards below 860px, no duplicate markup needed */
+    @media (max-width: 860px) {
+        .rcp-table thead { display: none; }
+        .rcp-table, .rcp-table tbody, .rcp-table tr, .rcp-table td { display: block; width: 100%; }
+        .rcp-table tr:not(.rs-detail-row) { border: 1px solid #e5e7eb; border-radius: 12px; margin-bottom: 12px; padding: 4px 0; }
+        .rcp-table td { border-bottom: none; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; text-align: right; }
+        .rcp-table td::before { content: attr(data-label); font-weight: 600; color: #6b7280; font-size: 11px; text-transform: uppercase; text-align: left; flex-shrink: 0; }
+        .rcp-table td[data-label="Actions"] { flex-wrap: wrap; justify-content: flex-end; }
+        .rs-detail-row td { display: block; text-align: left; }
+        .rs-detail-row td::before { display: none; }
+    }
 </style>
+
 <div id="notif-toast-container" class="fixed top-20 right-6 z-50 flex flex-col gap-2 items-end"></div>
+
 <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
     <div>
         <h1 class="text-2xl font-bold text-black">Reception</h1>
@@ -22,7 +47,7 @@
         </p>
     </div>
     <div class="flex items-center gap-3">
-        <button id="refresh-btn" class="hidden relative bg-white border-2 border-[#C9A227] text-[#C9A227] font-semibold px-5 py-2.5 rounded-full hover:bg-[#C9A227] hover:text-black transition items-center gap-2">
+        <button id="refresh-btn" class="hidden bg-white border-2 border-[#C9A227] text-[#C9A227] font-semibold px-5 py-2.5 rounded-full hover:bg-[#C9A227] hover:text-black transition items-center gap-2">
             <i class="fa-solid fa-arrows-rotate"></i>
             <span id="refresh-count">0</span> new, refresh
         </button>
@@ -38,25 +63,27 @@
 </div>
 {% endfor %}{% endif %}
 
-<div class="grid sm:grid-cols-4 gap-4 mb-4">
-    <div class="rcp-stat"><p class="text-xs text-gray-500 uppercase mb-1">Arrivals Today</p><p class="text-2xl font-bold text-[#0B6B3A]">{{ arrivals_today }}</p></div>
-    <div class="rcp-stat"><p class="text-xs text-gray-500 uppercase mb-1">Departures Today</p><p class="text-2xl font-bold text-[#0B6B3A]">{{ departures_today }}</p></div>
-    <div class="rcp-stat"><p class="text-xs text-gray-500 uppercase mb-1">Pending Orders</p><p class="text-2xl font-bold text-[#0B6B3A]">{{ pending_orders_count }}</p></div>
-    <div class="rcp-stat"><p class="text-xs text-gray-500 uppercase mb-1">Today's Total Revenue</p><p class="text-2xl font-bold text-[#0B6B3A]">KSh {{ today_revenue|floatformat:0 }}</p></div>
+<div class="grid sm:grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+    {% for stat in stats %}
+    <div class="rcp-stat">
+        <p class="text-xs text-gray-500 uppercase mb-1">{{ stat.label }}</p>
+        <p class="text-2xl font-bold text-[#0B6B3A]">{% if stat.money %}KSh {{ stat.value|floatformat:0 }}{% else %}{{ stat.value }}{% endif %}</p>
+    </div>
+    {% endfor %}
 </div>
-<div class="grid sm:grid-cols-3 md:grid-cols-6 gap-3 mb-8">
-    <div class="rcp-stat"><p class="text-[11px] text-gray-500 uppercase mb-1">Cash</p><p class="text-lg font-bold text-black">KSh {{ revenue_by_method.cash|floatformat:0 }}</p></div>
-    <div class="rcp-stat"><p class="text-[11px] text-gray-500 uppercase mb-1">M-Pesa</p><p class="text-lg font-bold text-black">KSh {{ revenue_by_method.mpesa|floatformat:0 }}</p></div>
-    <div class="rcp-stat"><p class="text-[11px] text-gray-500 uppercase mb-1">Swipe</p><p class="text-lg font-bold text-black">KSh {{ revenue_by_method.swipe|floatformat:0 }}</p></div>
-    <div class="rcp-stat"><p class="text-[11px] text-gray-500 uppercase mb-1">Equity</p><p class="text-lg font-bold text-black">KSh {{ revenue_by_method.bank_equity|floatformat:0 }}</p></div>
-    <div class="rcp-stat"><p class="text-[11px] text-gray-500 uppercase mb-1">Family</p><p class="text-lg font-bold text-black">KSh {{ revenue_by_method.bank_family|floatformat:0 }}</p></div>
-    <div class="rcp-stat"><p class="text-[11px] text-gray-500 uppercase mb-1">Co-op</p><p class="text-lg font-bold text-black">KSh {{ revenue_by_method.bank_coop|floatformat:0 }}</p></div>
+<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 mb-8">
+    {% for stat in payment_stats %}
+    <div class="rcp-stat">
+        <p class="text-[11px] text-gray-500 uppercase mb-1">{{ stat.label }}</p>
+        <p class="text-lg font-bold text-black">KSh {{ stat.value|floatformat:0 }}</p>
+    </div>
+    {% endfor %}
 </div>
 
 <!-- Bookings -->
 <div class="mb-12">
     <div class="flex items-center justify-between mb-3 flex-wrap gap-3">
-        <h2 class="font-bold text-black">Bookings</h2>
+        <h2 class="font-bold text-black rcp-section-title"><i class="fa-solid fa-bed"></i>Bookings</h2>
     </div>
     <form method="get" class="flex flex-wrap gap-2 mb-4">
         <input type="text" name="booking_q" value="{{ booking_query }}" placeholder="Search guest or phone..."
@@ -72,25 +99,33 @@
     <div class="border border-gray-200 rounded-xl overflow-x-auto">
         <table class="rcp-table w-full">
             <thead><tr>
-                <th>Guest</th><th>Type</th><th>Dates</th><th>Total</th><th>Balance</th><th>Status</th><th>Source</th><th>Actions</th>
+                <th>Guest</th><th>Type</th><th>Dates</th><th>Total</th><th>Balance</th><th>Room Service</th><th>Status</th><th>Source</th><th>Actions</th>
             </tr></thead>
             <tbody>
                 {% for booking in booking_page_obj %}
                 <tr>
-                    <td class="font-semibold">{{ booking.guest_name }}<br><span class="text-xs text-gray-400">{{ booking.guest_phone }}</span></td>
-                    <td>
+                    <td data-label="Guest" class="font-semibold">{{ booking.guest_name }}<br><span class="text-xs text-gray-400 font-normal">{{ booking.guest_phone }}</span></td>
+                    <td data-label="Type">
                         {{ booking.room_type|default:booking.conference_room }}
                         {% if booking.assigned_room %}<br><span class="text-xs text-gray-400">Room {{ booking.assigned_room.number }}</span>{% endif %}
                     </td>
-                    <td>{{ booking.check_in|date:"M d" }} – {{ booking.check_out|date:"M d" }}</td>
-                    <td>KSh {{ booking.total_amount|floatformat:0 }}</td>
-                    <td class="{% if booking.total_balance_due > 0 %}text-red-600 font-semibold{% else %}text-[#0B6B3A]{% endif %}">
+                    <td data-label="Dates">{{ booking.check_in|date:"M d" }} – {{ booking.check_out|date:"M d" }}</td>
+                    <td data-label="Total">KSh {{ booking.total_amount|floatformat:0 }}</td>
+                    <td data-label="Balance" class="{% if booking.total_balance_due > 0 %}text-red-600 font-semibold{% else %}text-[#0B6B3A]{% endif %}">
                         KSh {{ booking.total_balance_due|floatformat:0 }}
-                        {% if booking.room_service_balance_due > 0 %}<br><span class="text-[10px] text-gray-400">incl. KSh {{ booking.room_service_balance_due|floatformat:0 }} room service</span>{% endif %}
                     </td>
-                    <td><span class="rcp-badge rcp-badge-{{ booking.status }}">{{ booking.get_status_display }}</span></td>
-                    <td class="text-xs text-gray-500">{{ booking.get_source_display }}</td>
-                    <td>
+                    <td data-label="Room Service">
+                        {% with rs_orders=booking.room_service_orders.all %}
+                        {% if rs_orders %}
+                        <span class="rs-toggle" onclick="toggleRS({{ booking.id }})">{{ rs_orders|length }} order{{ rs_orders|length|pluralize }} <i class="fa-solid fa-chevron-down text-[10px]"></i></span>
+                        {% else %}
+                        <span class="text-gray-300">—</span>
+                        {% endif %}
+                        {% endwith %}
+                    </td>
+                    <td data-label="Status"><span class="rcp-badge rcp-badge-{{ booking.status }}">{{ booking.get_status_display }}</span></td>
+                    <td data-label="Source" class="text-xs text-gray-500">{{ booking.get_source_display }}</td>
+                    <td data-label="Actions">
                         {% if booking.status == 'pending' %}
                         <form method="post" action="{% url 'dashboard:reception_booking_action' booking.id 'confirm' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn bg-[#0B6B3A] text-white">Confirm</button></form>
                         {% endif %}
@@ -100,19 +135,38 @@
                         {% if booking.status == 'checked_in' %}
                             {% if booking.total_balance_due > 0 %}
                             <span class="rcp-action-btn bg-gray-200 text-gray-400 cursor-not-allowed" title="Balance must be paid before checkout">Check Out</span>
+                            <a href="{% url 'dashboard:reception_settle_stay' booking.id %}" class="rcp-action-btn bg-[#C9A227] text-black">Settle Stay</a>
                             {% else %}
                             <form method="post" action="{% url 'dashboard:reception_booking_action' booking.id 'check-out' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn bg-[#0B6B3A] text-white">Check Out</button></form>
                             {% endif %}
+                        {% elif booking.balance_due > 0 %}
+                        <a href="{% url 'dashboard:reception_record_payment' 'booking' booking.id %}" class="rcp-action-btn bg-[#C9A227] text-black">Record Payment</a>
                         {% endif %}
                         {% if booking.status in 'pending,confirmed' %}
                         <form method="post" action="{% url 'dashboard:reception_booking_action' booking.id 'cancel' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn border border-red-400 text-red-500">Cancel</button></form>
                         {% endif %}
-                        {% if booking.balance_due > 0 %}
-                        <a href="{% url 'dashboard:reception_record_payment' 'booking' booking.id %}" class="rcp-action-btn bg-[#C9A227] text-black">Record Payment</a>
-                        {% endif %}
                     </td>
                 </tr>
-                {% empty %}<tr><td colspan="8" class="text-center text-gray-400 py-6">No bookings found.</td></tr>{% endfor %}
+                {% with rs_orders=booking.room_service_orders.all %}
+                {% if rs_orders %}
+                <tr class="rs-detail-row" id="rs-detail-{{ booking.id }}">
+                    <td colspan="9">
+                        <p class="text-xs font-semibold text-gray-500 uppercase mb-2">Room service history</p>
+                        <ul class="text-sm text-gray-700 space-y-1">
+                            {% for order in rs_orders %}
+                            {% for item in order.items.all %}
+                            <li class="flex justify-between border-b border-gray-100 pb-1">
+                                <span>{{ item.quantity }}x {{ item.menu_item.name }}{% if item.tier == 'vip' %} <span class="text-[10px] text-[#C9A227] font-semibold">VIP</span>{% endif %}</span>
+                                <span class="text-gray-400 text-xs">{{ order.created_at|date:"M d, H:i" }} · <span class="rcp-badge rcp-badge-{{ order.status }}">{{ order.get_status_display }}</span></span>
+                            </li>
+                            {% endfor %}
+                            {% endfor %}
+                        </ul>
+                    </td>
+                </tr>
+                {% endif %}
+                {% endwith %}
+                {% empty %}<tr><td colspan="9" class="text-center text-gray-400 py-6">No bookings found.</td></tr>{% endfor %}
             </tbody>
         </table>
     </div>
@@ -127,9 +181,43 @@
     {% endif %}
 </div>
 
-<!-- Orders -->
+<!-- Room Service — Pending Confirmation -->
+{% if room_service_groups %}
+<div class="mb-12">
+    <h2 class="font-bold text-black mb-3 rcp-section-title"><i class="fa-solid fa-bell-concierge"></i>Room Service — Needs Confirmation</h2>
+    {% for group in room_service_groups %}
+    <div class="border border-[#C9A227] rounded-xl p-5 mb-4 bg-[#FEF9EC]">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <div>
+                <p class="font-bold text-black">{{ group.booking.guest_name }} — Room {{ group.booking.assigned_room.number }}</p>
+                <p class="text-xs text-gray-500">{{ group.pending_item_count }} item(s) across {{ group.pending_orders|length }} order(s)</p>
+            </div>
+            <form method="post" action="{% url 'dashboard:reception_confirm_all_orders' group.booking.id %}">
+                {% csrf_token %}
+                <button type="submit" class="text-sm font-semibold bg-[#0B6B3A] text-white px-5 py-2 rounded-full hover:bg-[#095430] transition">
+                    <i class="fa-solid fa-check-double mr-1"></i>Confirm All
+                </button>
+            </form>
+        </div>
+        <ul class="text-sm text-gray-700 space-y-1">
+            {% for order in group.pending_orders %}
+                {% for item in order.items.all %}
+                <li class="flex justify-between border-b border-[#C9A227]/20 pb-1">
+                    <span>{{ item.quantity }}x {{ item.menu_item.name }}{% if item.tier == 'vip' %} <span class="text-[10px] text-[#C9A227] font-semibold">VIP</span>{% endif %}</span>
+                    <span class="text-gray-400 text-xs">{{ order.created_at|date:"H:i" }}</span>
+                </li>
+                {% endfor %}
+                {% if order.notes %}<li class="text-xs text-gray-500 italic"><i class="fa-solid fa-note-sticky mr-1"></i>{{ order.notes }}</li>{% endif %}
+            {% endfor %}
+        </ul>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Orders (walk-in / dine-in only, room service lives under Bookings above) -->
 <div>
-    <h2 class="font-bold text-black mb-3">Orders</h2>
+    <h2 class="font-bold text-black mb-3 rcp-section-title"><i class="fa-solid fa-utensils"></i>Walk-in &amp; Dine-in Orders</h2>
     <form method="get" class="flex flex-wrap gap-2 mb-4">
         <select name="order_status" class="border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
             <option value="">All Statuses</option>
@@ -145,24 +233,18 @@
             <tbody>
                 {% for order in order_page_obj %}
                 <tr>
-                    <td class="font-semibold">
+                    <td data-label="Customer" class="font-semibold">
                         {{ order.customer_name }}<br>
-                        <span class="text-xs text-gray-400">{{ order.customer_phone }}</span>
-                        {% if order.room_booking %}
-                        <br><span class="text-xs text-[#C9A227] font-semibold">Room {{ order.room_booking.assigned_room.number }} service</span>
-                            {% if order.room_booking.guest_name != order.customer_name %}
-                            <br><span class="text-[10px] text-gray-400">Booked by {{ order.room_booking.guest_name }}</span>
-                            {% endif %}
-                        {% endif %}
+                        <span class="text-xs text-gray-400 font-normal">{{ order.customer_phone }}</span>
                         {% if order.notes %}
-                        <br><span class="text-[11px] text-gray-500 italic" title="{{ order.notes }}"><i class="fa-solid fa-note-sticky mr-1"></i>{{ order.notes|truncatechars:40 }}</span>
+                        <br><span class="text-[11px] text-gray-500 italic font-normal" title="{{ order.notes }}"><i class="fa-solid fa-note-sticky mr-1"></i>{{ order.notes|truncatechars:40 }}</span>
                         {% endif %}
                     </td>
-                    <td>{% for item in order.items.all %}{{ item.quantity }}x {{ item.menu_item.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
-                    <td>KSh {{ order.total_amount|floatformat:0 }}</td>
-                    <td class="{% if order.balance_due > 0 %}text-red-600 font-semibold{% else %}text-[#0B6B3A]{% endif %}">KSh {{ order.balance_due|floatformat:0 }}</td>
-                    <td><span class="rcp-badge rcp-badge-{{ order.status }}">{{ order.get_status_display }}</span></td>
-                    <td>
+                    <td data-label="Items">{% for item in order.items.all %}{{ item.quantity }}x {{ item.menu_item.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+                    <td data-label="Total">KSh {{ order.total_amount|floatformat:0 }}</td>
+                    <td data-label="Balance" class="{% if order.balance_due > 0 %}text-red-600 font-semibold{% else %}text-[#0B6B3A]{% endif %}">KSh {{ order.balance_due|floatformat:0 }}</td>
+                    <td data-label="Status"><span class="rcp-badge rcp-badge-{{ order.status }}">{{ order.get_status_display }}</span></td>
+                    <td data-label="Actions">
                         {% if order.status == 'pending' %}
                         <form method="post" action="{% url 'dashboard:reception_order_action' order.id 'confirm' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn bg-[#0B6B3A] text-white">Confirm</button></form>
                         <form method="post" action="{% url 'dashboard:reception_order_action' order.id 'cancel' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn border border-red-400 text-red-500">Cancel</button></form>
@@ -172,7 +254,7 @@
                         {% endif %}
                     </td>
                 </tr>
-                {% empty %}<tr><td colspan="6" class="text-center text-gray-400 py-6">No orders found.</td></tr>{% endfor %}
+                {% empty %}<tr><td colspan="6" class="text-center text-gray-400 py-6">No walk-in orders yet today.</td></tr>{% endfor %}
             </tbody>
         </table>
     </div>
@@ -188,6 +270,10 @@
 </div>
 
 <script>
+function toggleRS(bookingId) {
+    document.getElementById('rs-detail-' + bookingId).classList.toggle('open');
+}
+
 document.addEventListener('DOMContentLoaded', function () {
     const toastContainer = document.getElementById('notif-toast-container');
     const refreshBtn = document.getElementById('refresh-btn');
@@ -200,10 +286,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const toast = document.createElement('div');
         const iconClass = kind === 'booking' ? 'fa-bed' : 'fa-utensils';
         toast.className = 'bg-white border border-[#0B6B3A] shadow-lg rounded-xl px-4 py-3 flex items-center gap-3 text-sm max-w-xs';
-        toast.innerHTML = `
-            <i class="fa-solid ${iconClass} text-[#0B6B3A]"></i>
-            <span class="text-black">${message}</span>
-        `;
+        toast.innerHTML = `<i class="fa-solid ${iconClass} text-[#0B6B3A]"></i><span class="text-black">${message}</span>`;
         toastContainer.appendChild(toast);
         setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.4s'; }, 5000);
         setTimeout(() => toast.remove(), 5400);
@@ -212,16 +295,8 @@ document.addEventListener('DOMContentLoaded', function () {
     function connectReceptionSocket() {
         const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
         const socket = new WebSocket(`${protocol}://${window.location.host}/ws/reception/`);
-
-        socket.onopen = () => {
-            liveDot.className = 'w-2 h-2 rounded-full bg-[#0B6B3A]';
-            liveLabel.textContent = 'live updates on';
-        };
-        socket.onclose = () => {
-            liveDot.className = 'w-2 h-2 rounded-full bg-gray-300';
-            liveLabel.textContent = 'reconnecting...';
-            setTimeout(connectReceptionSocket, 3000);
-        };
+        socket.onopen = () => { liveDot.className = 'w-2 h-2 rounded-full bg-[#0B6B3A]'; liveLabel.textContent = 'live updates on'; };
+        socket.onclose = () => { liveDot.className = 'w-2 h-2 rounded-full bg-gray-300'; liveLabel.textContent = 'reconnecting...'; setTimeout(connectReceptionSocket, 3000); };
         socket.onerror = () => { liveDot.className = 'w-2 h-2 rounded-full bg-red-400'; };
         socket.onmessage = (e) => {
             const data = JSON.parse(e.data);
@@ -233,7 +308,6 @@ document.addEventListener('DOMContentLoaded', function () {
         };
     }
     connectReceptionSocket();
-
     refreshBtn.addEventListener('click', () => window.location.reload());
 });
 </script>

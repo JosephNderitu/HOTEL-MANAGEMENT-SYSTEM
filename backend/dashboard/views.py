@@ -1,3 +1,4 @@
+import uuid
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from .permissions import MODULES, get_allowed_modules, has_full_access
@@ -15,18 +16,14 @@ from django.http import HttpResponse
 from django.template.loader import render_to_string
 from weasyprint import HTML
 
-from public_site.models import Booking, Order, RoomType, ConferenceRoom
+from public_site.models import *
 from public_site.services import get_available_rooms
 from dashboard.models import Payment
 
 #store imports
-from store.models import Disbursement, DisbursementPurchase, StockItem
+from store.models import *
 from store.forms import DisbursementRequestForm, DisbursementRequestForm, QuickPurchaseForm
-from .permissions import has_full_access
-
-from public_site.models import MenuItem
 from django.db import transaction
-from store.models import StockItem
 
 @login_required
 def dashboard_home(request):
@@ -45,7 +42,12 @@ def reception_view(request):
 
     booking_status = request.GET.get('booking_status', '')
     booking_query = request.GET.get('booking_q', '').strip()
-    bookings_qs = Booking.objects.select_related('room_type', 'conference_room').order_by('-created_at')
+    
+    # 1. Added prefetch_related for room_service_orders__items__menu_item and assigned_room
+    bookings_qs = Booking.objects.select_related('room_type', 'conference_room', 'assigned_room').prefetch_related(
+        'room_service_orders__items__menu_item'
+    ).order_by('-created_at')
+    
     if booking_status:
         bookings_qs = bookings_qs.filter(status=booking_status)
     if booking_query:
@@ -53,7 +55,10 @@ def reception_view(request):
     booking_page_obj = Paginator(bookings_qs, 15).get_page(request.GET.get('booking_page'))
 
     order_status = request.GET.get('order_status', '')
-    orders_qs = Order.objects.prefetch_related('items__menu_item').order_by('-created_at')
+    
+    # 2. Added room_booking__isnull=True to exclude room-service orders
+    orders_qs = Order.objects.filter(room_booking__isnull=True).prefetch_related('items__menu_item').order_by('-created_at')
+    
     if order_status:
         orders_qs = orders_qs.filter(status=order_status)
     order_page_obj = Paginator(orders_qs, 15).get_page(request.GET.get('order_page'))
@@ -63,27 +68,51 @@ def reception_view(request):
     pending_orders_count = Order.objects.filter(status='pending').count()
     today_payments = Payment.objects.filter(created_at__date=today)
     today_revenue = today_payments.aggregate(total=Sum('amount'))['total'] or 0
+    
     revenue_by_method = {
         method_code: today_payments.filter(method=method_code).aggregate(total=Sum('amount'))['total'] or 0
         for method_code, _ in Payment.METHOD_CHOICES
     }
+    
+    # 3. Built data-driven stats structures
+    stats = [
+        {'label': 'Arrivals Today', 'value': arrivals_today, 'money': False},
+        {'label': 'Departures Today', 'value': departures_today, 'money': False},
+        {'label': 'Pending Orders', 'value': pending_orders_count, 'money': False},
+        {'label': "Today's Revenue", 'value': today_revenue, 'money': True},
+    ]
+    
+    payment_stats = [
+        {'label': 'Cash', 'value': revenue_by_method.get('cash', 0)},
+        {'label': 'M-Pesa', 'value': revenue_by_method.get('mpesa', 0)},
+        {'label': 'Swipe', 'value': revenue_by_method.get('swipe', 0)},
+        {'label': 'Equity', 'value': revenue_by_method.get('bank_equity', 0)},
+        {'label': 'Family', 'value': revenue_by_method.get('bank_family', 0)},
+        {'label': 'Co-op', 'value': revenue_by_method.get('bank_coop', 0)},
+    ]
+    
+    room_service_groups = []
+    active_bookings = Booking.objects.filter(status='checked_in').select_related('assigned_room')
+    for b in active_bookings:
+        pending = b.room_service_orders.filter(status='pending').prefetch_related('items__menu_item')
+        if pending.exists():
+            room_service_groups.append({
+                'booking': b,
+                'pending_orders': pending,
+                'pending_item_count': sum(o.items.count() for o in pending),
+            })
 
+    # 4. Updated context payload
     return render(request, 'dashboard/reception.html', {
         'booking_page_obj': booking_page_obj,
         'order_page_obj': order_page_obj,
         'booking_status': booking_status,
         'booking_query': booking_query,
         'order_status': order_status,
-        'arrivals_today': arrivals_today,
-        'departures_today': departures_today,
-        'pending_orders_count': pending_orders_count,
-        'today_revenue': today_revenue,
-        'revenue_by_method': revenue_by_method,
+        'stats': stats,
+        'payment_stats': payment_stats,
+        'room_service_groups': room_service_groups,
     })
-
-
-from public_site.models import Booking, Order, Room
-
 
 @staff_module_required('reception')
 def reception_booking_action(request, booking_id, action):
@@ -197,6 +226,86 @@ def reception_new_booking(request):
         form = ManualBookingForm(initial={'status': 'confirmed'})
     return render(request, 'dashboard/reception_new_booking.html', {'form': form})
 
+
+@staff_module_required('reception')
+def reception_settle_stay(request, booking_id):
+    booking = get_object_or_404(Booking, id=booking_id)
+
+    debts = []
+    if booking.balance_due > 0:
+        debts.append(('booking', booking, booking.balance_due))
+    room_orders = booking.room_service_orders.filter(status='confirmed').order_by('created_at')
+    for order in room_orders:
+        if order.balance_due > 0:
+            debts.append(('order', order, order.balance_due))
+
+    total_due = sum(d[2] for d in debts)
+
+    if request.method == 'POST':
+        form = PaymentForm(request.POST)
+        if form.is_valid():
+            amount = form.cleaned_data['amount']
+            method = form.cleaned_data['method']
+            reference = form.cleaned_data['reference']
+            group_id = uuid.uuid4()
+            remaining = amount
+
+            for kind, target, owed in debts:
+                if remaining <= 0:
+                    break
+                pay_now = min(owed, remaining)
+                payment = Payment(amount=pay_now, method=method, reference=reference,
+                                   received_by=request.user, settlement_group=group_id)
+                if kind == 'booking':
+                    payment.booking = target
+                else:
+                    payment.order = target
+                payment.save()
+                remaining -= pay_now
+
+            messages.success(request, f"Settled KSh {amount - remaining:,.0f} across {booking.guest_name}'s stay.")
+            return redirect('dashboard:reception')
+    else:
+        form = PaymentForm(initial={'amount': total_due})
+
+    return render(request, 'dashboard/reception_settle_stay.html', {
+        'form': form, 'booking': booking, 'debts': debts, 'total_due': total_due,
+    })
+
+
+@staff_module_required('reception')
+def reception_confirm_all_orders(request, booking_id):
+    if request.method != 'POST':
+        return redirect('dashboard:reception')
+    booking = get_object_or_404(Booking, id=booking_id)
+    pending_orders = booking.room_service_orders.filter(status='pending')
+
+    confirmed_count, shortfall_items = 0, []
+    for order in pending_orders:
+        with transaction.atomic():
+            shortfalls = []
+            for order_item in order.items.select_related('menu_item__stock_item'):
+                stock = getattr(order_item.menu_item, 'stock_item', None)
+                if stock and stock.quantity_on_hand < order_item.quantity:
+                    shortfalls.append(f"{order_item.menu_item.name}")
+            if shortfalls:
+                shortfall_items.extend(shortfalls)
+                continue
+            for order_item in order.items.select_related('menu_item__stock_item'):
+                stock = getattr(order_item.menu_item, 'stock_item', None)
+                if stock:
+                    StockItem.objects.filter(id=stock.id).select_for_update().update(
+                        quantity_on_hand=stock.quantity_on_hand - order_item.quantity
+                    )
+            order.status = 'confirmed'
+            order.save(update_fields=['status'])
+            confirmed_count += 1
+
+    if confirmed_count:
+        messages.success(request, f"Confirmed {confirmed_count} order(s) for {booking.guest_name}.")
+    if shortfall_items:
+        messages.error(request, f"Could not confirm, insufficient stock: {', '.join(set(shortfall_items))}.")
+    return redirect('dashboard:reception')
 
 @staff_module_required('reception')
 def reception_record_payment(request, target_type, target_id):
