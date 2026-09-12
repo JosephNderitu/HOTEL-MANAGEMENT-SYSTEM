@@ -28,11 +28,19 @@
 </div>
 {% endfor %}{% endif %}
 
-<div class="grid sm:grid-cols-4 gap-4 mb-8">
+<div class="grid sm:grid-cols-4 gap-4 mb-4">
     <div class="rcp-stat"><p class="text-xs text-gray-500 uppercase mb-1">Arrivals Today</p><p class="text-2xl font-bold text-[#0B6B3A]">{{ arrivals_today }}</p></div>
     <div class="rcp-stat"><p class="text-xs text-gray-500 uppercase mb-1">Departures Today</p><p class="text-2xl font-bold text-[#0B6B3A]">{{ departures_today }}</p></div>
     <div class="rcp-stat"><p class="text-xs text-gray-500 uppercase mb-1">Pending Orders</p><p class="text-2xl font-bold text-[#0B6B3A]">{{ pending_orders_count }}</p></div>
-    <div class="rcp-stat"><p class="text-xs text-gray-500 uppercase mb-1">Today's Revenue</p><p class="text-2xl font-bold text-[#0B6B3A]">KSh {{ today_revenue|floatformat:0 }}</p></div>
+    <div class="rcp-stat"><p class="text-xs text-gray-500 uppercase mb-1">Today's Total Revenue</p><p class="text-2xl font-bold text-[#0B6B3A]">KSh {{ today_revenue|floatformat:0 }}</p></div>
+</div>
+<div class="grid sm:grid-cols-3 md:grid-cols-6 gap-3 mb-8">
+    <div class="rcp-stat"><p class="text-[11px] text-gray-500 uppercase mb-1">Cash</p><p class="text-lg font-bold text-black">KSh {{ revenue_by_method.cash|floatformat:0 }}</p></div>
+    <div class="rcp-stat"><p class="text-[11px] text-gray-500 uppercase mb-1">M-Pesa</p><p class="text-lg font-bold text-black">KSh {{ revenue_by_method.mpesa|floatformat:0 }}</p></div>
+    <div class="rcp-stat"><p class="text-[11px] text-gray-500 uppercase mb-1">Swipe</p><p class="text-lg font-bold text-black">KSh {{ revenue_by_method.swipe|floatformat:0 }}</p></div>
+    <div class="rcp-stat"><p class="text-[11px] text-gray-500 uppercase mb-1">Equity</p><p class="text-lg font-bold text-black">KSh {{ revenue_by_method.bank_equity|floatformat:0 }}</p></div>
+    <div class="rcp-stat"><p class="text-[11px] text-gray-500 uppercase mb-1">Family</p><p class="text-lg font-bold text-black">KSh {{ revenue_by_method.bank_family|floatformat:0 }}</p></div>
+    <div class="rcp-stat"><p class="text-[11px] text-gray-500 uppercase mb-1">Co-op</p><p class="text-lg font-bold text-black">KSh {{ revenue_by_method.bank_coop|floatformat:0 }}</p></div>
 </div>
 
 <!-- Bookings -->
@@ -79,7 +87,11 @@
                         <form method="post" action="{% url 'dashboard:reception_booking_action' booking.id 'check-in' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn bg-[#0B6B3A] text-white">Check In</button></form>
                         {% endif %}
                         {% if booking.status == 'checked_in' %}
-                        <form method="post" action="{% url 'dashboard:reception_booking_action' booking.id 'check-out' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn bg-[#0B6B3A] text-white">Check Out</button></form>
+                            {% if booking.balance_due > 0 %}
+                            <span class="rcp-action-btn bg-gray-200 text-gray-400 cursor-not-allowed" title="Balance must be paid before checkout">Check Out</span>
+                            {% else %}
+                            <form method="post" action="{% url 'dashboard:reception_booking_action' booking.id 'check-out' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn bg-[#0B6B3A] text-white">Check Out</button></form>
+                            {% endif %}
                         {% endif %}
                         {% if booking.status in 'pending,confirmed' %}
                         <form method="post" action="{% url 'dashboard:reception_booking_action' booking.id 'cancel' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn border border-red-400 text-red-500">Cancel</button></form>

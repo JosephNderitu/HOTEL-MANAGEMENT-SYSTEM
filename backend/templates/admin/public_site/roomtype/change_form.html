@@ -1,0 +1,175 @@
+{% extends "admin/change_form.html" %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    .qg-rooms-panel {
+        margin-top: 24px;
+        border: 1px solid #0B6B3A;
+        border-radius: 14px;
+        overflow: hidden;
+        background: #fff;
+        max-width: 760px;
+    }
+    .qg-rooms-header { background: linear-gradient(135deg, #0B6B3A, #095430); padding: 16px 20px; color: #fff; }
+    .qg-rooms-header h3 { font-size: 14px; font-weight: 700; }
+    .qg-rooms-header p { font-size: 12px; opacity: 0.8; margin-top: 2px; }
+
+    .qg-bulk-form { display: flex; gap: 10px; align-items: flex-end; padding: 18px 20px; border-bottom: 1px solid #e5e7eb; flex-wrap: wrap; }
+    .qg-bulk-form label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; color: #6b7280; margin-bottom: 4px; }
+    .qg-bulk-form input {
+        border: 1px solid #0B6B3A !important;
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-size: 13px;
+        width: 110px;
+    }
+    .qg-bulk-btn {
+        background: #C9A227; color: #000; border: none; border-radius: 8px;
+        padding: 9px 18px; font-size: 13px; font-weight: 700; cursor: pointer;
+    }
+    .qg-bulk-btn:hover { background: #b8931f; }
+    .qg-bulk-msg { font-size: 12px; padding: 0 20px; margin: 10px 0; }
+    .qg-bulk-msg.error { color: #dc2626; }
+    .qg-bulk-msg.success { color: #0B6B3A; }
+
+    .qg-room-grid { display: flex; flex-wrap: wrap; gap: 8px; padding: 18px 20px; max-height: 300px; overflow-y: auto; }
+    .qg-room-chip {
+        display: flex; align-items: center; gap: 6px;
+        border: 1px solid #d1d5db; border-radius: 8px;
+        padding: 6px 10px; font-size: 12px;
+    }
+    .qg-room-chip.available { border-color: #0B6B3A; color: #0B6B3A; }
+    .qg-room-chip.occupied { border-color: #C9A227; background: #FEF9EC; color: #92722a; }
+    .qg-room-chip.cleaning { border-color: #3b82f6; color: #3b82f6; }
+    .qg-room-chip.maintenance { border-color: #dc2626; color: #dc2626; }
+    .qg-room-chip button { background: none; border: none; cursor: pointer; color: inherit; opacity: 0.6; }
+    .qg-room-chip button:hover { opacity: 1; }
+</style>
+{% endblock %}
+
+{% block after_field_sets %}
+{{ block.super }}
+{% if room_type %}
+<div class="qg-rooms-panel"
+     data-bulk-url="/admin/public_site/roomtype/{{ room_type.id }}/bulk-add-rooms/"
+     data-delete-url-base="/admin/public_site/roomtype/{{ room_type.id }}/delete-room/">
+    <div class="qg-rooms-header">
+        <h3>Rooms for {{ room_type.name }}</h3>
+        <p id="qg-room-summary">{{ room_type.available_rooms_count }} available / {{ room_type.total_rooms }} total</p>
+    </div>
+
+    <div class="qg-bulk-form">
+        <div>
+            <label>Start Number</label>
+            <input type="number" id="qg-range-start" placeholder="101">
+        </div>
+        <div>
+            <label>End Number</label>
+            <input type="number" id="qg-range-end" placeholder="120">
+        </div>
+        <button type="button" id="qg-bulk-add-btn" class="qg-bulk-btn">Generate Rooms</button>
+    </div>
+    <div id="qg-bulk-msg" class="qg-bulk-msg" style="display:none;"></div>
+
+    <div id="qg-room-grid" class="qg-room-grid">
+        {% for room in rooms %}
+        <div class="qg-room-chip {{ room.status }}" data-room-id="{{ room.id }}">
+            <span>{{ room.number }}</span>
+            {% if room.status == 'available' %}
+            <button type="button" class="qg-delete-room-btn" data-room-id="{{ room.id }}" title="Remove room">&times;</button>
+            {% endif %}
+        </div>
+        {% empty %}
+        <p style="color:#9ca3af; font-size:13px;">No rooms yet. Generate a range above.</p>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    function getCookie(name) {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+    }
+    const csrftoken = getCookie('csrftoken');
+    const panel = document.querySelector('.qg-rooms-panel');
+    const bulkUrl = panel.dataset.bulkUrl;
+    const deleteUrlBase = panel.dataset.deleteUrlBase;
+    const grid = document.getElementById('qg-room-grid');
+    const msgEl = document.getElementById('qg-bulk-msg');
+    const summaryEl = document.getElementById('qg-room-summary');
+
+    function showMsg(text, isError) {
+        msgEl.textContent = text;
+        msgEl.className = 'qg-bulk-msg ' + (isError ? 'error' : 'success');
+        msgEl.style.display = 'block';
+    }
+
+    document.getElementById('qg-bulk-add-btn').addEventListener('click', async function () {
+        const start = document.getElementById('qg-range-start').value;
+        const end = document.getElementById('qg-range-end').value;
+        if (!start || !end) {
+            showMsg('Enter both a start and end room number.', true);
+            return;
+        }
+
+        const res = await fetch(bulkUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+            body: JSON.stringify({ start, end }),
+        });
+        const data = await res.json();
+
+        if (data.error) {
+            showMsg(data.error, true);
+            return;
+        }
+
+        const emptyMsg = grid.querySelector('p');
+        if (emptyMsg) emptyMsg.remove();
+
+        data.created.forEach(room => {
+            const chip = document.createElement('div');
+            chip.className = 'qg-room-chip available';
+            chip.dataset.roomId = room.id;
+            chip.innerHTML = `<span>${room.number}</span><button type="button" class="qg-delete-room-btn" data-room-id="${room.id}" title="Remove room">&times;</button>`;
+            grid.appendChild(chip);
+        });
+
+        summaryEl.textContent = `${data.available_count} available / ${data.total_rooms} total`;
+
+        let text = `Created ${data.created.length} room${data.created.length === 1 ? '' : 's'}.`;
+        if (data.skipped.length) text += ` Skipped ${data.skipped.length} already in use: ${data.skipped.join(', ')}.`;
+        showMsg(text, false);
+
+        document.getElementById('qg-range-start').value = '';
+        document.getElementById('qg-range-end').value = '';
+        attachDeleteHandlers();
+    });
+
+    function attachDeleteHandlers() {
+        document.querySelectorAll('.qg-delete-room-btn').forEach(btn => {
+            btn.onclick = async function () {
+                const roomId = this.dataset.roomId;
+                if (!confirm('Remove this room?')) return;
+                const res = await fetch(deleteUrlBase + roomId + '/', {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': csrftoken },
+                });
+                const data = await res.json();
+                if (data.error) {
+                    showMsg(data.error, true);
+                    return;
+                }
+                this.closest('.qg-room-chip').remove();
+                summaryEl.textContent = `${data.available_count} available / ${data.total_rooms} total`;
+            };
+        });
+    }
+    attachDeleteHandlers();
+});
+</script>
+{% endif %}
+{% endblock %}

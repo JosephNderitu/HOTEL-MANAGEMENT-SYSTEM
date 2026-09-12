@@ -45,15 +45,22 @@ class RoomType(models.Model):
     name = models.CharField(max_length=100)
     slug = models.SlugField(unique=True)
     description = models.TextField(blank=True)
-    price_min = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    price_max = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    price_min = models.DecimalField(max_digits=10, decimal_places=2)
+    price_max = models.DecimalField(max_digits=10, decimal_places=2)
     capacity = models.PositiveIntegerField(default=2)
-    total_rooms = models.PositiveIntegerField(default=1)
     is_active = models.BooleanField(default=True)
 
     def clean(self):
         if self.price_min and self.price_max and self.price_min > self.price_max:
             raise ValidationError("Minimum price cannot be greater than maximum price.")
+
+    @property
+    def total_rooms(self):
+        return self.rooms.count()
+
+    @property
+    def available_rooms_count(self):
+        return self.rooms.filter(status='available').count()
 
     def __str__(self):
         return self.name

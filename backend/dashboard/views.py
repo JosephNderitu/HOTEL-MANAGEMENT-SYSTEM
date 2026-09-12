@@ -17,6 +17,7 @@ from weasyprint import HTML
 
 from public_site.models import Booking, Order, RoomType, ConferenceRoom
 from public_site.services import get_available_rooms
+from dashboard.models import Payment
 
 @login_required
 def dashboard_home(request):
@@ -51,7 +52,12 @@ def reception_view(request):
     arrivals_today = Booking.objects.filter(check_in=today, status__in=['pending', 'confirmed']).count()
     departures_today = Booking.objects.filter(check_out=today, status='checked_in').count()
     pending_orders_count = Order.objects.filter(status='pending').count()
-    today_revenue = Payment.objects.filter(created_at__date=today).aggregate(total=Sum('amount'))['total'] or 0
+    today_payments = Payment.objects.filter(created_at__date=today)
+    today_revenue = today_payments.aggregate(total=Sum('amount'))['total'] or 0
+    revenue_by_method = {
+        method_code: today_payments.filter(method=method_code).aggregate(total=Sum('amount'))['total'] or 0
+        for method_code, _ in Payment.METHOD_CHOICES
+    }
 
     return render(request, 'dashboard/reception.html', {
         'booking_page_obj': booking_page_obj,
@@ -63,6 +69,7 @@ def reception_view(request):
         'departures_today': departures_today,
         'pending_orders_count': pending_orders_count,
         'today_revenue': today_revenue,
+        'revenue_by_method': revenue_by_method,
     })
 
 
@@ -105,9 +112,13 @@ def reception_booking_action(request, booking_id, action):
         available_room.save(update_fields=['status'])
         booking.assigned_room = available_room
 
-    if action == 'check-out' and booking.assigned_room:
-        booking.assigned_room.status = 'cleaning'
-        booking.assigned_room.save(update_fields=['status'])
+        if action == 'check-out':
+            if booking.balance_due > 0:
+                messages.error(request, f"Cannot check out {booking.guest_name}, outstanding balance of KSh {booking.balance_due:,.0f} must be paid first.")
+                return redirect('dashboard:reception')
+            if booking.assigned_room:
+                booking.assigned_room.status = 'cleaning'
+                booking.assigned_room.save(update_fields=['status'])
 
     booking.status = new_status
     booking.save()

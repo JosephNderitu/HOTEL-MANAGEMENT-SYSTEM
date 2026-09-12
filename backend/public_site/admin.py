@@ -1,7 +1,11 @@
+import json
 from django import forms
 from django.contrib import admin
 from django.utils.html import format_html
 from .models import *
+from django.urls import path
+from django.http import JsonResponse
+
 
 
 # ---------------------------------------------------------------------------
@@ -54,17 +58,18 @@ class RoomTypeImageInline(admin.TabularInline):
 
 @admin.register(RoomType)
 class RoomTypeAdmin(admin.ModelAdmin):
-    list_display = ('thumbnail', 'name', 'price_range', 'capacity', 'total_rooms', 'is_active')
+    list_display = ('thumbnail', 'name', 'price_range', 'capacity', 'room_count_display', 'is_active')
     list_display_links = ('name',)
-    list_editable = ('total_rooms', 'is_active')
+    list_editable = ('is_active',)
     list_filter = ('is_active',)
     search_fields = ('name', 'description')
     prepopulated_fields = {'slug': ('name',)}
     ordering = ('price_min',)
     inlines = [RoomTypeImageInline]
+    change_form_template = 'admin/public_site/roomtype/change_form.html'
     fieldsets = (
         ('Room Details', {'fields': ('name', 'slug', 'description')}),
-        ('Pricing & Capacity', {'fields': (('price_min', 'price_max'), 'capacity', 'total_rooms', 'is_active')}),
+        ('Pricing & Capacity', {'fields': (('price_min', 'price_max'), 'capacity', 'is_active')}),
     )
 
     @admin.display(description='Photo')
@@ -76,6 +81,94 @@ class RoomTypeAdmin(admin.ModelAdmin):
     def price_range(self, obj):
         return f"KSh {obj.price_min:,.0f} – {obj.price_max:,.0f}"
 
+    @admin.display(description='Rooms')
+    def room_count_display(self, obj):
+        return f"{obj.available_rooms_count} available / {obj.total_rooms} total"
+
+    def get_urls(self):
+        custom = [
+            path('<int:roomtype_id>/bulk-add-rooms/', self.admin_site.admin_view(self.bulk_add_rooms), name='public_site_roomtype_bulk_add_rooms'),
+            path('<int:roomtype_id>/delete-room/<int:room_id>/', self.admin_site.admin_view(self.delete_room), name='public_site_roomtype_delete_room'),
+        ]
+        return custom + super().get_urls()
+
+    def change_view(self, request, object_id, form_url='', extra_context=None):
+        room_type = self.get_object(request, object_id)
+        extra_context = extra_context or {}
+        extra_context['room_type'] = room_type
+        extra_context['rooms'] = room_type.rooms.order_by('number') if room_type else []
+        return super().change_view(request, object_id, form_url, extra_context=extra_context)
+
+    def bulk_add_rooms(self, request, roomtype_id):
+        if request.method != 'POST':
+            return JsonResponse({'error': 'POST required'}, status=405)
+        room_type = self.get_object(request, roomtype_id)
+        if not room_type:
+            return JsonResponse({'error': 'Room type not found'}, status=404)
+
+        try:
+            data = json.loads(request.body)
+            start = int(data.get('start'))
+            end = int(data.get('end'))
+        except (TypeError, ValueError):
+            return JsonResponse({'error': 'Start and end must be whole numbers, e.g. 101 to 120.'}, status=400)
+
+        if end < start:
+            return JsonResponse({'error': 'End number must not be less than start number.'}, status=400)
+        if (end - start) > 200:
+            return JsonResponse({'error': 'That range is too large to create in one go (max 200 rooms at a time).'}, status=400)
+
+        created, skipped = [], []
+        for num in range(start, end + 1):
+            number_str = str(num)
+            if Room.objects.filter(number=number_str).exists():
+                skipped.append(number_str)
+                continue
+            room = Room.objects.create(room_type=room_type, number=number_str, status='available')
+            created.append({'id': room.id, 'number': room.number, 'status': room.status})
+
+        return JsonResponse({
+            'success': True,
+            'created': created,
+            'skipped': skipped,
+            'total_rooms': room_type.total_rooms,
+            'available_count': room_type.available_rooms_count,
+        })
+
+    def delete_room(self, request, roomtype_id, room_id):
+        if request.method != 'POST':
+            return JsonResponse({'error': 'POST required'}, status=405)
+        room = Room.objects.filter(id=room_id, room_type_id=roomtype_id).first()
+        if not room:
+            return JsonResponse({'error': 'Room not found'}, status=404)
+        if room.status == 'occupied':
+            return JsonResponse({'error': 'Cannot remove a room that is currently occupied.'}, status=400)
+        room.delete()
+        room_type = self.get_object(request, roomtype_id)
+        return JsonResponse({
+            'success': True,
+            'total_rooms': room_type.total_rooms,
+            'available_count': room_type.available_rooms_count,
+        })
+
+
+@admin.register(Room)
+class RoomAdmin(admin.ModelAdmin):
+    list_display = ('number', 'room_type', 'status_badge')
+    list_filter = ('room_type', 'status')
+    list_editable = ()
+    search_fields = ('number',)
+    ordering = ('room_type', 'number')
+
+    @admin.display(description='Status', ordering='status')
+    def status_badge(self, obj):
+        colors = {'available': '#0B6B3A', 'occupied': '#C9A227', 'cleaning': '#3b82f6', 'maintenance': '#dc2626'}
+        color = colors.get(obj.status, '#6b7280')
+        text_color = '#000' if obj.status == 'occupied' else '#fff'
+        return format_html(
+            '<span style="background:{}; color:{}; padding:3px 10px; border-radius:9999px; font-size:11px; font-weight:700;">{}</span>',
+            color, text_color, obj.get_status_display().upper(),
+        )
 
 # ---------------------------------------------------------------------------
 # ConferenceRoom
@@ -343,9 +436,3 @@ class ConversationAdmin(admin.ModelAdmin):
             },
         })
         
-@admin.register(Room)
-class RoomAdmin(admin.ModelAdmin):
-    list_display = ('number', 'room_type', 'status')
-    list_editable = ('status',)
-    list_filter = ('room_type', 'status')
-    ordering = ('room_type', 'number')
