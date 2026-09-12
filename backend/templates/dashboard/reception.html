@@ -74,8 +74,9 @@
                     </td>
                     <td>{{ booking.check_in|date:"M d" }} – {{ booking.check_out|date:"M d" }}</td>
                     <td>KSh {{ booking.total_amount|floatformat:0 }}</td>
-                    <td class="{% if booking.balance_due > 0 %}text-red-600 font-semibold{% else %}text-[#0B6B3A]{% endif %}">
-                        KSh {{ booking.balance_due|floatformat:0 }}
+                    <td class="{% if booking.total_balance_due > 0 %}text-red-600 font-semibold{% else %}text-[#0B6B3A]{% endif %}">
+                        KSh {{ booking.total_balance_due|floatformat:0 }}
+                        {% if booking.room_service_balance_due > 0 %}<br><span class="text-[10px] text-gray-400">incl. KSh {{ booking.room_service_balance_due|floatformat:0 }} room service</span>{% endif %}
                     </td>
                     <td><span class="rcp-badge rcp-badge-{{ booking.status }}">{{ booking.get_status_display }}</span></td>
                     <td class="text-xs text-gray-500">{{ booking.get_source_display }}</td>
@@ -87,7 +88,7 @@
                         <form method="post" action="{% url 'dashboard:reception_booking_action' booking.id 'check-in' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn bg-[#0B6B3A] text-white">Check In</button></form>
                         {% endif %}
                         {% if booking.status == 'checked_in' %}
-                            {% if booking.balance_due > 0 %}
+                            {% if booking.total_balance_due > 0 %}
                             <span class="rcp-action-btn bg-gray-200 text-gray-400 cursor-not-allowed" title="Balance must be paid before checkout">Check Out</span>
                             {% else %}
                             <form method="post" action="{% url 'dashboard:reception_booking_action' booking.id 'check-out' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn bg-[#0B6B3A] text-white">Check Out</button></form>
@@ -134,7 +135,11 @@
             <tbody>
                 {% for order in order_page_obj %}
                 <tr>
-                    <td class="font-semibold">{{ order.customer_name }}<br><span class="text-xs text-gray-400">{{ order.customer_phone }}</span></td>
+                    <td class="font-semibold">
+                        {{ order.customer_name }}<br>
+                        <span class="text-xs text-gray-400">{{ order.customer_phone }}</span>
+                        {% if order.room_booking %}<br><span class="text-xs text-[#C9A227] font-semibold">Room {{ order.room_booking.assigned_room.number }} service</span>{% endif %}
+                    </td>
                     <td>{% for item in order.items.all %}{{ item.quantity }}x {{ item.menu_item.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
                     <td>KSh {{ order.total_amount|floatformat:0 }}</td>
                     <td class="{% if order.balance_due > 0 %}text-red-600 font-semibold{% else %}text-[#0B6B3A]{% endif %}">KSh {{ order.balance_due|floatformat:0 }}</td>

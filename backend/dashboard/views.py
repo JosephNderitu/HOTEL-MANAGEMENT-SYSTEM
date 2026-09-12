@@ -25,6 +25,8 @@ from store.forms import DisbursementRequestForm, DisbursementRequestForm, QuickP
 from .permissions import has_full_access
 
 from public_site.models import MenuItem
+from django.db import transaction
+from store.models import StockItem
 
 @login_required
 def dashboard_home(request):
@@ -120,8 +122,8 @@ def reception_booking_action(request, booking_id, action):
         booking.assigned_room = available_room
 
         if action == 'check-out':
-            if booking.balance_due > 0:
-                messages.error(request, f"Cannot check out {booking.guest_name}, outstanding balance of KSh {booking.balance_due:,.0f} must be paid first.")
+            if booking.total_balance_due > 0:
+                messages.error(request, f"Cannot check out {booking.guest_name}, outstanding balance of KSh {booking.total_balance_due:,.0f} (including room service) must be paid first.")
                 return redirect('dashboard:reception')
             if booking.assigned_room:
                 booking.assigned_room.status = 'cleaning'
@@ -139,17 +141,43 @@ def reception_order_action(request, order_id, action):
     order = get_object_or_404(Order, id=order_id)
 
     if action == 'confirm' and order.status == 'pending':
-        order.status = 'confirmed'
+        with transaction.atomic():
+            shortfalls = []
+            for order_item in order.items.select_related('menu_item__stock_item'):
+                stock = getattr(order_item.menu_item, 'stock_item', None)
+                if stock and stock.quantity_on_hand < order_item.quantity:
+                    shortfalls.append(f"{order_item.menu_item.name} (have {stock.quantity_on_hand}, need {order_item.quantity})")
+
+            if shortfalls:
+                messages.error(request, f"Cannot confirm, insufficient stock: {', '.join(shortfalls)}.")
+                return redirect('dashboard:reception')
+
+            for order_item in order.items.select_related('menu_item__stock_item'):
+                stock = getattr(order_item.menu_item, 'stock_item', None)
+                if stock:
+                    StockItem.objects.filter(id=stock.id).select_for_update().update(
+                        quantity_on_hand=stock.quantity_on_hand - order_item.quantity
+                    )
+            order.status = 'confirmed'
+            order.save(update_fields=['status'])
+
     elif action == 'cancel' and order.status in ('pending', 'confirmed'):
+        if order.status == 'confirmed':
+            with transaction.atomic():
+                for order_item in order.items.select_related('menu_item__stock_item'):
+                    stock = getattr(order_item.menu_item, 'stock_item', None)
+                    if stock:
+                        StockItem.objects.filter(id=stock.id).select_for_update().update(
+                            quantity_on_hand=stock.quantity_on_hand + order_item.quantity
+                        )
         order.status = 'cancelled'
+        order.save(update_fields=['status'])
     else:
         messages.error(request, "That action isn't available for this order's current status.")
         return redirect('dashboard:reception')
 
-    order.save(update_fields=['status'])
     messages.success(request, f"Order #{order.id} marked as {order.get_status_display()}.")
     return redirect('dashboard:reception')
-
 
 @staff_module_required('reception')
 def reception_new_booking(request):

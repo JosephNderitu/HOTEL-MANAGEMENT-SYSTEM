@@ -444,7 +444,14 @@
         <form id="order-form" class="space-y-3">
             <input type="text" id="customer_name" placeholder="Full name" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
             <input type="tel" id="customer_phone" placeholder="Phone number" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-            <textarea id="order_notes" placeholder="Notes, room number for room service, etc (optional)" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"></textarea>
+
+            <label class="flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" id="is_room_service">
+                Charge this to my room
+            </label>
+            <input type="text" id="room_number" placeholder="Room number" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm hidden">
+
+            <textarea id="order_notes" placeholder="Notes (optional)" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"></textarea>
             <p id="order-error" class="text-red-600 text-xs hidden"></p>
             <button type="submit" class="w-full bg-[#C9A227] text-black font-semibold py-2.5 rounded-full hover:bg-[#b8931f] transition">Place Order</button>
         </form>
@@ -712,16 +719,29 @@ document.addEventListener('DOMContentLoaded', function () {
         openModal('order-modal');
     });
 
+    document.getElementById('is_room_service').addEventListener('change', function () {
+        document.getElementById('room_number').classList.toggle('hidden', !this.checked);
+    });
+
     document.getElementById('order-form').addEventListener('submit', async function (e) {
         e.preventDefault();
         const errorEl = document.getElementById('order-error');
         errorEl.classList.add('hidden');
+
+        const isRoomService = document.getElementById('is_room_service').checked;
+        const roomNumber = document.getElementById('room_number').value.trim();
+        if (isRoomService && !roomNumber) {
+            errorEl.textContent = 'Enter your room number to charge this to your room.';
+            errorEl.classList.remove('hidden');
+            return;
+        }
 
         const cart = getCart();
         const payload = {
             customer_name: document.getElementById('customer_name').value,
             customer_phone: document.getElementById('customer_phone').value,
             notes: document.getElementById('order_notes').value,
+            room_number: isRoomService ? roomNumber : '',
             items: cart.map(i => ({ id: i.id, qty: i.qty, tier: i.tier })),
         };
 

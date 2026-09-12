@@ -17,8 +17,10 @@ from .models import Conversation, ChatMessage, EmailVerification
 
 def home(request):
     room_types = RoomType.objects.filter(is_active=True).prefetch_related('images')
-    food_items = MenuItem.objects.filter(item_type='food', is_available=True).prefetch_related('images')
-    drink_items = MenuItem.objects.filter(item_type='drink', is_available=True).prefetch_related('images')
+    all_food = MenuItem.objects.filter(item_type='food', is_available=True).select_related('stock_item').prefetch_related('images')
+    all_drinks = MenuItem.objects.filter(item_type='drink', is_available=True).select_related('stock_item').prefetch_related('images')
+    food_items = [item for item in all_food if item.is_orderable]
+    drink_items = [item for item in all_drinks if item.is_orderable]
     context = {
         'room_types': room_types,
         'food_items': food_items,
@@ -114,15 +116,37 @@ def submit_order(request):
     customer_phone = data.get('customer_phone', '').strip()
     notes = data.get('notes', '').strip()
     items = data.get('items', [])
+    room_number = data.get('room_number', '').strip()
 
     if not customer_name or not customer_phone or not items:
         return JsonResponse({'error': 'Name, phone, and at least one item are required.'}, status=400)
+
+    room_booking = None
+    if room_number:
+        room_booking = Booking.objects.filter(
+            assigned_room__number=room_number, status='checked_in'
+        ).first()
+        if not room_booking:
+            return JsonResponse({'error': f'No checked-in guest found in Room {room_number}. Check the room number.'}, status=400)
+
+    unavailable = []
+    for item in items:
+        try:
+            menu_item = MenuItem.objects.select_related('stock_item').get(id=item['id'], is_available=True)
+        except (MenuItem.DoesNotExist, KeyError):
+            continue
+        if not menu_item.is_in_stock:
+            unavailable.append(menu_item.name)
+
+    if unavailable:
+        return JsonResponse({'error': f"Sorry, these items just sold out: {', '.join(unavailable)}. Please remove them and try again."}, status=409)
 
     order = Order.objects.create(
         customer_name=customer_name,
         customer_phone=customer_phone,
         notes=notes,
         status='pending',
+        room_booking=room_booking,
     )
     for item in items:
         try:

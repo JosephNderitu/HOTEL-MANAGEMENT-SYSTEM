@@ -168,6 +168,15 @@ class Booking(models.Model):
     def balance_due(self):
         return self.total_amount - self.amount_paid
     
+        
+    @property
+    def room_service_balance_due(self):
+        return sum(o.balance_due for o in self.room_service_orders.filter(status='confirmed'))
+
+    @property
+    def total_balance_due(self):
+        return self.balance_due + self.room_service_balance_due
+    
     def clean(self):
         if self.booking_type == 'room':
             if not self.room_type_id:
@@ -208,6 +217,17 @@ class MenuItem(models.Model):
     description = models.TextField(blank=True)
     is_available = models.BooleanField(default=True)
 
+    @property
+    def is_in_stock(self):
+        stock = getattr(self, 'stock_item', None)
+        if stock is None:
+            return True  # not stock-tracked, e.g. most kitchen dishes, always orderable
+        return stock.quantity_on_hand > 0
+
+    @property
+    def is_orderable(self):
+        return self.is_available and self.is_in_stock
+    
     def clean(self):
         if self.vip_price is not None and self.vip_price < self.regular_price:
             raise ValidationError("VIP price should not be lower than the regular price.")
@@ -243,6 +263,7 @@ class Order(models.Model):
     notes = models.TextField(blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
+    room_booking = models.ForeignKey('Booking', on_delete=models.SET_NULL, null=True, blank=True, related_name='room_service_orders')
 
     @property
     def total_amount(self):
