@@ -11,15 +11,25 @@
     .rcp-badge-cancelled { background: #dc2626; color: #fff; }
     .rcp-action-btn { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 9999px; display: inline-block; margin: 2px 2px 0 0; }
 </style>
-
+<div id="notif-toast-container" class="fixed top-20 right-6 z-50 flex flex-col gap-2 items-end"></div>
 <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
     <div>
         <h1 class="text-2xl font-bold text-black">Reception</h1>
-        <p class="text-gray-500 text-sm">Bookings, orders, and payments</p>
+        <p class="text-gray-500 text-sm flex items-center gap-2">
+            Bookings, orders, and payments
+            <span id="live-dot" class="w-2 h-2 rounded-full bg-gray-300"></span>
+            <span id="live-label" class="text-xs text-gray-400">connecting live updates...</span>
+        </p>
     </div>
-    <a href="{% url 'dashboard:reception_new_booking' %}" class="bg-[#C9A227] text-black font-semibold px-5 py-2.5 rounded-full hover:bg-[#b8931f] transition flex items-center gap-2">
-        <i class="fa-solid fa-plus"></i> New Booking
-    </a>
+    <div class="flex items-center gap-3">
+        <button id="refresh-btn" class="hidden relative bg-white border-2 border-[#C9A227] text-[#C9A227] font-semibold px-5 py-2.5 rounded-full hover:bg-[#C9A227] hover:text-black transition items-center gap-2">
+            <i class="fa-solid fa-arrows-rotate"></i>
+            <span id="refresh-count">0</span> new, refresh
+        </button>
+        <a href="{% url 'dashboard:reception_new_booking' %}" class="bg-[#C9A227] text-black font-semibold px-5 py-2.5 rounded-full hover:bg-[#b8931f] transition flex items-center gap-2">
+            <i class="fa-solid fa-plus"></i> New Booking
+        </a>
+    </div>
 </div>
 
 {% if messages %}{% for message in messages %}
@@ -138,7 +148,15 @@
                     <td class="font-semibold">
                         {{ order.customer_name }}<br>
                         <span class="text-xs text-gray-400">{{ order.customer_phone }}</span>
-                        {% if order.room_booking %}<br><span class="text-xs text-[#C9A227] font-semibold">Room {{ order.room_booking.assigned_room.number }} service</span>{% endif %}
+                        {% if order.room_booking %}
+                        <br><span class="text-xs text-[#C9A227] font-semibold">Room {{ order.room_booking.assigned_room.number }} service</span>
+                            {% if order.room_booking.guest_name != order.customer_name %}
+                            <br><span class="text-[10px] text-gray-400">Booked by {{ order.room_booking.guest_name }}</span>
+                            {% endif %}
+                        {% endif %}
+                        {% if order.notes %}
+                        <br><span class="text-[11px] text-gray-500 italic" title="{{ order.notes }}"><i class="fa-solid fa-note-sticky mr-1"></i>{{ order.notes|truncatechars:40 }}</span>
+                        {% endif %}
                     </td>
                     <td>{% for item in order.items.all %}{{ item.quantity }}x {{ item.menu_item.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
                     <td>KSh {{ order.total_amount|floatformat:0 }}</td>
@@ -168,4 +186,55 @@
     </div>
     {% endif %}
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const toastContainer = document.getElementById('notif-toast-container');
+    const refreshBtn = document.getElementById('refresh-btn');
+    const refreshCount = document.getElementById('refresh-count');
+    const liveDot = document.getElementById('live-dot');
+    const liveLabel = document.getElementById('live-label');
+    let pendingCount = 0;
+
+    function showToast(message, kind) {
+        const toast = document.createElement('div');
+        const iconClass = kind === 'booking' ? 'fa-bed' : 'fa-utensils';
+        toast.className = 'bg-white border border-[#0B6B3A] shadow-lg rounded-xl px-4 py-3 flex items-center gap-3 text-sm max-w-xs';
+        toast.innerHTML = `
+            <i class="fa-solid ${iconClass} text-[#0B6B3A]"></i>
+            <span class="text-black">${message}</span>
+        `;
+        toastContainer.appendChild(toast);
+        setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.4s'; }, 5000);
+        setTimeout(() => toast.remove(), 5400);
+    }
+
+    function connectReceptionSocket() {
+        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const socket = new WebSocket(`${protocol}://${window.location.host}/ws/reception/`);
+
+        socket.onopen = () => {
+            liveDot.className = 'w-2 h-2 rounded-full bg-[#0B6B3A]';
+            liveLabel.textContent = 'live updates on';
+        };
+        socket.onclose = () => {
+            liveDot.className = 'w-2 h-2 rounded-full bg-gray-300';
+            liveLabel.textContent = 'reconnecting...';
+            setTimeout(connectReceptionSocket, 3000);
+        };
+        socket.onerror = () => { liveDot.className = 'w-2 h-2 rounded-full bg-red-400'; };
+        socket.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            showToast(data.message, data.kind);
+            pendingCount += 1;
+            refreshCount.textContent = pendingCount;
+            refreshBtn.classList.remove('hidden');
+            refreshBtn.classList.add('inline-flex');
+        };
+    }
+    connectReceptionSocket();
+
+    refreshBtn.addEventListener('click', () => window.location.reload());
+});
+</script>
 {% endblock %}

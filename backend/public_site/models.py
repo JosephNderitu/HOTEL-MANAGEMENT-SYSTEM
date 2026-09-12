@@ -378,3 +378,32 @@ def notify_guest_on_staff_reply(sender, instance, created, **kwargs):
         instance.notified = True
         instance.save(update_fields=['notified'])
         
+@receiver(post_save, sender=Booking)
+def notify_reception_new_booking(sender, instance, created, **kwargs):
+    if not created or instance.source != 'online':
+        return  # only guest-made bookings are "new" to reception, not staff's own walk-in entries
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)('reception_updates', {
+        'type': 'reception_notification',
+        'payload': {
+            'kind': 'booking',
+            'message': f"New online booking from {instance.guest_name}",
+        },
+    })
+
+
+@receiver(post_save, sender=Order)
+def notify_reception_new_order(sender, instance, created, **kwargs):
+    if not created:
+        return
+    room_note = ""
+    if instance.room_booking and instance.room_booking.assigned_room:
+        room_note = f" (Room {instance.room_booking.assigned_room.number} service)"
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)('reception_updates', {
+        'type': 'reception_notification',
+        'payload': {
+            'kind': 'order',
+            'message': f"New order from {instance.customer_name}{room_note}",
+        },
+    })
