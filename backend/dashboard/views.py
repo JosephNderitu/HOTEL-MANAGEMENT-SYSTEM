@@ -28,6 +28,7 @@ from django.db import transaction
 from .services import confirm_order_and_deduct_stock
 
 from decimal import Decimal
+from django.urls import reverse
 
 @login_required
 def dashboard_home(request):
@@ -445,10 +446,10 @@ COURSE_PRIORITY = {'starter': 0, 'main': 1, 'dessert': 2}
 
 @staff_module_required('restaurant_kitchen')
 def restaurant_kitchen_display(request):
-
     active_items = OrderItem.objects.filter(
         prep_status__in=['queued', 'preparing', 'ready'],
         order__status='confirmed',
+        is_cancelled=False,
     ).filter(
         Q(menu_item__item_type='food') | Q(menu_item__item_type='drink', menu_item__serving_point='kitchen')
     ).select_related('menu_item', 'order', 'order__table').order_by('order__created_at')
@@ -481,6 +482,10 @@ VAT_RATE = Decimal('0.16')  # menu prices are treated as VAT-inclusive
 def restaurant_record_payment(request, order_id):
     order = get_object_or_404(Order, id=order_id, room_booking__isnull=True)
 
+    if not order.is_fully_served:
+        messages.error(request, "This order can't be paid yet, every item must be marked Served first.")
+        return redirect('dashboard:restaurant_kitchen')
+    
     if request.method == 'POST':
         instance = Payment(order=order)
         form = PaymentForm(request.POST, instance=instance)
@@ -546,6 +551,65 @@ def restaurant_create_offsite_order(request):
 
     return JsonResponse({'success': True})
 
+@staff_module_required('restaurant_kitchen')
+def restaurant_cancel_item(request, item_id):
+    if request.method != 'POST':
+        return redirect('dashboard:restaurant_kitchen')
+    order_item = get_object_or_404(OrderItem, id=item_id)
+
+    if order_item.prep_status not in ('queued', 'preparing'):
+        messages.error(request, f"Can't cancel {order_item.menu_item.name}, it's already {order_item.get_prep_status_display().lower()}.")
+    else:
+        with transaction.atomic():
+            stock = getattr(order_item.menu_item, 'stock_item', None)
+            if stock:
+                StockItem.objects.filter(id=stock.id).select_for_update().update(
+                    quantity_on_hand=stock.quantity_on_hand + order_item.quantity
+                )
+            order_item.is_cancelled = True
+            order_item.save(update_fields=['is_cancelled'])
+
+            order = order_item.order
+            if not order.items.filter(is_cancelled=False).exists():
+                order.status = 'cancelled'
+                order.save(update_fields=['status'])
+        messages.success(request, f"Cancelled {order_item.menu_item.name}.")
+
+    order = order_item.order
+    if order.table_id:
+        return redirect(f"{reverse('dashboard:restaurant_table_pos', args=[order.table_id])}?order={order.id}")
+    return redirect('dashboard:restaurant_kitchen')
+
+
+@staff_module_required('restaurant_kitchen')
+def restaurant_cancel_order(request, order_id):
+    if request.method != 'POST':
+        return redirect('dashboard:restaurant_kitchen')
+    order = get_object_or_404(Order, id=order_id)
+
+    cancellable = order.items.filter(is_cancelled=False, prep_status__in=['queued', 'preparing'])
+    already_served = order.items.filter(is_cancelled=False, prep_status__in=['ready', 'served']).exists()
+
+    with transaction.atomic():
+        for order_item in cancellable:
+            stock = getattr(order_item.menu_item, 'stock_item', None)
+            if stock:
+                StockItem.objects.filter(id=stock.id).select_for_update().update(
+                    quantity_on_hand=stock.quantity_on_hand + order_item.quantity
+                )
+            order_item.is_cancelled = True
+            order_item.save(update_fields=['is_cancelled'])
+
+        if already_served:
+            messages.success(request, f"Cancelled {cancellable.count()} not-yet-served item(s). Order stays open, some items were already served and must still be paid for.")
+        else:
+            order.status = 'cancelled'
+            order.save(update_fields=['status'])
+            messages.success(request, "Order cancelled.")
+
+    if order.table_id:
+        return redirect('dashboard:restaurant_table_pos', table_id=order.table_id)
+    return redirect('dashboard:restaurant_kitchen')
 
 @staff_module_required('restaurant_kitchen')
 def restaurant_export_pdf(request):

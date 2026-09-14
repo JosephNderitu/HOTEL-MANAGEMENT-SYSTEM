@@ -33,6 +33,9 @@ urlpatterns = [
     path('restaurant-kitchen/new-offsite-order/', views.restaurant_new_offsite_order, name='restaurant_new_offsite_order'),
     path('restaurant-kitchen/create-offsite-order/', views.restaurant_create_offsite_order, name='restaurant_create_offsite_order'),
     path('restaurant-kitchen/export-pdf/', views.restaurant_export_pdf, name='restaurant_export_pdf'),
+    
+    path('restaurant-kitchen/item/<int:item_id>/cancel/', views.restaurant_cancel_item, name='restaurant_cancel_item'),
+    path('restaurant-kitchen/order/<int:order_id>/cancel/', views.restaurant_cancel_order, name='restaurant_cancel_order'),
         
     path('bar/', views.bar_view, name='bar'),
     

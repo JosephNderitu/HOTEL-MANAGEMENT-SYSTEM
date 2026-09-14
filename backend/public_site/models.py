@@ -312,7 +312,7 @@ class Order(models.Model):
 
     @property
     def total_amount(self):
-        return sum(item.unit_price * item.quantity for item in self.items.all())
+        return sum(item.unit_price * item.quantity for item in self.items.all() if not item.is_cancelled)
 
     @property
     def amount_paid(self):
@@ -326,6 +326,13 @@ class Order(models.Model):
     def is_open(self):
         """An order still 'sitting' at a table: not cancelled, and not yet fully paid."""
         return self.status != 'cancelled' and self.balance_due > 0
+    
+    @property
+    def is_fully_served(self):
+        active_items = [i for i in self.items.all() if not i.is_cancelled]
+        if not active_items:
+            return False
+        return all(i.prep_status == 'served' for i in active_items)
     
     def __str__(self):
         return f"Order #{self.id} — {self.customer_name}"
@@ -343,6 +350,7 @@ class OrderItem(models.Model):
     menu_item = models.ForeignKey(MenuItem, on_delete=models.PROTECT)
     tier = models.CharField(max_length=10, choices=[('regular', 'Regular'), ('vip', 'VIP')], default='regular')
     quantity = models.PositiveIntegerField(default=1)
+    is_cancelled = models.BooleanField(default=False)
 
     @property
     def unit_price(self):
