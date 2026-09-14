@@ -1,0 +1,51 @@
+{% extends "admin/change_list.html" %}
+{% block object-tools-items %}
+<li>
+    <button type="button" id="qg-table-bulk-btn" class="button" style="background:#C9A227;color:#000;border:none;">Bulk Add Tables</button>
+</li>
+{{ block.super }}
+{% endblock %}
+
+{% block content %}
+<div id="qg-table-bulk-panel" style="display:none; border:1px solid #0B6B3A; border-radius:10px; padding:16px; margin-bottom:16px; background:#F7F5EE;">
+    <div style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
+        <div><label style="display:block; font-size:11px; font-weight:700;">Start</label><input type="number" id="qg-t-start" style="border:1px solid #0B6B3A; border-radius:6px; padding:6px;"></div>
+        <div><label style="display:block; font-size:11px; font-weight:700;">End</label><input type="number" id="qg-t-end" style="border:1px solid #0B6B3A; border-radius:6px; padding:6px;"></div>
+        <div><label style="display:block; font-size:11px; font-weight:700;">Capacity</label><input type="number" id="qg-t-capacity" value="4" style="border:1px solid #0B6B3A; border-radius:6px; padding:6px;"></div>
+        <button type="button" id="qg-t-submit" class="button" style="background:#0B6B3A;color:#fff;border:none;">Generate</button>
+    </div>
+    <p id="qg-t-msg" style="margin-top:10px; font-size:12px;"></p>
+</div>
+{{ block.super }}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    function getCookie(name) {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+    }
+    const csrftoken = getCookie('csrftoken');
+    document.getElementById('qg-table-bulk-btn').addEventListener('click', function () {
+        const panel = document.getElementById('qg-table-bulk-panel');
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    });
+    document.getElementById('qg-t-submit').addEventListener('click', async function () {
+        const res = await fetch('/admin/public_site/table/bulk-add/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+            body: JSON.stringify({
+                start: document.getElementById('qg-t-start').value,
+                end: document.getElementById('qg-t-end').value,
+                capacity: document.getElementById('qg-t-capacity').value,
+            }),
+        });
+        const data = await res.json();
+        const msg = document.getElementById('qg-t-msg');
+        if (data.error) { msg.style.color = '#dc2626'; msg.textContent = data.error; return; }
+        msg.style.color = '#0B6B3A';
+        msg.textContent = `Created ${data.created.length} table(s).` + (data.skipped.length ? ` Skipped existing: ${data.skipped.join(', ')}.` : '');
+        setTimeout(() => window.location.reload(), 1200);
+    });
+});
+</script>
+{% endblock %}

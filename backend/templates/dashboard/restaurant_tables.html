@@ -1,0 +1,36 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+<style>
+    .tbl-card { border: 1px solid #0B6B3A; border-radius: 14px; padding: 18px; text-align: center; transition: box-shadow 0.2s; text-decoration: none; display: block; }
+    .tbl-card:hover { box-shadow: 0 6px 18px rgba(11,107,58,0.15); }
+    .tbl-badge-empty { background: #f3f4f6; color: #6b7280; }
+    .tbl-badge-open { background: #FEF9EC; color: #92722a; border: 1px solid #C9A227; }
+</style>
+
+<div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+    <div>
+        <h1 class="text-2xl font-bold text-black">Restaurant &amp; Kitchen</h1>
+        <p class="text-gray-500 text-sm">Pick a table to start or continue an order</p>
+    </div>
+    <a href="{% url 'dashboard:restaurant_kitchen_display' %}" class="bg-[#0B6B3A] text-white font-semibold px-5 py-2.5 rounded-full hover:bg-[#095430] transition flex items-center gap-2">
+        <i class="fa-solid fa-fire-burner"></i> Kitchen Display
+    </a>
+</div>
+
+<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+    {% for table in tables %}
+    <a href="{% url 'dashboard:restaurant_table_pos' table.id %}" class="tbl-card">
+        <i class="fa-solid fa-utensils text-xl text-[#0B6B3A] mb-2"></i>
+        <p class="font-bold text-black">Table {{ table.number }}</p>
+        <p class="text-xs text-gray-500 mb-2">{{ table.capacity }} seats</p>
+        {% with count=table.open_orders|length %}
+        <span class="text-[11px] font-semibold px-3 py-1 rounded-full {% if count > 0 %}tbl-badge-open{% else %}tbl-badge-empty{% endif %}">
+            {% if count > 0 %}{{ count }} open order{{ count|pluralize }}{% else %}No open orders{% endif %}
+        </span>
+        {% endwith %}
+    </a>
+    {% empty %}
+    <p class="text-gray-400 col-span-full text-center py-10">No tables yet. Add them via the admin panel.</p>
+    {% endfor %}
+</div>
+{% endblock %}

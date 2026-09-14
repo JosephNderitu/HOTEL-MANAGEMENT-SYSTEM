@@ -1,4 +1,5 @@
 import uuid
+import json
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from .permissions import MODULES, get_allowed_modules, has_full_access
@@ -12,7 +13,7 @@ from .models import GateLog, Payment
 from .forms import GateEntryForm, GateEditForm, ManualBookingForm, PaymentForm
 from django.core.paginator import Paginator
 
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.template.loader import render_to_string
 from weasyprint import HTML
 
@@ -24,6 +25,7 @@ from dashboard.models import Payment
 from store.models import *
 from store.forms import DisbursementRequestForm, DisbursementRequestForm, QuickPurchaseForm
 from django.db import transaction
+from .services import confirm_order_and_deduct_stock
 
 @login_required
 def dashboard_home(request):
@@ -35,7 +37,7 @@ def dashboard_home(request):
         context['gate_inside_count'] = GateLog.objects.filter(status='inside').count()
     return render(request, 'dashboard/home.html', context)
 
-
+###start of reception views
 @staff_module_required('reception')
 def reception_view(request):
     today = timezone.localdate()
@@ -170,25 +172,10 @@ def reception_order_action(request, order_id, action):
     order = get_object_or_404(Order, id=order_id)
 
     if action == 'confirm' and order.status == 'pending':
-        with transaction.atomic():
-            shortfalls = []
-            for order_item in order.items.select_related('menu_item__stock_item'):
-                stock = getattr(order_item.menu_item, 'stock_item', None)
-                if stock and stock.quantity_on_hand < order_item.quantity:
-                    shortfalls.append(f"{order_item.menu_item.name} (have {stock.quantity_on_hand}, need {order_item.quantity})")
-
-            if shortfalls:
-                messages.error(request, f"Cannot confirm, insufficient stock: {', '.join(shortfalls)}.")
-                return redirect('dashboard:reception')
-
-            for order_item in order.items.select_related('menu_item__stock_item'):
-                stock = getattr(order_item.menu_item, 'stock_item', None)
-                if stock:
-                    StockItem.objects.filter(id=stock.id).select_for_update().update(
-                        quantity_on_hand=stock.quantity_on_hand - order_item.quantity
-                    )
-            order.status = 'confirmed'
-            order.save(update_fields=['status'])
+        success, shortfalls = confirm_order_and_deduct_stock(order)
+        if not success:
+            messages.error(request, f"Cannot confirm, insufficient stock: {', '.join(shortfalls)}.")
+            return redirect('dashboard:reception')
 
     elif action == 'cancel' and order.status in ('pending', 'confirmed'):
         if order.status == 'confirmed':
@@ -282,30 +269,18 @@ def reception_confirm_all_orders(request, booking_id):
 
     confirmed_count, shortfall_items = 0, []
     for order in pending_orders:
-        with transaction.atomic():
-            shortfalls = []
-            for order_item in order.items.select_related('menu_item__stock_item'):
-                stock = getattr(order_item.menu_item, 'stock_item', None)
-                if stock and stock.quantity_on_hand < order_item.quantity:
-                    shortfalls.append(f"{order_item.menu_item.name}")
-            if shortfalls:
-                shortfall_items.extend(shortfalls)
-                continue
-            for order_item in order.items.select_related('menu_item__stock_item'):
-                stock = getattr(order_item.menu_item, 'stock_item', None)
-                if stock:
-                    StockItem.objects.filter(id=stock.id).select_for_update().update(
-                        quantity_on_hand=stock.quantity_on_hand - order_item.quantity
-                    )
-            order.status = 'confirmed'
-            order.save(update_fields=['status'])
+        success, shortfalls = confirm_order_and_deduct_stock(order)
+        if success:
             confirmed_count += 1
+        else:
+            shortfall_items.extend(shortfalls)
 
     if confirmed_count:
         messages.success(request, f"Confirmed {confirmed_count} order(s) for {booking.guest_name}.")
     if shortfall_items:
         messages.error(request, f"Could not confirm, insufficient stock: {', '.join(set(shortfall_items))}.")
     return redirect('dashboard:reception')
+
 
 @staff_module_required('reception')
 def reception_record_payment(request, target_type, target_id):
@@ -331,6 +306,7 @@ def reception_record_payment(request, target_type, target_id):
         'form': form, 'target': target, 'target_type': target_type,
     })
 
+##end of reception views
 
 @staff_module_required('rooms')
 def rooms_view(request):
@@ -338,8 +314,147 @@ def rooms_view(request):
 
 
 @staff_module_required('restaurant_kitchen')
-def restaurant_kitchen_view(request):
-    return render(request, 'dashboard/module_placeholder.html', {'module_label': 'Restaurant & Kitchen'})
+def restaurant_tables_view(request):
+    tables = Table.objects.all().order_by('number')
+    return render(request, 'dashboard/restaurant_tables.html', {'tables': tables})
+
+
+@staff_module_required('restaurant_kitchen')
+def restaurant_table_pos(request, table_id):
+    table = get_object_or_404(Table, id=table_id)
+    open_orders = table.open_orders
+
+    selected_order = None
+    order_param = request.GET.get('order')
+    if order_param and order_param != 'new':
+        selected_order = next((o for o in open_orders if str(o.id) == order_param), None)
+
+    food_items = MenuItem.objects.filter(item_type='food', is_available=True).select_related('stock_item').prefetch_related('images')
+    kitchen_drinks = MenuItem.objects.filter(item_type='drink', serving_point='kitchen', is_available=True).select_related('stock_item').prefetch_related('images')
+    menu_items = [i for i in list(food_items) + list(kitchen_drinks) if i.is_in_stock]
+    categories = sorted(set(i.category for i in menu_items if i.category))
+
+    return render(request, 'dashboard/restaurant_table_pos.html', {
+        'table': table,
+        'open_orders': open_orders,
+        'selected_order': selected_order,
+        'menu_items': menu_items,
+        'categories': categories,
+        'default_tier': 'vip' if table.is_vip else 'regular',
+    })
+
+@staff_module_required('restaurant_kitchen')
+def restaurant_add_items(request, order_id):
+    if request.method != 'POST':
+        return redirect('dashboard:restaurant_kitchen')
+    order = get_object_or_404(Order, id=order_id)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid request.'}, status=400)
+
+    raw_items = data.get('items', [])
+    if not raw_items:
+        return JsonResponse({'error': 'Add at least one item.'}, status=400)
+
+    resolved = []
+    for item in raw_items:
+        try:
+            menu_item = MenuItem.objects.select_related('stock_item').get(id=item['id'], is_available=True)
+        except (MenuItem.DoesNotExist, KeyError):
+            continue
+        tier = item.get('tier') if item.get('tier') in ('regular', 'vip') else 'regular'
+        resolved.append((menu_item, tier, max(int(item.get('qty', 1)), 1)))
+
+    shortfalls = [mi.name for mi, _, qty in resolved if getattr(mi, 'stock_item', None) and mi.stock_item.quantity_on_hand < qty]
+    if shortfalls:
+        return JsonResponse({'error': f"Insufficient stock: {', '.join(shortfalls)}."}, status=409)
+
+    with transaction.atomic():
+        for menu_item, tier, qty in resolved:
+            OrderItem.objects.create(
+                order=order, menu_item=menu_item, tier=tier, quantity=qty,
+                prep_status='ready' if menu_item.is_quick_serve else 'queued',
+            )
+            stock = getattr(menu_item, 'stock_item', None)
+            if stock:
+                StockItem.objects.filter(id=stock.id).select_for_update().update(quantity_on_hand=stock.quantity_on_hand - qty)
+
+    return JsonResponse({'success': True})
+
+@staff_module_required('restaurant_kitchen')
+def restaurant_new_order(request, table_id):
+    if request.method != 'POST':
+        return redirect('dashboard:restaurant_kitchen')
+    table = get_object_or_404(Table, id=table_id)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid request.'}, status=400)
+
+    items = data.get('items', [])
+    if not items:
+        return JsonResponse({'error': 'Add at least one item.'}, status=400)
+
+    order = Order.objects.create(
+        customer_name=data.get('customer_name', '').strip() or f"Table {table.number}",
+        customer_phone=data.get('customer_phone', '').strip(),
+        notes=data.get('notes', '').strip(),
+        table=table,
+        status='pending',
+    )
+    for item in items:
+        try:
+            menu_item = MenuItem.objects.get(id=item['id'], is_available=True)
+        except (MenuItem.DoesNotExist, KeyError):
+            continue
+        tier = item.get('tier') if item.get('tier') in ('regular', 'vip') else 'regular'
+        OrderItem.objects.create(order=order, menu_item=menu_item, tier=tier, quantity=max(int(item.get('qty', 1)), 1))
+
+    success, shortfalls = confirm_order_and_deduct_stock(order)
+    if not success:
+        order.delete()
+        return JsonResponse({'error': f"Insufficient stock: {', '.join(shortfalls)}."}, status=409)
+
+    
+    return JsonResponse({'success': True})
+
+
+COURSE_PRIORITY = {'starter': 0, 'main': 1, 'dessert': 2}
+
+
+@staff_module_required('restaurant_kitchen')
+def restaurant_kitchen_display(request):
+
+    active_items = OrderItem.objects.filter(
+        prep_status__in=['queued', 'preparing', 'ready'],
+        order__status='confirmed',
+    ).filter(
+        Q(menu_item__item_type='food') | Q(menu_item__item_type='drink', menu_item__serving_point='kitchen')
+    ).select_related('menu_item', 'order', 'order__table').order_by('order__created_at')
+    
+    active_items = sorted(
+        active_items,
+        key=lambda oi: (COURSE_PRIORITY.get(oi.menu_item.course, 1), oi.order.created_at)
+    )
+
+    return render(request, 'dashboard/restaurant_kitchen_display.html', {'active_items': active_items})
+
+
+@staff_module_required('restaurant_kitchen')
+def restaurant_advance_item(request, item_id, new_status):
+    if request.method != 'POST':
+        return redirect('dashboard:restaurant_kitchen_display')
+    order_item = get_object_or_404(OrderItem, id=item_id)
+    valid_next = {'queued': 'preparing', 'preparing': 'ready', 'ready': 'served'}
+    if valid_next.get(order_item.prep_status) != new_status:
+        messages.error(request, "That status change isn't valid from the item's current state.")
+        return redirect('dashboard:restaurant_kitchen_display')
+    order_item.prep_status = new_status
+    order_item.save(update_fields=['prep_status'])
+    return redirect('dashboard:restaurant_kitchen_display')
 
 
 @staff_module_required('bar')
@@ -569,6 +684,7 @@ def store_disbursement_detail(request, disbursement_id):
                     menu_item = MenuItem.objects.create(
                         name=data['new_item_name'],
                         item_type='drink' if d.department == 'bar' else 'food',
+                        serving_point='bar' if d.department == 'bar' else 'kitchen',
                         category=data.get('menu_category', ''),
                         regular_price=data['menu_regular_price'],
                         vip_price=data.get('menu_vip_price') or None,

@@ -201,11 +201,41 @@ class Booking(models.Model):
         return f"{self.guest_name} — {target} ({self.check_in} to {self.check_out})"
 
 
+class Table(models.Model):
+    STATUS_CHOICES = [
+        ('available', 'Available'),
+        ('occupied', 'Occupied'),
+        ('needs_cleaning', 'Needs Cleaning'),
+    ]
+    number = models.CharField(max_length=20, unique=True)
+    capacity = models.PositiveIntegerField(default=4)
+    is_vip = models.BooleanField(default=False, help_text="VIP dining area. New orders here default to VIP pricing.")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='available')
+
+    @property
+    def open_orders(self):
+        return [o for o in self.orders.exclude(status='cancelled').order_by('-created_at') if o.balance_due > 0]
+    def __str__(self):
+        return f"Table {self.number}"
+
 class MenuItem(models.Model):
     ITEM_TYPE_CHOICES = [
         ('food', 'Food'),
         ('drink', 'Drink'),
     ]
+    COURSE_CHOICES = [
+        ('starter', 'Starter'),
+        ('main', 'Main Course'),
+        ('dessert', 'Dessert'),
+    ]
+    SERVING_POINT_CHOICES = [
+        ('kitchen', 'Kitchen (Restaurant)'),
+        ('bar', 'Bar'),
+    ]
+    serving_point = models.CharField(
+        max_length=10, choices=SERVING_POINT_CHOICES, default='kitchen',
+        help_text="For drinks: where this is served from. Tea/coffee/water/soft drinks = Kitchen. Beer/spirits/wine/cocktails = Bar."
+    )
     name = models.CharField(max_length=150)
     item_type = models.CharField(max_length=10, choices=ITEM_TYPE_CHOICES)
     category = models.CharField(max_length=100, blank=True)
@@ -213,6 +243,11 @@ class MenuItem(models.Model):
     vip_price = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True,
         help_text="Leave blank if this item has no separate VIP price"
+    )
+    course = models.CharField(max_length=10, choices=COURSE_CHOICES, default='main')
+    is_quick_serve = models.BooleanField(
+        default=False,
+        help_text="Already made / doesn't need active cooking (e.g. bottled drinks, pre-made snacks). Skips the 'Preparing' step in the kitchen queue."
     )
     description = models.TextField(blank=True)
     is_available = models.BooleanField(default=True)
@@ -264,6 +299,7 @@ class Order(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
     room_booking = models.ForeignKey('Booking', on_delete=models.SET_NULL, null=True, blank=True, related_name='room_service_orders')
+    table = models.ForeignKey(Table, on_delete=models.SET_NULL, null=True, blank=True, related_name='orders')
 
     @property
     def total_amount(self):
@@ -277,11 +313,23 @@ class Order(models.Model):
     def balance_due(self):
         return self.total_amount - self.amount_paid
     
+    @property
+    def is_open(self):
+        """An order still 'sitting' at a table: not cancelled, and not yet fully paid."""
+        return self.status != 'cancelled' and self.balance_due > 0
+    
     def __str__(self):
         return f"Order #{self.id} — {self.customer_name}"
 
 
 class OrderItem(models.Model):
+    PREP_STATUS_CHOICES = [
+        ('queued', 'Queued'),
+        ('preparing', 'Preparing'),
+        ('ready', 'Ready to Serve'),
+        ('served', 'Served'),
+    ]
+    prep_status = models.CharField(max_length=10, choices=PREP_STATUS_CHOICES, default='queued')
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
     menu_item = models.ForeignKey(MenuItem, on_delete=models.PROTECT)
     tier = models.CharField(max_length=10, choices=[('regular', 'Regular'), ('vip', 'VIP')], default='regular')
@@ -297,6 +345,7 @@ class OrderItem(models.Model):
         return f"{self.quantity} x {self.menu_item.name} ({self.get_tier_display()})"
 
 
+#######Mesaaging/contact models for public site (guest-facing) #######
 
 class Conversation(models.Model):
     email = models.EmailField(unique=True)

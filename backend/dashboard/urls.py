@@ -21,7 +21,14 @@ urlpatterns = [
     path('reception/confirm-all-orders/<int:booking_id>/', views.reception_confirm_all_orders, name='reception_confirm_all_orders'),
 
     path('rooms/', views.rooms_view, name='rooms'),
-    path('restaurant-kitchen/', views.restaurant_kitchen_view, name='restaurant_kitchen'),
+   
+    path('restaurant-kitchen/', views.restaurant_tables_view, name='restaurant_kitchen'),
+    path('restaurant-kitchen/table/<int:table_id>/new-order/', views.restaurant_new_order, name='restaurant_new_order'),
+    path('restaurant-kitchen/table/<int:table_id>/', views.restaurant_table_pos, name='restaurant_table_pos'),
+    path('restaurant-kitchen/order/<int:order_id>/add-items/', views.restaurant_add_items, name='restaurant_add_items'),
+    path('restaurant-kitchen/display/', views.restaurant_kitchen_display, name='restaurant_kitchen_display'),
+    path('restaurant-kitchen/item/<int:item_id>/advance/<str:new_status>/', views.restaurant_advance_item, name='restaurant_advance_item'),
+        
     path('bar/', views.bar_view, name='bar'),
     
     path('gate/', views.gate_view, name='gate'),

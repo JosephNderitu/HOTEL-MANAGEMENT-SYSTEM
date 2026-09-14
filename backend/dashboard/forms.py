@@ -1,6 +1,6 @@
 from django import forms
 from .models import GateLog
-from public_site.models import Booking, RoomType, ConferenceRoom
+from public_site.models import *
 from .models import Payment
 
 FIELD_CLASS = 'w-full border border-[#0B6B3A] rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B6B3A]/20'
@@ -83,3 +83,9 @@ class PaymentForm(forms.ModelForm):
             'method': forms.Select(attrs={'class': FIELD_CLASS}),
             'reference': forms.TextInput(attrs={'class': FIELD_CLASS, 'placeholder': 'M-Pesa code / reference (optional)'}),
         }
+
+
+class TableRangeForm(forms.Form):
+    start = forms.IntegerField()
+    end = forms.IntegerField()
+    capacity = forms.IntegerField(initial=4)

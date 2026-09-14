@@ -1,0 +1,49 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+<style>
+    .kds-card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 14px; margin-bottom: 10px; background: #fff; }
+    .kds-card.queued { border-left: 4px solid #C9A227; }
+    .kds-card.preparing { border-left: 4px solid #3b82f6; }
+    .kds-card.ready { border-left: 4px solid #0B6B3A; background: #F0FDF4; }
+    .kds-course-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 2px 8px; border-radius: 9999px; background: #F7F5EE; color: #92722a; }
+</style>
+
+<div class="flex items-center justify-between mb-6">
+    <div>
+        <h1 class="text-2xl font-bold text-black">Kitchen Display</h1>
+        <p class="text-gray-500 text-sm">Sorted by course, starters and ready-made items surface first</p>
+    </div>
+    <a href="{% url 'dashboard:restaurant_kitchen' %}" class="text-[#0B6B3A] font-semibold text-sm hover:underline">&larr; Back to Tables</a>
+</div>
+
+<div class="grid md:grid-cols-3 gap-4">
+    {% for item in active_items %}
+    <div class="kds-card {{ item.prep_status }}">
+        <div class="flex justify-between items-start mb-2">
+            <span class="kds-course-badge">{{ item.menu_item.get_course_display }}</span>
+            <span class="text-xs text-gray-400">{{ item.order.created_at|date:"H:i" }}</span>
+        </div>
+        <p class="font-bold text-black">{{ item.quantity }}x {{ item.menu_item.name }}</p>
+        <p class="text-xs text-gray-500 mb-3">
+            {% if item.order.table %}Table {{ item.order.table.number }}{% else %}{{ item.order.customer_name }}{% endif %}
+            {% if item.menu_item.is_quick_serve %}<span class="text-[#0B6B3A] font-semibold"> · Ready-made</span>{% endif %}
+        </p>
+        {% if item.prep_status == 'queued' %}
+        <form method="post" action="{% url 'dashboard:restaurant_advance_item' item.id 'preparing' %}">{% csrf_token %}
+            <button class="w-full text-xs font-semibold bg-[#3b82f6] text-white py-2 rounded-full">Start Preparing</button>
+        </form>
+        {% elif item.prep_status == 'preparing' %}
+        <form method="post" action="{% url 'dashboard:restaurant_advance_item' item.id 'ready' %}">{% csrf_token %}
+            <button class="w-full text-xs font-semibold bg-[#0B6B3A] text-white py-2 rounded-full">Mark Ready</button>
+        </form>
+        {% elif item.prep_status == 'ready' %}
+        <form method="post" action="{% url 'dashboard:restaurant_advance_item' item.id 'served' %}">{% csrf_token %}
+            <button class="w-full text-xs font-semibold bg-[#C9A227] text-black py-2 rounded-full">Mark Served</button>
+        </form>
+        {% endif %}
+    </div>
+    {% empty %}
+    <p class="text-gray-400 col-span-full text-center py-10">No active items in the kitchen queue.</p>
+    {% endfor %}
+</div>
+{% endblock %}

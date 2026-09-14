@@ -289,16 +289,16 @@ class MenuItemImageInline(admin.TabularInline):
 
 @admin.register(MenuItem)
 class MenuItemAdmin(admin.ModelAdmin):
-    list_display = ('thumbnail', 'name', 'item_type', 'category', 'regular_price', 'vip_price', 'is_available')
+    list_display = ('thumbnail', 'name', 'item_type', 'category', 'regular_price', 'vip_price', 'is_available', 'serving_point')
     list_display_links = ('name',)
     list_editable = ('regular_price', 'vip_price', 'is_available')
-    list_filter = ('item_type', 'category', 'is_available')
+    list_filter = ('item_type', 'category', 'is_available', 'serving_point')
     search_fields = ('name', 'category', 'description')
     ordering = ('item_type', 'name')
     inlines = [MenuItemImageInline]
 
     fieldsets = (
-        ('Item Details', {'fields': ('name', 'item_type', 'category', 'description')}),
+        ('Item Details', {'fields': ('name', 'item_type', 'category', 'course', 'serving_point', 'is_quick_serve', 'description')}),
         ('Pricing & Availability', {'fields': (('regular_price', 'vip_price'), 'is_available')}),
     )
 
@@ -436,3 +436,45 @@ class ConversationAdmin(admin.ModelAdmin):
             },
         })
         
+from .models import Table
+
+
+@admin.register(Table)
+class TableAdmin(admin.ModelAdmin):
+    list_display = ('number', 'capacity', 'status_badge', 'is_vip')
+    list_filter = ('status', 'is_vip')
+    change_list_template = 'admin/public_site/table/change_list.html'
+
+    @admin.display(description='Status')
+    def status_badge(self, obj):
+        colors = {'available': '#0B6B3A', 'occupied': '#C9A227', 'needs_cleaning': '#3b82f6'}
+        color = colors.get(obj.status, '#6b7280')
+        text_color = '#000' if obj.status == 'occupied' else '#fff'
+        return format_html(
+            '<span style="background:{}; color:{}; padding:3px 10px; border-radius:9999px; font-size:11px; font-weight:700;">{}</span>',
+            color, text_color, obj.get_status_display().upper(),
+        )
+
+    def get_urls(self):
+        custom = [path('bulk-add/', self.admin_site.admin_view(self.bulk_add), name='public_site_table_bulk_add')]
+        return custom + super().get_urls()
+
+    def bulk_add(self, request):
+        if request.method != 'POST':
+            return JsonResponse({'error': 'POST required'}, status=405)
+        try:
+            data = json.loads(request.body)
+            start, end, capacity = int(data['start']), int(data['end']), int(data.get('capacity', 4))
+        except (KeyError, ValueError, TypeError):
+            return JsonResponse({'error': 'Enter valid start, end, and capacity numbers.'}, status=400)
+        if end < start or (end - start) > 100:
+            return JsonResponse({'error': 'Invalid range (max 100 tables at a time).'}, status=400)
+
+        created, skipped = [], []
+        for num in range(start, end + 1):
+            if Table.objects.filter(number=str(num)).exists():
+                skipped.append(str(num))
+                continue
+            t = Table.objects.create(number=str(num), capacity=capacity)
+            created.append(t.number)
+        return JsonResponse({'success': True, 'created': created, 'skipped': skipped})
