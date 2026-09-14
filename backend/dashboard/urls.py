@@ -28,6 +28,11 @@ urlpatterns = [
     path('restaurant-kitchen/order/<int:order_id>/add-items/', views.restaurant_add_items, name='restaurant_add_items'),
     path('restaurant-kitchen/display/', views.restaurant_kitchen_display, name='restaurant_kitchen_display'),
     path('restaurant-kitchen/item/<int:item_id>/advance/<str:new_status>/', views.restaurant_advance_item, name='restaurant_advance_item'),
+    
+    path('restaurant-kitchen/order/<int:order_id>/payment/', views.restaurant_record_payment, name='restaurant_record_payment'),
+    path('restaurant-kitchen/new-offsite-order/', views.restaurant_new_offsite_order, name='restaurant_new_offsite_order'),
+    path('restaurant-kitchen/create-offsite-order/', views.restaurant_create_offsite_order, name='restaurant_create_offsite_order'),
+    path('restaurant-kitchen/export-pdf/', views.restaurant_export_pdf, name='restaurant_export_pdf'),
         
     path('bar/', views.bar_view, name='bar'),
     

@@ -293,6 +293,15 @@ class Order(models.Model):
         ('confirmed', 'Confirmed'),
         ('cancelled', 'Cancelled'),
     ]
+    ORDER_TYPE_CHOICES = [
+        ('dine_in', 'Dine In'),
+        ('takeaway', 'Takeaway'),
+        ('conference', 'Conference Catering'),
+        ('event', 'Event / Bulk Order'),
+    ]
+    order_type = models.CharField(max_length=12, choices=ORDER_TYPE_CHOICES, default='dine_in')
+    served_at = models.CharField(max_length=150, blank=True, help_text="For conference/event orders: location or event name")
+    party_size = models.PositiveIntegerField(null=True, blank=True, help_text="Number of guests, for event/bulk orders")
     customer_name = models.CharField(max_length=150)
     customer_phone = models.CharField(max_length=20)
     notes = models.TextField(blank=True)

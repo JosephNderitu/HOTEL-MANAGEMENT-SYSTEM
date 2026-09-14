@@ -27,6 +27,8 @@ from store.forms import DisbursementRequestForm, DisbursementRequestForm, QuickP
 from django.db import transaction
 from .services import confirm_order_and_deduct_stock
 
+from decimal import Decimal
+
 @login_required
 def dashboard_home(request):
     context = {
@@ -54,7 +56,7 @@ def reception_view(request):
         bookings_qs = bookings_qs.filter(status=booking_status)
     if booking_query:
         bookings_qs = bookings_qs.filter(Q(guest_name__icontains=booking_query) | Q(guest_phone__icontains=booking_query))
-    booking_page_obj = Paginator(bookings_qs, 15).get_page(request.GET.get('booking_page'))
+    booking_page_obj = Paginator(bookings_qs, 5).get_page(request.GET.get('booking_page'))
 
     order_status = request.GET.get('order_status', '')
     
@@ -63,7 +65,7 @@ def reception_view(request):
     
     if order_status:
         orders_qs = orders_qs.filter(status=order_status)
-    order_page_obj = Paginator(orders_qs, 15).get_page(request.GET.get('order_page'))
+    order_page_obj = Paginator(orders_qs, 5).get_page(request.GET.get('order_page'))
 
     arrivals_today = Booking.objects.filter(check_in=today, status__in=['pending', 'confirmed']).count()
     departures_today = Booking.objects.filter(check_out=today, status='checked_in').count()
@@ -316,8 +318,24 @@ def rooms_view(request):
 @staff_module_required('restaurant_kitchen')
 def restaurant_tables_view(request):
     tables = Table.objects.all().order_by('number')
-    return render(request, 'dashboard/restaurant_tables.html', {'tables': tables})
+    today = timezone.localdate()
 
+    restaurant_payments = Payment.objects.filter(order__room_booking__isnull=True, created_at__date=today)
+    today_revenue = restaurant_payments.aggregate(total=Sum('amount'))['total'] or 0
+    revenue_by_method = {
+        code: restaurant_payments.filter(method=code).aggregate(total=Sum('amount'))['total'] or 0
+        for code, _ in Payment.METHOD_CHOICES
+    }
+
+    offsite_qs = Order.objects.filter(room_booking__isnull=True, table__isnull=True, status='confirmed').prefetch_related('items__menu_item').order_by('-created_at')
+    offsite_open_orders = [o for o in offsite_qs if o.balance_due > 0]
+
+    return render(request, 'dashboard/restaurant_tables.html', {
+        'tables': tables,
+        'today_revenue': today_revenue,
+        'revenue_by_method': revenue_by_method,
+        'offsite_open_orders': offsite_open_orders,
+    })
 
 @staff_module_required('restaurant_kitchen')
 def restaurant_table_pos(request, table_id):
@@ -455,6 +473,112 @@ def restaurant_advance_item(request, item_id, new_status):
     order_item.prep_status = new_status
     order_item.save(update_fields=['prep_status'])
     return redirect('dashboard:restaurant_kitchen_display')
+
+VAT_RATE = Decimal('0.16')  # menu prices are treated as VAT-inclusive
+
+
+@staff_module_required('restaurant_kitchen')
+def restaurant_record_payment(request, order_id):
+    order = get_object_or_404(Order, id=order_id, room_booking__isnull=True)
+
+    if request.method == 'POST':
+        instance = Payment(order=order)
+        form = PaymentForm(request.POST, instance=instance)
+        if form.is_valid():
+            payment = form.save(commit=False)
+            payment.received_by = request.user
+            payment.save()
+            messages.success(request, f"Payment of KSh {payment.amount:,.0f} recorded for Order #{order.id}.")
+            return redirect('dashboard:restaurant_kitchen')
+    else:
+        form = PaymentForm(initial={'amount': order.balance_due})
+
+    return render(request, 'dashboard/restaurant_payment.html', {'form': form, 'order': order})
+
+
+@staff_module_required('restaurant_kitchen')
+def restaurant_new_offsite_order(request):
+    food_items = MenuItem.objects.filter(item_type='food', is_available=True).select_related('stock_item').prefetch_related('images')
+    kitchen_drinks = MenuItem.objects.filter(item_type='drink', serving_point='kitchen', is_available=True).select_related('stock_item').prefetch_related('images')
+    menu_items = [i for i in list(food_items) + list(kitchen_drinks) if i.is_in_stock]
+    categories = sorted(set(i.category for i in menu_items if i.category))
+    return render(request, 'dashboard/restaurant_offsite_order.html', {'menu_items': menu_items, 'categories': categories})
+
+
+@staff_module_required('restaurant_kitchen')
+def restaurant_create_offsite_order(request):
+    if request.method != 'POST':
+        return redirect('dashboard:restaurant_kitchen')
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid request.'}, status=400)
+
+    order_type = data.get('order_type')
+    if order_type not in ('takeaway', 'conference', 'event'):
+        return JsonResponse({'error': 'Invalid order type.'}, status=400)
+
+    items = data.get('items', [])
+    if not items:
+        return JsonResponse({'error': 'Add at least one item.'}, status=400)
+
+    order = Order.objects.create(
+        customer_name=data.get('customer_name', '').strip() or order_type.replace('_', ' ').title(),
+        customer_phone=data.get('customer_phone', '').strip(),
+        notes=data.get('notes', '').strip(),
+        order_type=order_type,
+        served_at=data.get('served_at', '').strip(),
+        party_size=data.get('party_size') or None,
+        status='pending',
+    )
+    for item in items:
+        try:
+            menu_item = MenuItem.objects.get(id=item['id'], is_available=True)
+        except (MenuItem.DoesNotExist, KeyError):
+            continue
+        tier = item.get('tier') if item.get('tier') in ('regular', 'vip') else 'regular'
+        OrderItem.objects.create(order=order, menu_item=menu_item, tier=tier, quantity=max(int(item.get('qty', 1)), 1))
+
+    success, shortfalls = confirm_order_and_deduct_stock(order)
+    if not success:
+        order.delete()
+        return JsonResponse({'error': f"Insufficient stock: {', '.join(shortfalls)}."}, status=409)
+
+    return JsonResponse({'success': True})
+
+
+@staff_module_required('restaurant_kitchen')
+def restaurant_export_pdf(request):
+    date_from = request.GET.get('date_from', '').strip()
+    date_to = request.GET.get('date_to', '').strip()
+
+    orders_qs = Order.objects.filter(room_booking__isnull=True, status='confirmed').prefetch_related('items__menu_item').order_by('created_at')
+    if date_from:
+        orders_qs = orders_qs.filter(created_at__date__gte=date_from)
+    if date_to:
+        orders_qs = orders_qs.filter(created_at__date__lte=date_to)
+
+    grand_total = Decimal('0')
+    for order in orders_qs:
+        grand_total += order.total_amount
+
+    subtotal_excl_vat = grand_total / (1 + VAT_RATE)
+    vat_amount = grand_total - subtotal_excl_vat
+
+    html_string = render_to_string('dashboard/restaurant_report_pdf.html', {
+        'orders': orders_qs,
+        'date_from': date_from,
+        'date_to': date_to,
+        'generated_at': timezone.now(),
+        'generated_by': request.user.get_full_name() or request.user.username,
+        'grand_total': grand_total,
+        'subtotal_excl_vat': subtotal_excl_vat,
+        'vat_amount': vat_amount,
+    })
+    pdf_file = HTML(string=html_string, base_url=request.build_absolute_uri('/')).write_pdf()
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="restaurant_sales_{timezone.now().date()}.pdf"'
+    return response
 
 
 @staff_module_required('bar')

@@ -5,19 +5,66 @@
     .tbl-card:hover { box-shadow: 0 6px 18px rgba(11,107,58,0.15); }
     .tbl-badge-empty { background: #f3f4f6; color: #6b7280; }
     .tbl-badge-open { background: #FEF9EC; color: #92722a; border: 1px solid #C9A227; }
+    .rst-stat { border: 1px solid #0B6B3A; border-radius: 14px; padding: 16px 18px; background: #fff; }
 </style>
 
 <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
     <div>
         <h1 class="text-2xl font-bold text-black">Restaurant &amp; Kitchen</h1>
-        <p class="text-gray-500 text-sm">Pick a table to start or continue an order</p>
+        <p class="text-gray-500 text-sm">Tables, takeaway, and catering orders</p>
     </div>
-    <a href="{% url 'dashboard:restaurant_kitchen_display' %}" class="bg-[#0B6B3A] text-white font-semibold px-5 py-2.5 rounded-full hover:bg-[#095430] transition flex items-center gap-2">
-        <i class="fa-solid fa-fire-burner"></i> Kitchen Display
-    </a>
+    <div class="flex gap-3 flex-wrap">
+        <a href="{% url 'dashboard:restaurant_new_offsite_order' %}" class="bg-white border-2 border-[#0B6B3A] text-[#0B6B3A] font-semibold px-5 py-2.5 rounded-full hover:bg-[#0B6B3A] hover:text-white transition flex items-center gap-2">
+            <i class="fa-solid fa-bag-shopping"></i> Takeaway / Event Order
+        </a>
+        <a href="{% url 'dashboard:restaurant_kitchen_display' %}" class="bg-[#0B6B3A] text-white font-semibold px-5 py-2.5 rounded-full hover:bg-[#095430] transition flex items-center gap-2">
+            <i class="fa-solid fa-fire-burner"></i> Kitchen Display
+        </a>
+    </div>
 </div>
 
-<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+{% if messages %}
+{% for message in messages %}
+<div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-5">
+    {{ message }}
+</div>
+{% endfor %}
+{% endif %}
+
+<!-- Earnings -->
+<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 mb-4">
+    <div class="rst-stat">
+        <p class="text-[11px] text-gray-500 uppercase mb-1">Today's Total</p>
+        <p class="text-lg font-bold text-[#0B6B3A]">KSh {{ today_revenue|floatformat:0 }}</p>
+    </div>
+    <div class="rst-stat">
+        <p class="text-[11px] text-gray-500 uppercase mb-1">Cash</p>
+        <p class="text-lg font-bold text-black">KSh {{ revenue_by_method.cash|floatformat:0 }}</p>
+    </div>
+    <div class="rst-stat">
+        <p class="text-[11px] text-gray-500 uppercase mb-1">M-Pesa</p>
+        <p class="text-lg font-bold text-black">KSh {{ revenue_by_method.mpesa|floatformat:0 }}</p>
+    </div>
+    <div class="rst-stat">
+        <p class="text-[11px] text-gray-500 uppercase mb-1">Swipe</p>
+        <p class="text-lg font-bold text-black">KSh {{ revenue_by_method.swipe|floatformat:0 }}</p>
+    </div>
+    <div class="rst-stat">
+        <p class="text-[11px] text-gray-500 uppercase mb-1">Bank</p>
+        <p class="text-lg font-bold text-black">KSh {{ revenue_by_method.bank_equity|add:revenue_by_method.bank_family|add:revenue_by_method.bank_coop|floatformat:0 }}</p>
+    </div>
+    <div class="rst-stat flex flex-col justify-center">
+        <form method="get" action="{% url 'dashboard:restaurant_export_pdf' %}" class="flex flex-col gap-1">
+            <input type="date" name="date_from" class="border border-[#0B6B3A] rounded text-[10px] px-1 py-1">
+            <input type="date" name="date_to" class="border border-[#0B6B3A] rounded text-[10px] px-1 py-1">
+            <button type="submit" class="bg-[#C9A227] text-black text-[10px] font-semibold py-1.5 rounded-full"><i class="fa-solid fa-file-pdf mr-1"></i>Sales Report</button>
+        </form>
+    </div>
+</div>
+
+<!-- Tables -->
+<h2 class="font-bold text-black mb-3 mt-8">Tables</h2>
+<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 mb-10">
     {% for table in tables %}
     <a href="{% url 'dashboard:restaurant_table_pos' table.id %}" class="tbl-card">
         <i class="fa-solid fa-utensils text-xl text-[#0B6B3A] mb-2"></i>
@@ -33,4 +80,37 @@
     <p class="text-gray-400 col-span-full text-center py-10">No tables yet. Add them via the admin panel.</p>
     {% endfor %}
 </div>
+
+<!-- Takeaway / Conference / Event orders -->
+{% if offsite_open_orders %}
+<h2 class="font-bold text-black mb-3">Takeaway, Conference &amp; Event Orders</h2>
+<div class="border border-gray-200 rounded-xl overflow-x-auto mb-10">
+    <table class="w-full text-sm">
+        <thead>
+            <tr class="text-left text-xs text-gray-500 uppercase border-b border-gray-200">
+                <th class="p-3">Customer</th>
+                <th class="p-3">Type</th>
+                <th class="p-3">Location / Event</th>
+                <th class="p-3">Party</th>
+                <th class="p-3">Total</th>
+                <th class="p-3">Balance</th>
+                <th class="p-3">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for order in offsite_open_orders %}
+            <tr class="border-b border-gray-100">
+                <td class="p-3 font-semibold">{{ order.customer_name }}<br><span class="text-xs text-gray-400 font-normal">{{ order.customer_phone }}</span></td>
+                <td class="p-3">{{ order.get_order_type_display }}</td>
+                <td class="p-3">{{ order.served_at|default:"—" }}</td>
+                <td class="p-3">{{ order.party_size|default:"—" }}</td>
+                <td class="p-3">KSh {{ order.total_amount|floatformat:0 }}</td>
+                <td class="p-3 text-red-600 font-semibold">KSh {{ order.balance_due|floatformat:0 }}</td>
+                <td class="p-3"><a href="{% url 'dashboard:restaurant_record_payment' order.id %}" class="text-xs font-semibold bg-[#C9A227] text-black px-3 py-1.5 rounded-full">Record Payment</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
 {% endblock %}
