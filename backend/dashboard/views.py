@@ -330,12 +330,14 @@ def restaurant_tables_view(request):
 
     offsite_qs = Order.objects.filter(room_booking__isnull=True, table__isnull=True, status='confirmed').prefetch_related('items__menu_item').order_by('-created_at')
     offsite_open_orders = [o for o in offsite_qs if o.balance_due > 0]
+    waiting_count = WaitlistEntry.objects.filter(status='waiting').count()
 
     return render(request, 'dashboard/restaurant_tables.html', {
         'tables': tables,
         'today_revenue': today_revenue,
         'revenue_by_method': revenue_by_method,
         'offsite_open_orders': offsite_open_orders,
+        'waiting_count': waiting_count,
     })
 
 @staff_module_required('restaurant_kitchen')
@@ -556,8 +558,11 @@ def restaurant_cancel_item(request, item_id):
     if request.method != 'POST':
         return redirect('dashboard:restaurant_kitchen')
     order_item = get_object_or_404(OrderItem, id=item_id)
+    reason = request.POST.get('reason', '').strip()
 
-    if order_item.prep_status not in ('queued', 'preparing'):
+    if not reason:
+        messages.error(request, "A reason is required to cancel an item.")
+    elif order_item.prep_status not in ('queued', 'preparing'):
         messages.error(request, f"Can't cancel {order_item.menu_item.name}, it's already {order_item.get_prep_status_display().lower()}.")
     else:
         with transaction.atomic():
@@ -567,7 +572,10 @@ def restaurant_cancel_item(request, item_id):
                     quantity_on_hand=stock.quantity_on_hand + order_item.quantity
                 )
             order_item.is_cancelled = True
-            order_item.save(update_fields=['is_cancelled'])
+            order_item.cancel_reason = reason
+            order_item.cancelled_by = request.user
+            order_item.cancelled_at = timezone.now()
+            order_item.save(update_fields=['is_cancelled', 'cancel_reason', 'cancelled_by', 'cancelled_at'])
 
             order = order_item.order
             if not order.items.filter(is_cancelled=False).exists():
@@ -580,12 +588,18 @@ def restaurant_cancel_item(request, item_id):
         return redirect(f"{reverse('dashboard:restaurant_table_pos', args=[order.table_id])}?order={order.id}")
     return redirect('dashboard:restaurant_kitchen')
 
-
 @staff_module_required('restaurant_kitchen')
 def restaurant_cancel_order(request, order_id):
     if request.method != 'POST':
         return redirect('dashboard:restaurant_kitchen')
     order = get_object_or_404(Order, id=order_id)
+    reason = request.POST.get('reason', '').strip()
+
+    if not reason:
+        messages.error(request, "A reason is required to cancel an order.")
+        if order.table_id:
+            return redirect('dashboard:restaurant_table_pos', table_id=order.table_id)
+        return redirect('dashboard:restaurant_kitchen')
 
     cancellable = order.items.filter(is_cancelled=False, prep_status__in=['queued', 'preparing'])
     already_served = order.items.filter(is_cancelled=False, prep_status__in=['ready', 'served']).exists()
@@ -598,7 +612,10 @@ def restaurant_cancel_order(request, order_id):
                     quantity_on_hand=stock.quantity_on_hand + order_item.quantity
                 )
             order_item.is_cancelled = True
-            order_item.save(update_fields=['is_cancelled'])
+            order_item.cancel_reason = reason
+            order_item.cancelled_by = request.user
+            order_item.cancelled_at = timezone.now()
+            order_item.save(update_fields=['is_cancelled', 'cancel_reason', 'cancelled_by', 'cancelled_at'])
 
         if already_served:
             messages.success(request, f"Cancelled {cancellable.count()} not-yet-served item(s). Order stays open, some items were already served and must still be paid for.")
@@ -610,6 +627,80 @@ def restaurant_cancel_order(request, order_id):
     if order.table_id:
         return redirect('dashboard:restaurant_table_pos', table_id=order.table_id)
     return redirect('dashboard:restaurant_kitchen')
+
+@staff_module_required('restaurant_kitchen')
+def restaurant_set_table_status(request, table_id, new_status):
+    if request.method != 'POST' or new_status not in ('available', 'needs_cleaning'):
+        return redirect('dashboard:restaurant_kitchen')
+    table = get_object_or_404(Table, id=table_id)
+    table.status = new_status
+    table.save(update_fields=['status'])
+    messages.success(request, f"Table {table.number} marked {table.get_status_display()}.")
+    return redirect('dashboard:restaurant_kitchen')
+
+@staff_module_required('restaurant_kitchen')
+def restaurant_split_order(request, order_id):
+    order = get_object_or_404(Order, id=order_id)
+    active_items = order.items.filter(is_cancelled=False)
+
+    if request.method == 'POST':
+        selected_ids = request.POST.getlist('item_ids')
+        if not selected_ids:
+            messages.error(request, "Select at least one item to move to the new bill.")
+            return redirect('dashboard:restaurant_split_order', order_id=order.id)
+
+        new_order = Order.objects.create(
+            customer_name=f"{order.customer_name} (split)",
+            customer_phone=order.customer_phone,
+            table=order.table,
+            order_type=order.order_type,
+            status='confirmed',
+        )
+        active_items.filter(id__in=selected_ids).update(order=new_order)
+        messages.success(request, f"Moved {len(selected_ids)} item(s) to a new bill, Order #{new_order.id}.")
+        if order.table_id:
+            return redirect('dashboard:restaurant_table_pos', table_id=order.table_id)
+        return redirect('dashboard:restaurant_kitchen')
+
+    return render(request, 'dashboard/restaurant_split_order.html', {'order': order, 'active_items': active_items})
+
+@staff_module_required('restaurant_kitchen')
+def restaurant_waitlist_view(request):
+    if request.method == 'POST':
+        WaitlistEntry.objects.create(
+            guest_name=request.POST.get('guest_name', '').strip(),
+            phone_number=request.POST.get('phone_number', '').strip(),
+            party_size=int(request.POST.get('party_size') or 2),
+            notes=request.POST.get('notes', '').strip(),
+        )
+        messages.success(request, "Added to waitlist.")
+        return redirect('dashboard:restaurant_waitlist')
+
+    waiting = WaitlistEntry.objects.filter(status='waiting').order_by('created_at')
+    return render(request, 'dashboard/restaurant_waitlist.html', {'waiting': waiting})
+
+
+@staff_module_required('restaurant_kitchen')
+def restaurant_waitlist_seat(request, entry_id):
+    if request.method != 'POST':
+        return redirect('dashboard:restaurant_waitlist')
+    entry = get_object_or_404(WaitlistEntry, id=entry_id)
+    entry.status = 'seated'
+    entry.seated_at = timezone.now()
+    entry.save(update_fields=['status', 'seated_at'])
+    messages.success(request, f"{entry.guest_name} seated. Open their table to start the order.")
+    return redirect('dashboard:restaurant_waitlist')
+
+
+@staff_module_required('restaurant_kitchen')
+def restaurant_waitlist_cancel(request, entry_id):
+    if request.method != 'POST':
+        return redirect('dashboard:restaurant_waitlist')
+    entry = get_object_or_404(WaitlistEntry, id=entry_id)
+    entry.status = 'cancelled'
+    entry.save(update_fields=['status'])
+    return redirect('dashboard:restaurant_waitlist')
+
 
 @staff_module_required('restaurant_kitchen')
 def restaurant_export_pdf(request):

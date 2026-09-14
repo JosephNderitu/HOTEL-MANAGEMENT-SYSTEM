@@ -14,6 +14,10 @@
         <p class="text-gray-500 text-sm">Tables, takeaway, and catering orders</p>
     </div>
     <div class="flex gap-3 flex-wrap">
+        <a href="{% url 'dashboard:restaurant_waitlist' %}" class="relative bg-white border-2 border-[#C9A227] text-[#C9A227] font-semibold px-5 py-2.5 rounded-full hover:bg-[#C9A227] hover:text-black transition flex items-center gap-2">
+            <i class="fa-solid fa-clock"></i> Waitlist
+            {% if waiting_count > 0 %}<span class="bg-[#C9A227] text-black text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">{{ waiting_count }}</span>{% endif %}
+        </a>
         <a href="{% url 'dashboard:restaurant_new_offsite_order' %}" class="bg-white border-2 border-[#0B6B3A] text-[#0B6B3A] font-semibold px-5 py-2.5 rounded-full hover:bg-[#0B6B3A] hover:text-white transition flex items-center gap-2">
             <i class="fa-solid fa-bag-shopping"></i> Takeaway / Event Order
         </a>
@@ -66,16 +70,29 @@
 <h2 class="font-bold text-black mb-3 mt-8">Tables</h2>
 <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 mb-10">
     {% for table in tables %}
-    <a href="{% url 'dashboard:restaurant_table_pos' table.id %}" class="tbl-card">
-        <i class="fa-solid fa-utensils text-xl text-[#0B6B3A] mb-2"></i>
-        <p class="font-bold text-black">Table {{ table.number }}</p>
-        <p class="text-xs text-gray-500 mb-2">{{ table.capacity }} seats</p>
-        {% with count=table.open_orders|length %}
-        <span class="text-[11px] font-semibold px-3 py-1 rounded-full {% if count > 0 %}tbl-badge-open{% else %}tbl-badge-empty{% endif %}">
-            {% if count > 0 %}{{ count }} open order{{ count|pluralize }}{% else %}No open orders{% endif %}
-        </span>
-        {% endwith %}
-    </a>
+    <div class="flex flex-col">
+        <a href="{% url 'dashboard:restaurant_table_pos' table.id %}" class="tbl-card flex-1">
+            <i class="fa-solid fa-utensils text-xl text-[#0B6B3A] mb-2"></i>
+            <p class="font-bold text-black">Table {{ table.number }}</p>
+            <p class="text-xs text-gray-500 mb-2">{{ table.capacity }} seats</p>
+            {% with count=table.open_orders|length %}
+            <span class="text-[11px] font-semibold px-3 py-1 rounded-full {% if count > 0 %}tbl-badge-open{% else %}tbl-badge-empty{% endif %}">
+                {% if count > 0 %}{{ count }} open order{{ count|pluralize }}{% else %}No open orders{% endif %}
+            </span>
+            {% endwith %}
+        </a>
+        {% if table.status == 'available' %}
+        <form method="post" action="{% url 'dashboard:restaurant_set_table_status' table.id 'needs_cleaning' %}" class="mt-1">
+            {% csrf_token %}
+            <button type="submit" class="w-full text-[10px] text-gray-400 hover:text-blue-500 py-1">Mark Needs Cleaning</button>
+        </form>
+        {% else %}
+        <form method="post" action="{% url 'dashboard:restaurant_set_table_status' table.id 'available' %}" class="mt-1">
+            {% csrf_token %}
+            <button type="submit" class="w-full text-[10px] text-blue-500 hover:text-[#0B6B3A] py-1 font-semibold">Mark Available</button>
+        </form>
+        {% endif %}
+    </div>
     {% empty %}
     <p class="text-gray-400 col-span-full text-center py-10">No tables yet. Add them via the admin panel.</p>
     {% endfor %}

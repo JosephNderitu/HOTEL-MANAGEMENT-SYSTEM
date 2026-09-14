@@ -218,6 +218,29 @@ class Table(models.Model):
     def __str__(self):
         return f"Table {self.number}"
 
+class WaitlistEntry(models.Model):
+    STATUS_CHOICES = [
+        ('waiting', 'Waiting'),
+        ('seated', 'Seated'),
+        ('cancelled', 'Cancelled'),
+    ]
+    guest_name = models.CharField(max_length=150)
+    phone_number = models.CharField(max_length=20, blank=True)
+    party_size = models.PositiveIntegerField(default=2)
+    notes = models.CharField(max_length=200, blank=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='waiting')
+    created_at = models.DateTimeField(auto_now_add=True)
+    seated_at = models.DateTimeField(null=True, blank=True)
+
+    @property
+    def wait_minutes(self):
+        end = self.seated_at or timezone.now()
+        return int((end - self.created_at).total_seconds() // 60)
+
+    def __str__(self):
+        return f"{self.guest_name} ({self.party_size}) — {self.get_status_display()}"
+    
+
 class MenuItem(models.Model):
     ITEM_TYPE_CHOICES = [
         ('food', 'Food'),
@@ -351,6 +374,9 @@ class OrderItem(models.Model):
     tier = models.CharField(max_length=10, choices=[('regular', 'Regular'), ('vip', 'VIP')], default='regular')
     quantity = models.PositiveIntegerField(default=1)
     is_cancelled = models.BooleanField(default=False)
+    cancel_reason = models.CharField(max_length=200, blank=True)
+    cancelled_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='order_items_cancelled')
+    cancelled_at = models.DateTimeField(null=True, blank=True)
 
     @property
     def unit_price(self):

@@ -1,0 +1,21 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+<div class="max-w-lg mx-auto">
+    <h1 class="text-2xl font-bold text-black mb-1">Split Bill — Order #{{ order.id }}</h1>
+    <p class="text-gray-500 text-sm mb-6">Select the items that should move to a new, separate bill.</p>
+
+    <form method="post" class="bg-white border border-[#0B6B3A] rounded-2xl p-6">
+        {% csrf_token %}
+        <div class="space-y-2 mb-5">
+            {% for item in active_items %}
+            <label class="flex items-center justify-between border border-gray-200 rounded-lg px-4 py-3 cursor-pointer hover:border-[#0B6B3A] transition">
+                <span class="text-sm">{{ item.quantity }}x {{ item.menu_item.name }}{% if item.tier == 'vip' %} <span class="text-[9px] text-[#C9A227] font-bold">VIP</span>{% endif %}</span>
+                <input type="checkbox" name="item_ids" value="{{ item.id }}" class="w-4 h-4 accent-[#0B6B3A]">
+            </label>
+            {% endfor %}
+        </div>
+        <button type="submit" class="w-full bg-[#C9A227] text-black font-semibold py-3 rounded-full hover:bg-[#b8931f] transition">Create New Bill</button>
+        <a href="{% url 'dashboard:restaurant_table_pos' order.table.id %}?order={{ order.id }}" class="block text-center text-gray-500 text-sm mt-3 hover:underline">Cancel</a>
+    </form>
+</div>
+{% endblock %}

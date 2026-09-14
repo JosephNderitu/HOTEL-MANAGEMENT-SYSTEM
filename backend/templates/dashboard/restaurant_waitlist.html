@@ -1,0 +1,48 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+<a href="{% url 'dashboard:restaurant_kitchen' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; All Tables</a>
+<h1 class="text-2xl font-bold text-black mt-1 mb-6">Waitlist</h1>
+
+{% if messages %}{% for message in messages %}
+<div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
+{% endfor %}{% endif %}
+
+<div class="grid lg:grid-cols-3 gap-6">
+    <div class="bg-white border border-[#0B6B3A] rounded-2xl p-6">
+        <h2 class="font-bold text-black text-sm mb-4">Add to Waitlist</h2>
+        <form method="post" class="space-y-3">
+            {% csrf_token %}
+            <input type="text" name="guest_name" placeholder="Guest name" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            <input type="tel" name="phone_number" placeholder="Phone (optional)" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            <input type="number" name="party_size" placeholder="Party size" value="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            <input type="text" name="notes" placeholder="Notes (optional)" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            <button type="submit" class="w-full bg-[#0B6B3A] text-white font-semibold py-2.5 rounded-full hover:bg-[#095430] transition">Add</button>
+        </form>
+    </div>
+
+    <div class="lg:col-span-2">
+        <h2 class="font-bold text-black text-sm mb-4">Currently Waiting ({{ waiting|length }})</h2>
+        <div class="space-y-3">
+            {% for entry in waiting %}
+            <div class="border border-[#C9A227] bg-[#FEF9EC] rounded-xl p-4 flex items-center justify-between flex-wrap gap-3">
+                <div>
+                    <p class="font-bold text-black">{{ entry.guest_name }} &middot; {{ entry.party_size }} people</p>
+                    <p class="text-xs text-gray-500">{{ entry.phone_number|default:"No phone given" }} &middot; Waiting {{ entry.wait_minutes }} min{{ entry.wait_minutes|pluralize }}</p>
+                    {% if entry.notes %}<p class="text-xs text-gray-400 italic mt-1">{{ entry.notes }}</p>{% endif %}
+                </div>
+                <div class="flex gap-2">
+                    <form method="post" action="{% url 'dashboard:restaurant_waitlist_seat' entry.id %}">{% csrf_token %}
+                        <button class="text-xs font-semibold bg-[#0B6B3A] text-white px-4 py-2 rounded-full">Seat Now</button>
+                    </form>
+                    <form method="post" action="{% url 'dashboard:restaurant_waitlist_cancel' entry.id %}">{% csrf_token %}
+                        <button class="text-xs font-semibold border border-red-400 text-red-500 px-4 py-2 rounded-full">Remove</button>
+                    </form>
+                </div>
+            </div>
+            {% empty %}
+            <p class="text-gray-400 text-center py-10">No one is waiting right now.</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}
