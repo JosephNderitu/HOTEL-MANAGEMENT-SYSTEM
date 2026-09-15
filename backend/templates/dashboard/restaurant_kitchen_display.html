@@ -1,49 +1,222 @@
 {% extends "dashboard/base_dashboard.html" %}
 {% block dashboard_content %}
 <style>
-    .kds-card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 14px; margin-bottom: 10px; background: #fff; }
-    .kds-card.queued { border-left: 4px solid #C9A227; }
-    .kds-card.preparing { border-left: 4px solid #3b82f6; }
-    .kds-card.ready { border-left: 4px solid #0B6B3A; background: #F0FDF4; }
-    .kds-course-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 2px 8px; border-radius: 9999px; background: #F7F5EE; color: #92722a; }
+    .kd-stat { border: 1px solid #0B6B3A; border-radius: 14px; padding: 14px 16px; background: #fff; text-align: center; }
+    .kd-stat p.num { font-size: 26px; font-weight: 800; color: #0B6B3A; }
+    .kd-stat.served p.num { color: #0B6B3A; }
+    .kd-stat.pending p.num { color: #C9A227; }
+    .kd-stat.progress p.num { color: #3b82f6; }
+
+    #order-feed { max-height: 640px; overflow-y: auto; scroll-behavior: smooth; }
+    #order-feed::-webkit-scrollbar { width: 6px; }
+    #order-feed::-webkit-scrollbar-thumb { background: #0B6B3A; border-radius: 9999px; }
+
+    .order-card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 14px; margin-bottom: 10px; background: #fff; transition: box-shadow 0.2s, border-color 0.2s; }
+    .order-card.flash { animation: flashHighlight 1.8s ease; }
+    @keyframes flashHighlight { 0% { background: #FEF9EC; border-color: #C9A227; } 100% { background: #fff; border-color: #e5e7eb; } }
+
+    .order-modal-backdrop { display: none; }
+    .order-modal-backdrop.open { display: flex; }
+
+    .qty-badge { font-size: 9px; font-weight: 700; padding: 1px 7px; border-radius: 9999px; }
+    .qty-queued { background: #FEF9EC; color: #92722a; }
+    .qty-preparing { background: #DBEAFE; color: #1e40af; }
+    .qty-ready { background: #DCFCE7; color: #0B6B3A; }
+    .qty-served { background: #F3F4F6; color: #6b7280; }
 </style>
 
-<div class="flex items-center justify-between mb-6">
+<div class="flex items-center justify-between mb-6 flex-wrap gap-3">
     <div>
-        <h1 class="text-2xl font-bold text-black">Kitchen Display</h1>
-        <p class="text-gray-500 text-sm">Sorted by course, starters and ready-made items surface first</p>
+        <a href="{% url 'dashboard:restaurant_kitchen' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; All Tables</a>
+        <h1 class="text-2xl font-bold text-black mt-1">Kitchen Display</h1>
+        <p class="text-gray-500 text-sm flex items-center gap-2">
+            <span id="live-dot" class="w-2 h-2 rounded-full bg-gray-300"></span>
+            <span id="live-label" class="text-xs text-gray-400">connecting live updates...</span>
+        </p>
     </div>
-    <a href="{% url 'dashboard:restaurant_kitchen' %}" class="text-[#0B6B3A] font-semibold text-sm hover:underline">&larr; Back to Tables</a>
+    <a href="{% url 'dashboard:kitchen_usage_log' %}" class="bg-white border-2 border-[#0B6B3A] text-[#0B6B3A] font-semibold px-5 py-2.5 rounded-full hover:bg-[#0B6B3A] hover:text-white transition">
+        <i class="fa-solid fa-clipboard-list mr-1"></i> Today's Ingredient Usage
+    </a>
 </div>
 
-<div class="grid md:grid-cols-3 gap-4">
-    {% for item in active_items %}
-    <div class="kds-card {{ item.prep_status }}">
-        <div class="flex justify-between items-start mb-2">
-            <span class="kds-course-badge">{{ item.menu_item.get_course_display }}</span>
-            <span class="text-xs text-gray-400">{{ item.order.created_at|date:"H:i" }}</span>
-        </div>
-        <p class="font-bold text-black">{{ item.quantity }}x {{ item.menu_item.name }}</p>
-        <p class="text-xs text-gray-500 mb-3">
-            {% if item.order.table %}Table {{ item.order.table.number }}{% else %}{{ item.order.customer_name }}{% endif %}
-            {% if item.menu_item.is_quick_serve %}<span class="text-[#0B6B3A] font-semibold"> · Ready-made</span>{% endif %}
-        </p>
-        {% if item.prep_status == 'queued' %}
-        <form method="post" action="{% url 'dashboard:restaurant_advance_item' item.id 'preparing' %}">{% csrf_token %}
-            <button class="w-full text-xs font-semibold bg-[#3b82f6] text-white py-2 rounded-full">Start Preparing</button>
-        </form>
-        {% elif item.prep_status == 'preparing' %}
-        <form method="post" action="{% url 'dashboard:restaurant_advance_item' item.id 'ready' %}">{% csrf_token %}
-            <button class="w-full text-xs font-semibold bg-[#0B6B3A] text-white py-2 rounded-full">Mark Ready</button>
-        </form>
-        {% elif item.prep_status == 'ready' %}
-        <form method="post" action="{% url 'dashboard:restaurant_advance_item' item.id 'served' %}">{% csrf_token %}
-            <button class="w-full text-xs font-semibold bg-[#C9A227] text-black py-2 rounded-full">Mark Served</button>
-        </form>
-        {% endif %}
-    </div>
-    {% empty %}
-    <p class="text-gray-400 col-span-full text-center py-10">No active items in the kitchen queue.</p>
-    {% endfor %}
+<!-- Stats -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+    <div class="kd-stat"><p class="text-xs text-gray-500 uppercase mb-1">Total Orders Today</p><p class="num">{{ stats.total }}</p></div>
+    <div class="kd-stat pending"><p class="text-xs text-gray-500 uppercase mb-1">Pending</p><p class="num">{{ stats.pending }}</p></div>
+    <div class="kd-stat progress"><p class="text-xs text-gray-500 uppercase mb-1">In Progress</p><p class="num">{{ stats.in_progress }}</p></div>
+    <div class="kd-stat served"><p class="text-xs text-gray-500 uppercase mb-1">Served</p><p class="num">{{ stats.served }}</p></div>
 </div>
+
+<div class="grid lg:grid-cols-3 gap-6">
+    <!-- Left: sales report -->
+    <div>
+        <div class="bg-white border border-[#0B6B3A] rounded-2xl p-5">
+            <h2 class="font-bold text-black text-sm mb-3"><i class="fa-solid fa-file-pdf text-[#C9A227] mr-1"></i>Item Sales Report</h2>
+            <p class="text-xs text-gray-500 mb-3">Quantity sold per food/kitchen-drink item, highest to lowest, including items not sold.</p>
+            <form method="get" action="{% url 'dashboard:kitchen_item_sales_pdf' %}" class="space-y-2">
+                <input type="date" name="date_from" class="w-full border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
+                <input type="date" name="date_to" class="w-full border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
+                <button type="submit" class="w-full bg-[#C9A227] text-black text-sm font-semibold py-2.5 rounded-full hover:bg-[#b8931f] transition">Download PDF</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Right: live auto-scrolling queue -->
+    <div class="lg:col-span-2">
+        <h2 class="font-bold text-black text-sm mb-3">Active Orders</h2>
+        <div id="order-feed">
+            {% for order in active_orders %}
+            <div class="order-card" data-order-id="{{ order.id }}">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="font-bold text-black">Order #{{ order.id }} — {{ order.customer_name }}
+                            {% if order.has_vip_kitchen_item %}<span class="text-[9px] bg-[#C9A227] text-black font-bold px-2 py-0.5 rounded-full ml-1">VIP</span>{% endif %}
+                        </p>
+                        <p class="text-xs text-gray-400">
+                            {% if order.table %}Table {{ order.table.number }}{% else %}{{ order.get_order_type_display }}{% endif %}
+                            &middot; {{ order.created_at|date:"H:i" }} &middot; {{ order.kitchen_items|length }} item{{ order.kitchen_items|length|pluralize }}
+                        </p>
+                    </div>
+                    <button type="button" onclick="openOrderModal({{ order.id }})" class="text-xs font-semibold bg-[#0B6B3A] text-white px-4 py-2 rounded-full hover:bg-[#095430] transition">View</button>
+                </div>
+            </div>
+            {% empty %}
+            <p class="text-gray-400 text-center py-10">No active kitchen orders.</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Closed orders -->
+<div class="mt-10">
+    <h2 class="font-bold text-black text-sm mb-3">Today's Closed Orders (view only)</h2>
+    <div class="border border-gray-200 rounded-xl overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead><tr class="text-left text-xs text-gray-500 uppercase border-b border-gray-200">
+                <th class="p-3">Order</th><th class="p-3">Customer</th><th class="p-3">Items</th><th class="p-3">Time</th>
+            </tr></thead>
+            <tbody>
+                {% for order in closed_orders %}
+                <tr class="border-b border-gray-100">
+                    <td class="p-3 font-semibold">#{{ order.id }}</td>
+                    <td class="p-3">{{ order.customer_name }}</td>
+                    <td class="p-3">{% for item in order.kitchen_items %}{{ item.quantity }}x {{ item.menu_item.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+                    <td class="p-3 text-gray-400">{{ order.created_at|date:"H:i" }}</td>
+                </tr>
+                {% empty %}<tr><td colspan="4" class="p-6 text-center text-gray-400">No orders closed yet today.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Order detail modal -->
+<div id="order-modal" class="order-modal-backdrop fixed inset-0 bg-black/60 z-50 items-center justify-center px-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full p-6 relative max-h-[85vh] overflow-y-auto">
+        <button onclick="closeOrderModal()" class="absolute top-4 right-4 text-gray-400 hover:text-black"><i class="fa-solid fa-xmark text-xl"></i></button>
+        <div id="order-modal-body"><p class="text-gray-400 text-sm">Loading...</p></div>
+    </div>
+</div>
+
+<script>
+const ORDER_DETAIL_TEMPLATES = {};
+{% for order in active_orders %}
+ORDER_DETAIL_TEMPLATES[{{ order.id }}] = `
+    <h3 class="text-lg font-bold text-black mb-1">Order #{{ order.id }} — {{ order.customer_name }}</h3>
+    <p class="text-xs text-gray-400 mb-4">{% if order.table %}Table {{ order.table.number }}{% else %}{{ order.get_order_type_display }}{% endif %} &middot; {{ order.created_at|date:"H:i" }}</p>
+    <div class="space-y-3">
+    {% for item in order.kitchen_items %}
+        <div class="border border-gray-200 rounded-lg p-3 flex items-center justify-between">
+            <div>
+                <p class="font-semibold text-sm">{{ item.quantity }}x {{ item.menu_item.name }}{% if item.tier == 'vip' %} <span class="text-[9px] text-[#C9A227] font-bold">VIP</span>{% endif %}</p>
+                <span class="qty-badge qty-{{ item.prep_status }}">{{ item.get_prep_status_display }}</span>
+            </div>
+            <div class="flex gap-1">
+                {% if item.prep_status == 'queued' %}
+                <form method="post" action="{% url 'dashboard:restaurant_advance_item' item.id 'preparing' %}"><button class="text-xs font-semibold bg-blue-500 text-white px-3 py-1.5 rounded-full">Start</button></form>
+                {% elif item.prep_status == 'preparing' %}
+                <form method="post" action="{% url 'dashboard:restaurant_advance_item' item.id 'ready' %}"><button class="text-xs font-semibold bg-[#0B6B3A] text-white px-3 py-1.5 rounded-full">Ready</button></form>
+                {% elif item.prep_status == 'ready' %}
+                <form method="post" action="{% url 'dashboard:restaurant_advance_item' item.id 'served' %}"><button class="text-xs font-semibold bg-[#C9A227] text-black px-3 py-1.5 rounded-full">Served</button></form>
+                {% endif %}
+                {% if item.prep_status == 'queued' or item.prep_status == 'preparing' %}
+                <button type="button" onclick="openCancelModal('{% url 'dashboard:restaurant_cancel_item' item.id %}', '{{ item.menu_item.name|escapejs }}')" class="text-red-400 hover:text-red-600 px-2"><i class="fa-solid fa-xmark"></i></button>
+                {% endif %}
+            </div>
+        </div>
+    {% endfor %}
+    </div>
+`;
+{% endfor %}
+
+function openOrderModal(orderId) {
+    document.getElementById('order-modal-body').innerHTML = ORDER_DETAIL_TEMPLATES[orderId] || '<p class="text-gray-400 text-sm">Order details unavailable, refresh the page.</p>';
+    document.getElementById('order-modal').classList.add('open');
+}
+function closeOrderModal() { document.getElementById('order-modal').classList.remove('open'); }
+</script>
+
+{% include "dashboard/_pos_cancel_modal.html" %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const feed = document.getElementById('order-feed');
+    const liveDot = document.getElementById('live-dot');
+    const liveLabel = document.getElementById('live-label');
+    let autoScrollTimer = null;
+    let resumeTimer = null;
+    let userInteracting = false;
+
+    function startAutoScroll() {
+        stopAutoScroll();
+        autoScrollTimer = setInterval(() => {
+            if (userInteracting) return;
+            if (feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 2) {
+                feed.scrollTo({ top: 0, behavior: 'smooth' });
+            } else {
+                feed.scrollBy({ top: 1, behavior: 'auto' });
+            }
+        }, 60);
+    }
+    function stopAutoScroll() { if (autoScrollTimer) clearInterval(autoScrollTimer); }
+    function pauseThenResume() {
+        userInteracting = true;
+        clearTimeout(resumeTimer);
+        resumeTimer = setTimeout(() => { userInteracting = false; }, 4000);
+    }
+    feed.addEventListener('mouseenter', () => { userInteracting = true; });
+    feed.addEventListener('mouseleave', pauseThenResume);
+    feed.addEventListener('touchstart', () => { userInteracting = true; });
+    feed.addEventListener('touchend', pauseThenResume);
+    feed.addEventListener('wheel', pauseThenResume);
+    startAutoScroll();
+
+    function connectKitchenSocket() {
+        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const socket = new WebSocket(`${protocol}://${window.location.host}/ws/kitchen/`);
+        socket.onopen = () => { liveDot.className = 'w-2 h-2 rounded-full bg-[#0B6B3A]'; liveLabel.textContent = 'live updates on'; };
+        socket.onclose = () => { liveDot.className = 'w-2 h-2 rounded-full bg-gray-300'; liveLabel.textContent = 'reconnecting...'; setTimeout(connectKitchenSocket, 3000); };
+        socket.onerror = () => { liveDot.className = 'w-2 h-2 rounded-full bg-red-400'; };
+        socket.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            const emptyMsg = feed.querySelector('p.text-gray-400.text-center');
+            if (emptyMsg) emptyMsg.remove();
+            const card = document.createElement('div');
+            card.className = 'order-card flash';
+            card.dataset.orderId = data.order_id;
+            card.innerHTML = `
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="font-bold text-black">Order #${data.order_id} — ${data.customer_name}${data.is_vip ? ' <span class="text-[9px] bg-[#C9A227] text-black font-bold px-2 py-0.5 rounded-full ml-1">VIP</span>' : ''}</p>
+                        <p class="text-xs text-gray-400">${data.source} &middot; just now</p>
+                    </div>
+                    <button type="button" class="text-xs font-semibold bg-[#0B6B3A] text-white px-4 py-2 rounded-full opacity-50 cursor-not-allowed" title="Refresh the page to view this order's items">View</button>
+                </div>`;
+            feed.insertBefore(card, feed.firstChild);
+            feed.scrollTo({ top: 0, behavior: 'smooth' });
+            userInteracting = false;
+        };
+    }
+    connectKitchenSocket();
+});
+</script>
 {% endblock %}

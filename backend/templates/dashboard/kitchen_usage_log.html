@@ -1,0 +1,104 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+<a href="{% url 'dashboard:restaurant_kitchen_display' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; Kitchen Display</a>
+<div class="flex items-center justify-between mt-1 mb-6 flex-wrap gap-3">
+    <h1 class="text-2xl font-bold text-black">Today's Ingredient Usage</h1>
+    <span class="text-xs font-bold px-3 py-1.5 rounded-full {% if log.status == 'confirmed' %}bg-gray-200 text-gray-600{% else %}bg-[#C9A227] text-black{% endif %}">
+        {% if log.status == 'confirmed' %}<i class="fa-solid fa-lock mr-1"></i>Confirmed & Locked{% else %}Draft{% endif %}
+    </span>
+</div>
+
+{% if messages %}{% for message in messages %}
+<div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
+{% endfor %}{% endif %}
+
+<div class="grid lg:grid-cols-2 gap-6">
+    {% if log.status == 'draft' %}
+    <div class="bg-white border border-[#0B6B3A] rounded-2xl p-6">
+        <h2 class="font-bold text-black text-sm mb-4">Log Usage</h2>
+        <div class="flex gap-2 mb-4">
+            <button type="button" id="mode-stock-btn" class="flex-1 text-sm font-semibold py-2 rounded-full border-2 border-[#0B6B3A] bg-[#0B6B3A] text-white">From Stock</button>
+            <button type="button" id="mode-custom-btn" class="flex-1 text-sm font-semibold py-2 rounded-full border-2 border-[#0B6B3A] text-[#0B6B3A]">Not In Stock</button>
+        </div>
+        <form method="post" action="{% url 'dashboard:kitchen_usage_log_add' %}" class="space-y-3">
+            {% csrf_token %}
+            <input type="hidden" name="mode" id="mode-input" value="stock">
+            <div id="stock-fields">
+                <select name="stock_item" class="w-full border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
+                    {% for s in stock_items %}<option value="{{ s.id }}">{{ s.name }} ({{ s.quantity_on_hand }} {{ s.unit }} in stock)</option>{% endfor %}
+                </select>
+            </div>
+            <div id="custom-fields" class="hidden space-y-3">
+                <input type="text" name="custom_name" placeholder="Item name, e.g. Tomatoes" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <select name="custom_unit" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    <option value="kg">Kilogram</option><option value="g">Gram</option><option value="l">Litre</option>
+                    <option value="ml">Millilitre</option><option value="piece">Piece</option><option value="pack">Pack</option>
+                    <option value="box">Box</option><option value="bottle">Bottle</option>
+                </select>
+            </div>
+            <input type="number" step="0.01" name="quantity" placeholder="Quantity used" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            <button type="submit" class="w-full bg-[#0B6B3A] text-white font-semibold py-2.5 rounded-full hover:bg-[#095430] transition">Add Entry</button>
+        </form>
+    </div>
+    {% else %}
+    <div class="bg-gray-50 border border-gray-200 rounded-2xl p-6 text-center text-gray-500 text-sm">
+        This log was confirmed by {{ log.confirmed_by.get_full_name|default:log.confirmed_by.username }} on {{ log.confirmed_at|date:"M d, H:i" }}.
+        No further changes can be made here.
+    </div>
+    {% endif %}
+
+    <div>
+        <h2 class="font-bold text-black text-sm mb-3">Logged So Far</h2>
+        <div class="space-y-2 mb-4">
+            {% for item in items %}
+            <div class="border border-gray-200 rounded-lg p-3 flex items-center justify-between">
+                <div>
+                    <p class="font-semibold text-sm">{{ item.quantity }} {{ item.display_unit }} {{ item.display_name }}{% if not item.stock_item %}<span class="text-[10px] text-[#C9A227] ml-1">(not in stock)</span>{% endif %}</p>
+                    <p class="text-xs text-gray-400">Added by {{ item.added_by.get_full_name|default:item.added_by.username }} at {{ item.added_at|date:"H:i" }}</p>
+                </div>
+                {% if log.status == 'draft' %}
+                <form method="post" action="{% url 'dashboard:kitchen_usage_log_delete' item.id %}" onsubmit="return confirm('Remove this entry?');">
+                    {% csrf_token %}
+                    <button class="text-red-400 hover:text-red-600"><i class="fa-solid fa-trash text-xs"></i></button>
+                </form>
+                {% endif %}
+            </div>
+            {% empty %}
+            <p class="text-gray-400 text-sm text-center py-6">Nothing logged yet today.</p>
+            {% endfor %}
+        </div>
+        {% if log.status == 'draft' and items %}
+        <form method="post" action="{% url 'dashboard:kitchen_usage_log_confirm' %}" onsubmit="return confirm('Confirm and lock today\'s usage log? This cannot be undone here.');">
+            {% csrf_token %}
+            <button type="submit" class="w-full bg-[#C9A227] text-black font-semibold py-3 rounded-full hover:bg-[#b8931f] transition">
+                <i class="fa-solid fa-lock mr-1"></i>Confirm & Upload
+            </button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const modeInput = document.getElementById('mode-input');
+    const stockBtn = document.getElementById('mode-stock-btn');
+    const customBtn = document.getElementById('mode-custom-btn');
+    const stockFields = document.getElementById('stock-fields');
+    const customFields = document.getElementById('custom-fields');
+    if (!stockBtn) return;
+    function setMode(mode) {
+        modeInput.value = mode;
+        stockFields.classList.toggle('hidden', mode !== 'stock');
+        customFields.classList.toggle('hidden', mode !== 'custom');
+        stockBtn.classList.toggle('bg-[#0B6B3A]', mode === 'stock');
+        stockBtn.classList.toggle('text-white', mode === 'stock');
+        stockBtn.classList.toggle('text-[#0B6B3A]', mode !== 'stock');
+        customBtn.classList.toggle('bg-[#0B6B3A]', mode === 'custom');
+        customBtn.classList.toggle('text-white', mode === 'custom');
+        customBtn.classList.toggle('text-[#0B6B3A]', mode !== 'custom');
+    }
+    stockBtn.addEventListener('click', () => setMode('stock'));
+    customBtn.addEventListener('click', () => setMode('custom'));
+});
+</script>
+{% endblock %}

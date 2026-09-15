@@ -47,3 +47,20 @@ class WastageLogAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, request):
         return False
+
+
+class DailyUsageItemInline(admin.TabularInline):
+    model = DailyUsageItem
+    extra = 0
+    readonly_fields = ('stock_item', 'custom_name', 'custom_unit', 'quantity', 'added_by', 'added_at')
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(DailyUsageLog)
+class DailyUsageLogAdmin(admin.ModelAdmin):
+    list_display = ('department', 'date', 'status', 'confirmed_by', 'confirmed_at')
+    list_filter = ('department', 'status')
+    inlines = [DailyUsageItemInline]

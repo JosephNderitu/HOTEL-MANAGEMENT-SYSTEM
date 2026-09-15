@@ -27,7 +27,14 @@ urlpatterns = [
     path('restaurant-kitchen/table/<int:table_id>/new-order/', views.restaurant_new_order, name='restaurant_new_order'),
     path('restaurant-kitchen/table/<int:table_id>/', views.restaurant_table_pos, name='restaurant_table_pos'),
     path('restaurant-kitchen/order/<int:order_id>/add-items/', views.restaurant_add_items, name='restaurant_add_items'),
+    
     path('restaurant-kitchen/display/', views.restaurant_kitchen_display, name='restaurant_kitchen_display'),
+    path('restaurant-kitchen/sales-pdf/', views.kitchen_item_sales_pdf, name='kitchen_item_sales_pdf'),
+    path('kitchen-usage-log/', views.kitchen_usage_log_view, name='kitchen_usage_log'),
+    path('kitchen-usage-log/add/', views.kitchen_usage_log_add, name='kitchen_usage_log_add'),
+    path('kitchen-usage-log/<int:item_id>/delete/', views.kitchen_usage_log_delete, name='kitchen_usage_log_delete'),
+    path('kitchen-usage-log/confirm/', views.kitchen_usage_log_confirm, name='kitchen_usage_log_confirm'),
+    
     path('restaurant-kitchen/item/<int:item_id>/advance/<str:new_status>/', views.restaurant_advance_item, name='restaurant_advance_item'),
     
     path('restaurant-kitchen/order/<int:order_id>/payment/', views.restaurant_record_payment, name='restaurant_record_payment'),

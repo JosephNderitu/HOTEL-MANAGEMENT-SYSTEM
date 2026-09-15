@@ -1,9 +1,11 @@
 from django.db import transaction
 from store.models import StockItem
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+
 
 def confirm_order_and_deduct_stock(order):
-    """Confirms an order, deducting stock for every linked item. Returns (success, shortfall_names)."""
     with transaction.atomic():
         shortfalls = []
         for order_item in order.items.select_related('menu_item__stock_item'):
@@ -20,10 +22,22 @@ def confirm_order_and_deduct_stock(order):
                 StockItem.objects.filter(id=stock.id).select_for_update().update(
                     quantity_on_hand=stock.quantity_on_hand - order_item.quantity
                 )
-            # Ready-made items skip straight to "ready", nothing to actively cook.
             order_item.prep_status = 'ready' if order_item.menu_item.is_quick_serve else 'queued'
             order_item.save(update_fields=['prep_status'])
 
         order.status = 'confirmed'
         order.save(update_fields=['status'])
-        return True, []
+
+    if order.has_kitchen_items:
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)('kitchen_updates', {
+            'type': 'kitchen_notification',
+            'payload': {
+                'order_id': order.id,
+                'customer_name': order.customer_name,
+                'is_vip': order.has_vip_kitchen_item,
+                'source': order.table.number if order.table_id else order.get_order_type_display(),
+            },
+        })
+
+    return True, []

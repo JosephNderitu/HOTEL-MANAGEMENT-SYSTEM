@@ -449,24 +449,181 @@ def restaurant_new_order(request, table_id):
 
 COURSE_PRIORITY = {'starter': 0, 'main': 1, 'dessert': 2}
 
+from django.db.models import Count, Sum as DjangoSum
+from store.models import DailyUsageLog, DailyUsageItem
 
 @staff_module_required('restaurant_kitchen')
 def restaurant_kitchen_display(request):
-    active_items = OrderItem.objects.filter(
-        prep_status__in=['queued', 'preparing', 'ready'],
-        order__status='confirmed',
-        is_cancelled=False,
-    ).filter(
+    today = timezone.localdate()
+
+    todays_orders = Order.objects.filter(status='confirmed', created_at__date=today).prefetch_related('items__menu_item')
+    kitchen_orders_today = [o for o in todays_orders if o.has_kitchen_items]
+
+    total_orders = len(kitchen_orders_today)
+    served_count = sum(1 for o in kitchen_orders_today if o.kitchen_fully_served)
+    pending_count = sum(1 for o in kitchen_orders_today if all(i.prep_status == 'queued' for i in o.kitchen_items()))
+    in_progress_count = total_orders - served_count - pending_count
+
+    active_orders = [
+        o for o in Order.objects.filter(status='confirmed').prefetch_related('items__menu_item', 'table')
+        if o.has_kitchen_items and not o.kitchen_fully_served
+    ]
+    active_orders.sort(key=lambda o: o.created_at)
+
+    closed_orders = [o for o in kitchen_orders_today if o.kitchen_fully_served]
+    closed_orders.sort(key=lambda o: o.created_at, reverse=True)
+
+    kitchen_log, _ = DailyUsageLog.objects.get_or_create(department='kitchen', date=today)
+
+    return render(request, 'dashboard/restaurant_kitchen_display.html', {
+        'stats': {
+            'total': total_orders, 'served': served_count,
+            'pending': pending_count, 'in_progress': in_progress_count,
+        },
+        'active_orders': active_orders,
+        'closed_orders': closed_orders,
+        'kitchen_log': kitchen_log,
+    })
+
+
+@staff_module_required('restaurant_kitchen')
+def kitchen_item_sales_pdf(request):
+    date_from = request.GET.get('date_from', '').strip()
+    date_to = request.GET.get('date_to', '').strip()
+
+    items_qs = OrderItem.objects.filter(is_cancelled=False, order__status='confirmed').filter(
         Q(menu_item__item_type='food') | Q(menu_item__item_type='drink', menu_item__serving_point='kitchen')
-    ).select_related('menu_item', 'order', 'order__table').order_by('order__created_at')
-    
-    active_items = sorted(
-        active_items,
-        key=lambda oi: (COURSE_PRIORITY.get(oi.menu_item.course, 1), oi.order.created_at)
     )
+    if date_from:
+        items_qs = items_qs.filter(order__created_at__date__gte=date_from)
+    if date_to:
+        items_qs = items_qs.filter(order__created_at__date__lte=date_to)
 
-    return render(request, 'dashboard/restaurant_kitchen_display.html', {'active_items': active_items})
+    sold = {}
+    for oi in items_qs.select_related('menu_item'):
+        m = oi.menu_item
+        sold.setdefault(m.id, {'item': m, 'qty': 0, 'amount': Decimal('0')})
+        sold[m.id]['qty'] += oi.quantity
+        sold[m.id]['amount'] += oi.line_total
 
+    all_kitchen_items = MenuItem.objects.filter(
+        Q(item_type='food') | Q(item_type='drink', serving_point='kitchen')
+    ).order_by('name')
+
+    rows = []
+    for m in all_kitchen_items:
+        entry = sold.get(m.id)
+        qty = entry['qty'] if entry else 0
+        amount = entry['amount'] if entry else Decimal('0')
+        rows.append({'name': m.name, 'category': m.category, 'qty': qty, 'unit_price': m.regular_price, 'amount': amount})
+
+    rows.sort(key=lambda r: r['qty'], reverse=True)
+
+    grand_total = sum((r['amount'] for r in rows), Decimal('0'))
+    subtotal_excl_vat = grand_total / (1 + VAT_RATE) if grand_total else Decimal('0')
+    vat_amount = grand_total - subtotal_excl_vat
+
+    html_string = render_to_string('dashboard/kitchen_sales_pdf.html', {
+        'rows': rows, 'date_from': date_from, 'date_to': date_to,
+        'generated_at': timezone.now(), 'generated_by': request.user.get_full_name() or request.user.username,
+        'grand_total': grand_total, 'subtotal_excl_vat': subtotal_excl_vat, 'vat_amount': vat_amount,
+    })
+    pdf_file = HTML(string=html_string, base_url=request.build_absolute_uri('/')).write_pdf()
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="kitchen_item_sales_{timezone.now().date()}.pdf"'
+    return response
+
+
+def _can_touch_usage_log(user):
+    return can_access(user, 'restaurant_kitchen') or can_access(user, 'store')
+
+
+@login_required
+def kitchen_usage_log_view(request):
+    if not _can_touch_usage_log(request.user):
+        return render(request, 'dashboard/restricted.html', {'module_label': 'Kitchen Usage Log'}, status=403)
+
+    today = timezone.localdate()
+    log, _ = DailyUsageLog.objects.get_or_create(department='kitchen', date=today)
+    stock_items = StockItem.objects.filter(department='kitchen', is_active=True)
+
+    return render(request, 'dashboard/kitchen_usage_log.html', {
+        'log': log, 'stock_items': stock_items,
+        'items': log.items.select_related('stock_item', 'added_by').order_by('-added_at'),
+    })
+
+
+@login_required
+def kitchen_usage_log_add(request):
+    if request.method != 'POST' or not _can_touch_usage_log(request.user):
+        return redirect('dashboard:kitchen_usage_log')
+
+    today = timezone.localdate()
+    log, _ = DailyUsageLog.objects.get_or_create(department='kitchen', date=today)
+    if log.status != 'draft':
+        messages.error(request, "Today's log is already confirmed and locked.")
+        return redirect('dashboard:kitchen_usage_log')
+
+    mode = request.POST.get('mode')
+    quantity = Decimal(request.POST.get('quantity') or '0')
+    if quantity <= 0:
+        messages.error(request, "Enter a quantity greater than zero.")
+        return redirect('dashboard:kitchen_usage_log')
+
+    with transaction.atomic():
+        if mode == 'stock':
+            stock = get_object_or_404(StockItem, id=request.POST.get('stock_item'), department='kitchen')
+            if quantity > stock.quantity_on_hand:
+                messages.error(request, f"Can't log more than what's in stock ({stock.quantity_on_hand} {stock.unit}).")
+                return redirect('dashboard:kitchen_usage_log')
+            DailyUsageItem.objects.create(log=log, stock_item=stock, quantity=quantity, added_by=request.user)
+            StockItem.objects.filter(id=stock.id).select_for_update().update(quantity_on_hand=stock.quantity_on_hand - quantity)
+        else:
+            name = request.POST.get('custom_name', '').strip()
+            unit = request.POST.get('custom_unit', '')
+            if not name:
+                messages.error(request, "Enter a name for the item.")
+                return redirect('dashboard:kitchen_usage_log')
+            DailyUsageItem.objects.create(log=log, custom_name=name, custom_unit=unit, quantity=quantity, added_by=request.user)
+
+    messages.success(request, "Usage logged.")
+    return redirect('dashboard:kitchen_usage_log')
+
+
+@login_required
+def kitchen_usage_log_delete(request, item_id):
+    if request.method != 'POST' or not _can_touch_usage_log(request.user):
+        return redirect('dashboard:kitchen_usage_log')
+    item = get_object_or_404(DailyUsageItem, id=item_id)
+    if item.log.status != 'draft':
+        messages.error(request, "This log is confirmed and locked.")
+        return redirect('dashboard:kitchen_usage_log')
+
+    with transaction.atomic():
+        if item.stock_item:
+            StockItem.objects.filter(id=item.stock_item.id).select_for_update().update(
+                quantity_on_hand=item.stock_item.quantity_on_hand + item.quantity
+            )
+        item.delete()
+    messages.success(request, "Entry removed.")
+    return redirect('dashboard:kitchen_usage_log')
+
+
+@login_required
+def kitchen_usage_log_confirm(request):
+    if request.method != 'POST' or not _can_touch_usage_log(request.user):
+        return redirect('dashboard:kitchen_usage_log')
+    today = timezone.localdate()
+    log, _ = DailyUsageLog.objects.get_or_create(department='kitchen', date=today)
+    if not log.items.exists():
+        messages.error(request, "Add at least one item before confirming.")
+        return redirect('dashboard:kitchen_usage_log')
+    log.status = 'confirmed'
+    log.confirmed_by = request.user
+    log.confirmed_at = timezone.now()
+    log.save(update_fields=['status', 'confirmed_by', 'confirmed_at'])
+    messages.success(request, "Today's usage log confirmed and locked.")
+    return redirect('dashboard:kitchen_usage_log')
 
 @staff_module_required('restaurant_kitchen')
 def restaurant_advance_item(request, item_id, new_status):

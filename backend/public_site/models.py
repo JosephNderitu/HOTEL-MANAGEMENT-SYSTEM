@@ -453,6 +453,27 @@ class Order(models.Model):
             return None
         return self.total_amount - cost
     
+    def kitchen_items(self):
+        return [
+            i for i in self.items.all()
+            if not i.is_cancelled and (
+                i.menu_item.item_type == 'food'
+                or (i.menu_item.item_type == 'drink' and i.menu_item.serving_point == 'kitchen')
+            )
+        ]
+
+    @property
+    def has_kitchen_items(self):
+        return bool(self.kitchen_items())
+
+    @property
+    def kitchen_fully_served(self):
+        items = self.kitchen_items()
+        return bool(items) and all(i.prep_status == 'served' for i in items)
+
+    @property
+    def has_vip_kitchen_item(self):
+        return any(i.tier == 'vip' for i in self.kitchen_items())
     def __str__(self):
         return f"Order #{self.id} — {self.customer_name}"
 
