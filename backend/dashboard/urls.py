@@ -11,8 +11,9 @@ urlpatterns = [
     ), name='staff_login'),
     path('logout/', auth_views.LogoutView.as_view(next_page='home'), name='staff_logout'),
     path('dashboard/', views.dashboard_home, name='home'),
-    path('reception/', views.reception_view, name='reception'),
     
+    path('reception/', views.reception_view, name='reception'),
+    path('reception/booking/<int:booking_id>/bill/', views.booking_bill, name='booking_bill'),
     path('reception/booking/<int:booking_id>/<str:action>/', views.reception_booking_action, name='reception_booking_action'),
     path('reception/order/<int:order_id>/<str:action>/', views.reception_order_action, name='reception_order_action'),
     path('reception/booking/new/', views.reception_new_booking, name='reception_new_booking'),
@@ -69,4 +70,9 @@ urlpatterns = [
     path('store/disbursement/<int:disbursement_id>/reject/', views.store_disbursement_reject, name='store_disbursement_reject'),
     path('store/disbursement/<int:disbursement_id>/disburse/', views.store_disbursement_disburse, name='store_disbursement_disburse'),
     path('store/disbursement/<int:disbursement_id>/reconcile/', views.store_disbursement_reconcile, name='store_disbursement_reconcile'),
+    
+    ##receipt uRLs
+    path('receipt/<int:order_id>/', views.order_receipt, name='order_receipt'),
+    
+    
 ]

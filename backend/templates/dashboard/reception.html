@@ -142,6 +142,11 @@
                         {% elif booking.balance_due > 0 %}
                         <a href="{% url 'dashboard:reception_record_payment' 'booking' booking.id %}" class="rcp-action-btn bg-[#C9A227] text-black">Record Payment</a>
                         {% endif %}
+
+                        <a href="{% url 'dashboard:booking_bill' booking.id %}" target="_blank" class="rcp-action-btn border border-[#0B6B3A] text-[#0B6B3A] hover:bg-[#0B6B3A] hover:text-white transition">
+                            <i class="fa-solid fa-print mr-0.5"></i>Print Bill
+                        </a>
+
                         {% if booking.status in 'pending,confirmed' %}
                         <form method="post" action="{% url 'dashboard:reception_booking_action' booking.id 'cancel' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn border border-red-400 text-red-500">Cancel</button></form>
                         {% endif %}

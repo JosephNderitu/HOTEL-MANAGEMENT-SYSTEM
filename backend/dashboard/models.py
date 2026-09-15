@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from decimal import Decimal
 import uuid
 
 
@@ -74,14 +75,25 @@ class Payment(models.Model):
     reference = models.CharField(max_length=100, blank=True, help_text="M-Pesa code, bank reference, etc (optional)")
     received_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='payments_received')
     settlement_group = models.UUIDField(null=True, blank=True, db_index=True, help_text="Groups payments made together as one settlement, e.g. room + all room service in one go.")
+    amount_tendered = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text="What the customer actually handed over. Leave blank if exact."
+    )
     created_at = models.DateTimeField(auto_now_add=True)
+    @property
+    def change_given(self):
+        if self.amount_tendered is None:
+            return Decimal('0')
+        return max(self.amount_tendered - self.amount, Decimal('0'))
 
     def clean(self):
         if not self.booking_id and not self.order_id:
             raise ValidationError("A payment must be linked to either a booking or an order.")
         if self.booking_id and self.order_id:
             raise ValidationError("A payment can't be linked to both a booking and an order.")
-
+        if self.amount_tendered is not None and self.amount_tendered < self.amount:
+            raise ValidationError("Amount tendered can't be less than the amount being paid.")
+    
     def __str__(self):
         target = self.booking or self.order
         return f"KSh {self.amount} — {target} ({self.get_method_display()})"

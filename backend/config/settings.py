@@ -181,6 +181,11 @@ DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='Queens Garden Hotel <nor
 SITE_URL = env('SITE_URL', default='http://localhost:8000')
 EMAIL_TIMEOUT = 10
 
+# Custom settings for the hotel management system
+HOTEL_KRA_PIN = env('HOTEL_KRA_PIN', default='')
+HOTEL_ADDRESS = env('HOTEL_ADDRESS', default='Kisumu Road, Langas, Eldoret, Kenya')
+HOTEL_PHONE = env('HOTEL_PHONE', default='+254 707 641625')
+
 JAZZMIN_SETTINGS = {
     "site_title": "Queens Garden Admin",
     "site_header": "Queens Garden Hotel",

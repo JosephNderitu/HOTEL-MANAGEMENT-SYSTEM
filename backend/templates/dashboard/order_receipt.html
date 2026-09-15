@@ -1,0 +1,113 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% load static %}
+{% block dashboard_content %}
+<style>
+    .receipt {
+        width: 80mm; max-width: 100%; margin: 0 auto; background: #fff;
+        padding: 18px 16px; border: 1px solid #e5e7eb; border-radius: 10px;
+        font-family: 'Courier New', Courier, monospace; font-size: 12px; color: #111;
+    }
+    .receipt .center { text-align: center; }
+    .receipt .logo { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; margin: 0 auto 8px; display: block; }
+    .receipt h2 { font-size: 14px; font-weight: bold; letter-spacing: 0.5px; }
+    .receipt .muted { color: #555; font-size: 10.5px; }
+    .receipt hr { border: none; border-top: 1px dashed #999; margin: 10px 0; }
+    .receipt table { width: 100%; border-collapse: collapse; }
+    .receipt td { padding: 2px 0; vertical-align: top; }
+    .receipt .right { text-align: right; }
+    .receipt .row { display: flex; justify-content: space-between; padding: 2px 0; }
+    .receipt .grand { font-weight: bold; font-size: 14px; border-top: 1px solid #111; border-bottom: 1px solid #111; padding: 5px 0; margin: 6px 0; }
+    .receipt .change { font-weight: bold; font-size: 13px; background: #f3f4f6; padding: 5px; text-align: center; margin-top: 6px; }
+    .receipt .qr { width: 90px; height: 90px; margin: 10px auto 4px; display: block; }
+
+    @media print {
+        body * { visibility: hidden; }
+        .receipt, .receipt * { visibility: visible; }
+        .receipt { position: absolute; left: 0; top: 0; width: 80mm; border: none; border-radius: 0; }
+        .no-print { display: none !important; }
+    }
+</style>
+
+<div class="no-print flex items-center justify-between mb-5 flex-wrap gap-3">
+    <div>
+        <a href="javascript:history.back()" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; Back</a>
+        <h1 class="text-xl font-bold text-black mt-1">Receipt Preview</h1>
+        <p class="text-gray-500 text-xs">Sized for an 80mm thermal printer</p>
+    </div>
+    <button onclick="window.print()" class="bg-[#0B6B3A] text-white font-semibold px-5 py-2.5 rounded-full hover:bg-[#095430] transition">
+        <i class="fa-solid fa-print mr-1"></i> Print / Save as PDF
+    </button>
+</div>
+
+<div class="receipt">
+    <img src="{% static 'img/queens_Garden_Logo.jpg' %}" class="logo" alt="Queens Garden Hotel">
+    <div class="center">
+        <h2>QUEENS GARDEN HOTEL</h2>
+        <p class="muted">{{ hotel_address }}</p>
+        <p class="muted">{{ hotel_phone }}</p>
+        {% if kra_pin %}<p class="muted">PIN: {{ kra_pin }}</p>{% endif %}
+    </div>
+
+    <hr>
+
+    <div class="row"><span>Receipt No.</span><span>#{{ order.id }}</span></div>
+    <div class="row"><span>Date</span><span>{{ order.created_at|date:"d/m/Y H:i" }}</span></div>
+    <div class="row"><span>Type</span><span>{{ order.get_order_type_display }}</span></div>
+    {% if order.table %}<div class="row"><span>Table</span><span>{{ order.table.number }}</span></div>{% endif %}
+    {% if order.bar_tab %}<div class="row"><span>Tab</span><span>{{ order.bar_tab.customer_name }}</span></div>{% endif %}
+    {% if order.room_booking %}<div class="row"><span>Room</span><span>{{ order.room_booking.assigned_room.number }}</span></div>{% endif %}
+    <div class="row"><span>Customer</span><span>{{ order.customer_name }}</span></div>
+    {% with p=payments.0 %}{% if p %}
+    <div class="row"><span>Served by</span><span>{{ p.received_by.get_full_name|default:p.received_by.username }}</span></div>
+    {% endif %}{% endwith %}
+
+    <hr>
+
+    <table>
+        <tr class="muted">
+            <td style="width:8%;">#</td>
+            <td style="width:42%;">Item</td>
+            <td style="width:12%;" class="right">Qty</td>
+            <td style="width:19%;" class="right">Rate</td>
+            <td class="right">{{ item.line_total|floatformat:0 }}</td>
+        </tr>
+        {% for item in active_items %}
+        <tr>
+            <td>{{ forloop.counter }}</td>
+            <td>{{ item.menu_item.name }}{% if item.tier == 'vip' %} (VIP){% endif %}{% if item.unit_price_override %} (HH){% endif %}</td>
+            <td class="right">{{ item.quantity }}</td>
+            <td class="right">{{ item.unit_price|floatformat:0 }}</td>
+            <td class="right">{{ item.unit_price|floatformat:0|add:0 }}{{ ""|default:"" }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <hr>
+
+    <div class="row"><span>Subtotal (excl. VAT)</span><span>{{ subtotal_excl_vat|floatformat:2 }}</span></div>
+    <div class="row"><span>VAT @ 16%</span><span>{{ vat_amount|floatformat:2 }}</span></div>
+    <div class="row grand"><span>TOTAL (KSh)</span><span>{{ total|floatformat:2 }}</span></div>
+
+    {% for p in payments %}
+    <div class="row"><span>Paid ({{ p.get_method_display }})</span><span>{{ p.amount|floatformat:2 }}</span></div>
+    {% if p.amount_tendered %}<div class="row muted"><span>Tendered</span><span>{{ p.amount_tendered|floatformat:2 }}</span></div>{% endif %}
+    {% if p.reference %}<div class="row muted"><span>Ref</span><span>{{ p.reference }}</span></div>{% endif %}
+    {% empty %}
+    <div class="row"><span>Paid</span><span>0.00</span></div>
+    {% endfor %}
+
+    {% if total_change > 0 %}
+    <div class="change">CHANGE: KSh {{ total_change|floatformat:2 }}</div>
+    {% endif %}
+
+    {% if order.balance_due > 0 %}
+    <div class="row grand"><span>BALANCE DUE</span><span>{{ order.balance_due|floatformat:2 }}</span></div>
+    {% endif %}
+
+    <img src="data:image/png;base64,{{ qr_b64 }}" class="qr" alt="Receipt QR">
+    <p class="center muted">Scan to verify this receipt</p>
+
+    <hr>
+    <p class="center muted">Thank you for dining with us.<br>Home Away From Home since 2010.</p>
+</div>
+{% endblock %}

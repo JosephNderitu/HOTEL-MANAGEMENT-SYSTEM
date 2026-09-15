@@ -300,7 +300,10 @@ def reception_record_payment(request, target_type, target_id):
             payment = form.save(commit=False)
             payment.received_by = request.user
             payment.save()
-            messages.success(request, f"Payment of KSh {payment.amount:,.0f} recorded.")
+            if payment.change_given > 0:
+                messages.success(request, f"Payment recorded. CHANGE DUE: KSh {payment.change_given:,.0f}")
+            else:
+                messages.success(request, f"Payment of KSh {payment.amount:,.0f} recorded.")
             return redirect('dashboard:reception')
     else:
         form = PaymentForm()
@@ -496,7 +499,10 @@ def restaurant_record_payment(request, order_id):
             payment = form.save(commit=False)
             payment.received_by = request.user
             payment.save()
-            messages.success(request, f"Payment of KSh {payment.amount:,.0f} recorded for Order #{order.id}.")
+            if payment.change_given > 0:
+                messages.success(request, f"Payment recorded. CHANGE DUE: KSh {payment.change_given:,.0f}")
+            else:
+                messages.success(request, f"Payment of KSh {payment.amount:,.0f} recorded.")
             return redirect('dashboard:restaurant_kitchen')
     else:
         form = PaymentForm(initial={'amount': order.balance_due})
@@ -970,7 +976,10 @@ def bar_record_payment(request, order_id):
                 tab.save(update_fields=['status', 'closed_at'])
                 messages.success(request, f"Payment recorded. Tab for {tab.customer_name} is now closed.")
             else:
-                messages.success(request, f"Payment of KSh {payment.amount:,.0f} recorded.")
+                if payment.change_given > 0:
+                    messages.success(request, f"Payment recorded. CHANGE DUE: KSh {payment.change_given:,.0f}")
+                else:
+                    messages.success(request, f"Payment of KSh {payment.amount:,.0f} recorded.")
             return redirect('dashboard:bar')
     else:
         form = PaymentForm(initial={'amount': order.balance_due})
@@ -1006,25 +1015,44 @@ def bar_export_pdf(request):
     date_from = request.GET.get('date_from', '').strip()
     date_to = request.GET.get('date_to', '').strip()
 
-    orders_qs = Order.objects.filter(bar_tab__isnull=False, status='confirmed').prefetch_related('items__menu_item').order_by('created_at')
+    orders_qs = Order.objects.filter(
+        bar_tab__isnull=False, status='confirmed'
+    ).prefetch_related('items__menu_item', 'payments').order_by('created_at')
     if date_from:
         orders_qs = orders_qs.filter(created_at__date__gte=date_from)
     if date_to:
         orders_qs = orders_qs.filter(created_at__date__lte=date_to)
 
-    grand_total = sum(order.total_amount for order in orders_qs) or Decimal('0')
-    subtotal_excl_vat = grand_total / (1 + VAT_RATE)
+    orders = list(orders_qs)
+
+    grand_total = sum((o.total_amount for o in orders), Decimal('0'))
+    total_cost = sum((o.total_cost or Decimal('0')) for o in orders)
+    total_profit = grand_total - total_cost
+    total_paid = sum((o.amount_paid for o in orders), Decimal('0'))
+    subtotal_excl_vat = grand_total / (1 + VAT_RATE) if grand_total else Decimal('0')
     vat_amount = grand_total - subtotal_excl_vat
+    margin_pct = (total_profit / grand_total * 100) if grand_total else Decimal('0')
 
     html_string = render_to_string('dashboard/bar_report_pdf.html', {
-        'orders': orders_qs, 'date_from': date_from, 'date_to': date_to,
-        'generated_at': timezone.now(), 'generated_by': request.user.get_full_name() or request.user.username,
-        'grand_total': grand_total, 'subtotal_excl_vat': subtotal_excl_vat, 'vat_amount': vat_amount,
+        'orders': orders,
+        'date_from': date_from,
+        'date_to': date_to,
+        'generated_at': timezone.now(),
+        'generated_by': request.user.get_full_name() or request.user.username,
+        'grand_total': grand_total,
+        'subtotal_excl_vat': subtotal_excl_vat,
+        'vat_amount': vat_amount,
+        'total_cost': total_cost,
+        'total_profit': total_profit,
+        'total_paid': total_paid,
+        'total_outstanding': grand_total - total_paid,
+        'margin_pct': margin_pct,
     })
     pdf_file = HTML(string=html_string, base_url=request.build_absolute_uri('/')).write_pdf()
     response = HttpResponse(pdf_file, content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="bar_sales_{timezone.now().date()}.pdf"'
     return response
+
 
 #### end of bar views
 
@@ -1300,3 +1328,93 @@ def store_disbursement_reconcile(request, disbursement_id):
     d.save()
     messages.success(request, f"Reconciled. Variance: KSh {d.variance:,.0f}.")
     return redirect('dashboard:store_disbursement_detail', disbursement_id=d.id)
+
+#### end of store views
+#### start of receipt views
+import base64
+import io
+import qrcode
+from .permissions import can_access
+from django.conf import settings
+
+
+@login_required
+def order_receipt(request, order_id):
+    if not (can_access(request.user, 'restaurant_kitchen') or can_access(request.user, 'bar') or can_access(request.user, 'reception')):
+        return render(request, 'dashboard/restricted.html', {'module_label': 'Receipts'}, status=403)
+
+    order = get_object_or_404(
+        Order.objects.prefetch_related('items__menu_item', 'payments__received_by'), id=order_id
+    )
+
+    active_items = [i for i in order.items.all() if not i.is_cancelled]
+    total = order.total_amount
+    subtotal_excl_vat = total / (1 + VAT_RATE) if total else Decimal('0')
+    vat_amount = total - subtotal_excl_vat
+    payments = list(order.payments.all())
+    total_change = sum((p.change_given for p in payments), Decimal('0'))
+
+    receipt_url = request.build_absolute_uri()
+    qr = qrcode.make(receipt_url)
+    buffer = io.BytesIO()
+    qr.save(buffer, format='PNG')
+    qr_b64 = base64.b64encode(buffer.getvalue()).decode()
+
+    return render(request, 'dashboard/order_receipt.html', {
+        'order': order,
+        'active_items': active_items,
+        'subtotal_excl_vat': subtotal_excl_vat,
+        'vat_amount': vat_amount,
+        'total': total,
+        'payments': payments,
+        'total_change': total_change,
+        'qr_b64': qr_b64,
+        'kra_pin': settings.HOTEL_KRA_PIN,
+        'hotel_address': settings.HOTEL_ADDRESS,
+        'hotel_phone': settings.HOTEL_PHONE,
+    })
+    
+@staff_module_required('reception')
+def booking_bill(request, booking_id):
+    booking = get_object_or_404(
+        Booking.objects.select_related('room_type', 'conference_room', 'assigned_room')
+                       .prefetch_related('payments__received_by', 'room_service_orders__items__menu_item'),
+        id=booking_id
+    )
+
+    room_charge = booking.total_amount
+    service_orders = [o for o in booking.room_service_orders.all() if o.status != 'cancelled']
+    service_total = sum((o.total_amount for o in service_orders), Decimal('0'))
+
+    grand_total = room_charge + service_total
+    subtotal_excl_vat = grand_total / (1 + VAT_RATE) if grand_total else Decimal('0')
+    vat_amount = grand_total - subtotal_excl_vat
+
+    booking_payments = list(booking.payments.all())
+    service_payments = [p for o in service_orders for p in o.payments.all()]
+    all_payments = booking_payments + service_payments
+    total_paid = sum((p.amount for p in all_payments), Decimal('0'))
+    total_change = sum((p.change_given for p in all_payments), Decimal('0'))
+
+    qr = qrcode.make(request.build_absolute_uri())
+    buffer = io.BytesIO()
+    qr.save(buffer, format='PNG')
+    qr_b64 = base64.b64encode(buffer.getvalue()).decode()
+
+    return render(request, 'dashboard/booking_bill.html', {
+        'booking': booking,
+        'room_charge': room_charge,
+        'service_orders': service_orders,
+        'service_total': service_total,
+        'grand_total': grand_total,
+        'subtotal_excl_vat': subtotal_excl_vat,
+        'vat_amount': vat_amount,
+        'all_payments': all_payments,
+        'total_paid': total_paid,
+        'total_change': total_change,
+        'balance_due': grand_total - total_paid,
+        'qr_b64': qr_b64,
+        'kra_pin': settings.HOTEL_KRA_PIN,
+        'hotel_address': settings.HOTEL_ADDRESS,
+        'hotel_phone': settings.HOTEL_PHONE,
+    })

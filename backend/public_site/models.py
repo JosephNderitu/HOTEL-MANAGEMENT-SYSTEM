@@ -487,6 +487,10 @@ class OrderItem(models.Model):
             return None
         return (self.unit_price * self.quantity) - cost
 
+    @property
+    def line_total(self):
+        return self.unit_price * self.quantity
+    
     def __str__(self):
         return f"{self.quantity} x {self.menu_item.name} ({self.get_tier_display()})"
 

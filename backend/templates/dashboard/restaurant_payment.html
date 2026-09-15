@@ -15,10 +15,42 @@
             {{ field }}
         </div>
         {% endfor %}
+
+        <div id="change-display" class="hidden bg-[#C9A227]/15 border border-[#C9A227] rounded-lg px-4 py-3 text-center">
+            <p class="text-xs text-gray-600 uppercase font-semibold">Change Due</p>
+            <p class="text-2xl font-bold text-black" id="change-amount">KSh 0</p>
+        </div>
+
         <div class="flex gap-3 pt-2">
             <button type="submit" class="flex-1 bg-[#C9A227] text-black font-semibold py-3 rounded-full hover:bg-[#b8931f] transition">Record Payment</button>
             <a href="{% url 'dashboard:restaurant_kitchen' %}" class="flex-1 text-center border-2 border-gray-300 text-gray-600 font-semibold py-3 rounded-full hover:bg-gray-50 transition">Cancel</a>
         </div>
     </form>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const amountEl = document.getElementById('id_amount');
+    const tenderedEl = document.getElementById('id_amount_tendered');
+    const display = document.getElementById('change-display');
+    const output = document.getElementById('change-amount');
+
+    function updateChange() {
+        const amount = parseFloat(amountEl.value) || 0;
+        const tendered = parseFloat(tenderedEl.value) || 0;
+        const change = tendered - amount;
+        if (tendered > 0 && change >= 0) {
+            output.textContent = `KSh ${change.toLocaleString()}`;
+            display.classList.remove('hidden');
+        } else {
+            display.classList.add('hidden');
+        }
+    }
+
+    if (amountEl && tenderedEl) {
+        amountEl.addEventListener('input', updateChange);
+        tenderedEl.addEventListener('input', updateChange);
+    }
+});
+</script>
 {% endblock %}

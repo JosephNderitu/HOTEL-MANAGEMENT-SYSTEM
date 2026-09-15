@@ -77,9 +77,10 @@ class ManualBookingForm(forms.ModelForm):
 class PaymentForm(forms.ModelForm):
     class Meta:
         model = Payment
-        fields = ['amount', 'method', 'reference']
+        fields = ['amount', 'amount_tendered', 'method', 'reference']
         widgets = {
-            'amount': forms.NumberInput(attrs={'class': FIELD_CLASS, 'step': '0.01', 'placeholder': 'Amount received'}),
+            'amount': forms.NumberInput(attrs={'class': FIELD_CLASS, 'step': '0.01', 'id': 'id_amount'}),
+            'amount_tendered': forms.NumberInput(attrs={'class': FIELD_CLASS, 'step': '0.01', 'placeholder': 'Cash given (optional)', 'id': 'id_amount_tendered'}),
             'method': forms.Select(attrs={'class': FIELD_CLASS}),
             'reference': forms.TextInput(attrs={'class': FIELD_CLASS, 'placeholder': 'M-Pesa code / reference (optional)'}),
         }

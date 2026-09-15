@@ -1,0 +1,137 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% load static %}
+{% block dashboard_content %}
+<style>
+    .bill { width: 210mm; max-width: 100%; margin: 0 auto; background: #fff; padding: 32px 36px; border: 1px solid #e5e7eb; border-radius: 10px; font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; color: #111; }
+    .bill-head { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #0B6B3A; padding-bottom: 14px; margin-bottom: 18px; }
+    .bill-head .brand { display: flex; align-items: center; gap: 12px; }
+    .bill-head img.logo { width: 54px; height: 54px; border-radius: 50%; object-fit: cover; }
+    .bill-head h2 { font-size: 17px; font-weight: 700; color: #0B6B3A; }
+    .bill-head .muted { font-size: 11px; color: #666; }
+    .bill h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; margin: 18px 0 8px; }
+    .bill table { width: 100%; border-collapse: collapse; }
+    .bill th { background: #0B6B3A; color: #fff; font-size: 11px; text-transform: uppercase; text-align: left; padding: 7px 10px; }
+    .bill td { padding: 7px 10px; border-bottom: 1px solid #eee; }
+    .bill .right { text-align: right; }
+    .bill .summary { width: 300px; margin-left: auto; margin-top: 18px; }
+    .bill .summary td { padding: 5px 10px; border: none; }
+    .bill .summary .grand td { font-weight: 700; font-size: 15px; border-top: 2px solid #0B6B3A; border-bottom: 2px solid #0B6B3A; }
+    .bill .summary .balance td { font-weight: 700; color: #dc2626; }
+    .bill .change-note { background: #FEF9EC; border: 1px solid #C9A227; border-radius: 6px; padding: 8px; text-align: center; font-weight: 700; margin-top: 10px; }
+    .bill .foot { display: flex; align-items: center; justify-content: space-between; margin-top: 26px; border-top: 1px solid #ddd; padding-top: 14px; }
+    .bill .foot img { width: 84px; height: 84px; }
+
+    @media print {
+        body * { visibility: hidden; }
+        .bill, .bill * { visibility: visible; }
+        .bill { position: absolute; left: 0; top: 0; width: 100%; border: none; border-radius: 0; padding: 0; }
+        .no-print { display: none !important; }
+    }
+</style>
+
+<div class="no-print flex items-center justify-between mb-5 flex-wrap gap-3">
+    <div>
+        <a href="{% url 'dashboard:reception' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; Back to Reception</a>
+        <h1 class="text-xl font-bold text-black mt-1">Guest Bill</h1>
+    </div>
+    <button onclick="window.print()" class="bg-[#0B6B3A] text-white font-semibold px-5 py-2.5 rounded-full hover:bg-[#095430] transition">
+        <i class="fa-solid fa-print mr-1"></i> Print / Save as PDF
+    </button>
+</div>
+
+<div class="bill">
+    <div class="bill-head">
+        <div class="brand">
+            <img src="{% static 'img/queens_Garden_Logo.jpg' %}" class="logo" alt="Queens Garden Hotel">
+            <div>
+                <h2>QUEENS GARDEN HOTEL</h2>
+                <p class="muted">{{ hotel_address }}</p>
+                <p class="muted">{{ hotel_phone }}{% if kra_pin %} &middot; PIN: {{ kra_pin }}{% endif %}</p>
+            </div>
+        </div>
+        <div style="text-align:right;">
+            <p style="font-weight:700; font-size:15px;">BILL #{{ booking.id }}</p>
+            <p class="muted">{{ booking.created_at|date:"d/m/Y H:i" }}</p>
+            <p class="muted">{{ booking.get_status_display }}</p>
+        </div>
+    </div>
+
+    <table style="margin-bottom:6px;">
+        <tr>
+            <td style="border:none; padding-left:0;"><strong>Guest:</strong> {{ booking.guest_name }}</td>
+            <td style="border:none;"><strong>Phone:</strong> {{ booking.guest_phone }}</td>
+            <td style="border:none;"><strong>ID No:</strong> {{ booking.guest_id_no|default:"—" }}</td>
+        </tr>
+        <tr>
+            <td style="border:none; padding-left:0;"><strong>{% if booking.booking_type == 'room' %}Room{% else %}Conference{% endif %}:</strong> {{ booking.assigned_room.number|default:booking.conference_room.name|default:booking.room_type.name }}</td>
+            <td style="border:none;"><strong>Check In:</strong> {{ booking.check_in|date:"d/m/Y" }}</td>
+            <td style="border:none;"><strong>Check Out:</strong> {{ booking.check_out|date:"d/m/Y" }}</td>
+        </tr>
+    </table>
+
+    <h3>Accommodation</h3>
+    <table>
+        <thead><tr><th>#</th><th>Description</th><th class="right">Nights</th><th class="right">Rate</th><th class="right">Amount (KSh)</th></tr></thead>
+        <tbody>
+            <tr>
+                <td>1</td>
+                <td>{{ booking.room_type.name|default:booking.conference_room.name }}{% if booking.assigned_room %} — Room {{ booking.assigned_room.number }}{% endif %}</td>
+                <td class="right">{% if booking.booking_type == 'room' %}{{ booking.nights }}{% else %}—{% endif %}</td>
+                <td class="right">{{ booking.amount|floatformat:0 }}</td>
+                <td class="right">{{ room_charge|floatformat:2 }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    {% if service_orders %}
+    <h3>Room Service</h3>
+    <table>
+        <thead><tr><th>#</th><th>Item</th><th class="right">Qty</th><th class="right">Rate</th><th class="right">Amount (KSh)</th></tr></thead>
+        <tbody>
+            {% for order in service_orders %}
+                {% for item in order.items.all %}{% if not item.is_cancelled %}
+                <tr>
+                    <td>{{ forloop.parentloop.counter0|add:forloop.counter }}</td>
+                    <td>{{ item.menu_item.name }}{% if item.tier == 'vip' %} (VIP){% endif %} <span style="color:#999; font-size:11px;">· {{ order.created_at|date:"d/m H:i" }}</span></td>
+                    <td class="right">{{ item.quantity }}</td>
+                    <td class="right">{{ item.unit_price|floatformat:0 }}</td>
+                    <td class="right">{{ item.line_total|floatformat:2 }}</td>
+                </tr>
+                {% endif %}{% endfor %}
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    <table class="summary">
+        <tr><td>Accommodation</td><td class="right">{{ room_charge|floatformat:2 }}</td></tr>
+        {% if service_total %}<tr><td>Room Service</td><td class="right">{{ service_total|floatformat:2 }}</td></tr>{% endif %}
+        <tr><td>Subtotal (excl. VAT)</td><td class="right">{{ subtotal_excl_vat|floatformat:2 }}</td></tr>
+        <tr><td>VAT @ 16%</td><td class="right">{{ vat_amount|floatformat:2 }}</td></tr>
+        <tr class="grand"><td>TOTAL (KSh)</td><td class="right">{{ grand_total|floatformat:2 }}</td></tr>
+        {% for p in all_payments %}
+        <tr><td>Paid — {{ p.get_method_display }}{% if p.reference %} ({{ p.reference }}){% endif %}</td><td class="right">{{ p.amount|floatformat:2 }}</td></tr>
+        {% endfor %}
+        <tr><td><strong>Total Paid</strong></td><td class="right"><strong>{{ total_paid|floatformat:2 }}</strong></td></tr>
+        {% if balance_due > 0 %}
+        <tr class="balance"><td>BALANCE DUE</td><td class="right">{{ balance_due|floatformat:2 }}</td></tr>
+        {% endif %}
+    </table>
+
+    {% if total_change > 0 %}
+    <div class="change-note" style="width:300px; margin-left:auto;">CHANGE GIVEN: KSh {{ total_change|floatformat:2 }}</div>
+    {% endif %}
+
+    <div class="foot">
+        <div style="font-size:11px; color:#666;">
+            <p><strong>Thank you for staying with us.</strong></p>
+            <p>Home Away From Home since 2010.</p>
+            {% with p=all_payments.0 %}{% if p %}<p style="margin-top:6px;">Served by: {{ p.received_by.get_full_name|default:p.received_by.username }}</p>{% endif %}{% endwith %}
+        </div>
+        <div style="text-align:center;">
+            <img src="data:image/png;base64,{{ qr_b64 }}" alt="Bill QR">
+            <p style="font-size:9px; color:#999;">Scan to verify</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
