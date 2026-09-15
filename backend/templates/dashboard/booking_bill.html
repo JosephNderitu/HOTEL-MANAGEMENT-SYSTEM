@@ -63,7 +63,7 @@
             <td style="border:none;"><strong>ID No:</strong> {{ booking.guest_id_no|default:"—" }}</td>
         </tr>
         <tr>
-            <td style="border:none; padding-left:0;"><strong>{% if booking.booking_type == 'room' %}Room{% else %}Conference{% endif %}:</strong> {{ booking.assigned_room.number|default:booking.conference_room.name|default:booking.room_type.name }}</td>
+            <td style="border:none; padding-left:0;"><strong>{% if booking.booking_type == 'room' %}Room{% else %}Conference{% endif %}:</strong> {{ booking.item_name }}{% if booking.assigned_room %} — Room {{ booking.assigned_room.number }}{% endif %}</td>
             <td style="border:none;"><strong>Check In:</strong> {{ booking.check_in|date:"d/m/Y" }}</td>
             <td style="border:none;"><strong>Check Out:</strong> {{ booking.check_out|date:"d/m/Y" }}</td>
         </tr>
@@ -75,7 +75,7 @@
         <tbody>
             <tr>
                 <td>1</td>
-                <td>{{ booking.room_type.name|default:booking.conference_room.name }}{% if booking.assigned_room %} — Room {{ booking.assigned_room.number }}{% endif %}</td>
+                <td>{{ booking.item_name }}{% if booking.assigned_room %} — Room {{ booking.assigned_room.number }}{% endif %}</td>
                 <td class="right">{% if booking.booking_type == 'room' %}{{ booking.nights }}{% else %}—{% endif %}</td>
                 <td class="right">{{ booking.amount|floatformat:0 }}</td>
                 <td class="right">{{ room_charge|floatformat:2 }}</td>

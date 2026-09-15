@@ -177,6 +177,15 @@ class Booking(models.Model):
     def total_balance_due(self):
         return self.balance_due + self.room_service_balance_due
     
+    
+    @property
+    def item_name(self):
+        if self.room_type:
+            return self.room_type.name
+        if self.conference_room:
+            return self.conference_room.name
+        return "—"
+    
     def clean(self):
         if self.booking_type == 'room':
             if not self.room_type_id:
