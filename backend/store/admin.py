@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import StockItem, Disbursement, DisbursementPurchase
+from .models import *
     
 @admin.register(StockItem)
 class StockItemAdmin(admin.ModelAdmin):
@@ -34,6 +34,16 @@ class DisbursementAdmin(admin.ModelAdmin):
     @admin.display(description='Variance')
     def variance_display(self, obj):
         return f"KSh {obj.variance:,.0f}"
+
+    def has_add_permission(self, request):
+        return False
+
+
+@admin.register(WastageLog)
+class WastageLogAdmin(admin.ModelAdmin):
+    list_display = ('stock_item', 'quantity', 'reason', 'logged_by', 'logged_at')
+    date_hierarchy = 'logged_at'
+    readonly_fields = ('stock_item', 'quantity', 'reason', 'logged_by', 'logged_at')
 
     def has_add_permission(self, request):
         return False

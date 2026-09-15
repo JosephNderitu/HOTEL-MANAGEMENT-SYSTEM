@@ -43,8 +43,18 @@ urlpatterns = [
     path('restaurant-kitchen/waitlist/<int:entry_id>/seat/', views.restaurant_waitlist_seat, name='restaurant_waitlist_seat'),
     path('restaurant-kitchen/waitlist/<int:entry_id>/cancel/', views.restaurant_waitlist_cancel, name='restaurant_waitlist_cancel'),
         
-    path('bar/', views.bar_view, name='bar'),
     
+    path('bar/', views.bar_tabs_view, name='bar'),
+    path('bar/tab/new/', views.bar_tabs_view, name='bar_new_tab'),
+    path('bar/tab/<int:tab_id>/', views.bar_tab_pos, name='bar_tab_pos'),
+    path('bar/tab/<int:tab_id>/add-items/', views.bar_add_items, name='bar_add_items'),
+    path('bar/item/<int:item_id>/advance/<str:new_status>/', views.bar_advance_item, name='bar_advance_item'),
+    path('bar/item/<int:item_id>/cancel/', views.bar_cancel_item, name='bar_cancel_item'),
+    path('bar/order/<int:order_id>/cancel/', views.bar_cancel_order, name='bar_cancel_order'),
+    path('bar/order/<int:order_id>/payment/', views.bar_record_payment, name='bar_record_payment'),
+    path('bar/wastage/', views.bar_wastage_log, name='bar_wastage'),
+    path('bar/export-pdf/', views.bar_export_pdf, name='bar_export_pdf'),
+        
     path('gate/', views.gate_view, name='gate'),
     path('gate/exit/<int:log_id>/', views.gate_log_exit, name='gate_log_exit'),
     path('gate/edit/<int:log_id>/', views.gate_edit_entry, name='gate_edit_entry'),

@@ -92,3 +92,20 @@ class DisbursementPurchase(models.Model):
 
     def __str__(self):
         return f"{self.quantity} x {self.stock_item.name}"
+    
+class WastageLog(models.Model):
+    stock_item = models.ForeignKey(StockItem, on_delete=models.PROTECT, related_name='wastage_records')
+    quantity = models.DecimalField(max_digits=10, decimal_places=2)
+    reason = models.CharField(max_length=200)
+    logged_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='wastage_logged')
+    logged_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+        if is_new:
+            self.stock_item.quantity_on_hand -= self.quantity
+            self.stock_item.save(update_fields=['quantity_on_hand'])
+
+    def __str__(self):
+        return f"{self.quantity} {self.stock_item.unit} {self.stock_item.name} wasted — {self.reason}"

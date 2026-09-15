@@ -316,6 +316,7 @@ def rooms_view(request):
     return render(request, 'dashboard/module_placeholder.html', {'module_label': 'Rooms'})
 
 
+### start of restaurant views
 @staff_module_required('restaurant_kitchen')
 def restaurant_tables_view(request):
     tables = Table.objects.all().order_by('number')
@@ -735,11 +736,297 @@ def restaurant_export_pdf(request):
     response['Content-Disposition'] = f'attachment; filename="restaurant_sales_{timezone.now().date()}.pdf"'
     return response
 
+### end of restaurant views
+
+### start of bar views
+@staff_module_required('bar')
+def bar_tabs_view(request):
+    today = timezone.localdate()
+    open_tabs = BarTab.objects.filter(status='open').order_by('-opened_at')
+
+    if request.method == 'POST':
+        tab = BarTab.objects.create(
+            customer_name=request.POST.get('customer_name', '').strip() or 'Walk-in',
+            phone_number=request.POST.get('phone_number', '').strip(),
+        )
+        return redirect('dashboard:bar_tab_pos', tab_id=tab.id)
+
+    bar_payments = Payment.objects.filter(order__bar_tab__isnull=False, created_at__date=today)
+    today_revenue = bar_payments.aggregate(total=Sum('amount'))['total'] or 0
+    today_bar_orders = Order.objects.filter(bar_tab__isnull=False, status='confirmed', created_at__date=today).prefetch_related('items__menu_item')
+    today_profit = sum((o.total_profit or Decimal('0')) for o in today_bar_orders)
+
+    bar_stock = StockItem.objects.filter(department='bar', is_active=True)
+    low_stock_items = [s for s in bar_stock if s.is_low_stock]
+    out_of_stock_items = [s for s in bar_stock if s.quantity_on_hand <= 0]
+    
+    revenue_by_method = {
+        code: bar_payments.filter(method=code).aggregate(total=Sum('amount'))['total'] or 0
+        for code, _ in Payment.METHOD_CHOICES
+    }
+    active_hh = get_active_happy_hour()
+
+    return render(request, 'dashboard/bar_tabs.html', {
+        'open_tabs': open_tabs,
+        'today_revenue': today_revenue,
+        'today_profit': today_profit,
+        'low_stock_items': low_stock_items,
+        'out_of_stock_items': out_of_stock_items,
+        'revenue_by_method': revenue_by_method,
+        'active_hh': active_hh,
+    })
 
 @staff_module_required('bar')
-def bar_view(request):
-    return render(request, 'dashboard/module_placeholder.html', {'module_label': 'Bar'})
+def bar_tab_pos(request, tab_id):
+    tab = get_object_or_404(BarTab, id=tab_id)
+    open_orders = tab.open_orders
 
+    selected_order = None
+    order_param = request.GET.get('order')
+    if order_param and order_param != 'new':
+        selected_order = next((o for o in open_orders if str(o.id) == order_param), None)
+
+    drinks = MenuItem.objects.filter(
+        item_type='drink', serving_point='bar', is_available=True,
+        stock_item__isnull=False,          # ghost products can never reach the POS
+        stock_item__quantity_on_hand__gt=0,
+    ).select_related('stock_item').prefetch_related('images').order_by('category', 'name')
+
+    low_stock_drinks = [d for d in drinks if d.is_low_stock]
+    
+    drinks = [d for d in drinks if d.is_in_stock]
+    categories = sorted(set(d.category for d in drinks if d.category))
+    active_hh = get_active_happy_hour()
+
+    return render(request, 'dashboard/bar_tab_pos.html', {
+        'tab': tab,
+        'open_orders': open_orders,
+        'selected_order': selected_order,
+        'drinks': drinks,
+        'categories': categories,
+        'active_hh': active_hh,
+    })
+
+def _happy_hour_price(menu_item, tier, active_hh):
+    base = menu_item.vip_price if (tier == 'vip' and menu_item.vip_price is not None) else menu_item.regular_price
+    if active_hh:
+        discount = Decimal(active_hh.discount_percent) / Decimal(100)
+        return (base * (1 - discount)).quantize(Decimal('0.01'))
+    return base
+
+@staff_module_required('bar')
+def bar_add_items(request, tab_id):
+    if request.method != 'POST':
+        return redirect('dashboard:bar')
+    tab = get_object_or_404(BarTab, id=tab_id)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid request.'}, status=400)
+
+    order_id = data.get('order_id')
+    items = data.get('items', [])
+    if not items:
+        return JsonResponse({'error': 'Add at least one item.'}, status=400)
+
+    active_hh = get_active_happy_hour()
+
+    resolved = []
+    for item in items:
+        try:
+            menu_item = MenuItem.objects.select_related('stock_item').get(id=item['id'], is_available=True)
+        except (MenuItem.DoesNotExist, KeyError):
+            continue
+        tier = item.get('tier') if item.get('tier') in ('regular', 'vip') else 'regular'
+        qty = max(int(item.get('qty', 1)), 1)
+        price = _happy_hour_price(menu_item, tier, active_hh)
+        resolved.append((menu_item, tier, qty, price))
+
+    shortfalls = [mi.name for mi, _, qty, _ in resolved if getattr(mi, 'stock_item', None) and mi.stock_item.quantity_on_hand < qty]
+    if shortfalls:
+        return JsonResponse({'error': f"Insufficient stock: {', '.join(shortfalls)}."}, status=409)
+
+    with transaction.atomic():
+        if order_id:
+            order = get_object_or_404(Order, id=order_id, bar_tab=tab)
+        else:
+            order = Order.objects.create(
+                customer_name=tab.customer_name, customer_phone=tab.phone_number,
+                bar_tab=tab, order_type='dine_in', status='confirmed',
+            )
+        for menu_item, tier, qty, price in resolved:
+            OrderItem.objects.create(
+                order=order, menu_item=menu_item, tier=tier, quantity=qty,
+                unit_price_override=price if active_hh else None,
+                prep_status='ready' if menu_item.is_quick_serve else 'queued',
+            )
+            stock = getattr(menu_item, 'stock_item', None)
+            if stock:
+                StockItem.objects.filter(id=stock.id).select_for_update().update(quantity_on_hand=stock.quantity_on_hand - qty)
+
+    return JsonResponse({'success': True, 'order_id': order.id})
+
+@staff_module_required('bar')
+def bar_advance_item(request, item_id, new_status):
+    if request.method != 'POST':
+        return redirect('dashboard:bar')
+    order_item = get_object_or_404(OrderItem, id=item_id)
+    valid_next = {'queued': 'preparing', 'preparing': 'ready', 'ready': 'served'}
+    if valid_next.get(order_item.prep_status) != new_status:
+        messages.error(request, "That status change isn't valid from the item's current state.")
+    else:
+        order_item.prep_status = new_status
+        order_item.save(update_fields=['prep_status'])
+    tab = order_item.order.bar_tab
+    return redirect(f"{reverse('dashboard:bar_tab_pos', args=[tab.id])}?order={order_item.order_id}")
+
+@staff_module_required('bar')
+def bar_cancel_item(request, item_id):
+    if request.method != 'POST':
+        return redirect('dashboard:bar')
+    order_item = get_object_or_404(OrderItem, id=item_id)
+    reason = request.POST.get('reason', '').strip()
+
+    if not reason:
+        messages.error(request, "A reason is required to cancel an item.")
+    elif order_item.prep_status not in ('queued', 'preparing'):
+        messages.error(request, f"Can't cancel {order_item.menu_item.name}, it's already {order_item.get_prep_status_display().lower()}.")
+    else:
+        with transaction.atomic():
+            stock = getattr(order_item.menu_item, 'stock_item', None)
+            if stock:
+                StockItem.objects.filter(id=stock.id).select_for_update().update(quantity_on_hand=stock.quantity_on_hand + order_item.quantity)
+            order_item.is_cancelled = True
+            order_item.cancel_reason = reason
+            order_item.cancelled_by = request.user
+            order_item.cancelled_at = timezone.now()
+            order_item.save(update_fields=['is_cancelled', 'cancel_reason', 'cancelled_by', 'cancelled_at'])
+
+            order = order_item.order
+            if not order.items.filter(is_cancelled=False).exists():
+                order.status = 'cancelled'
+                order.save(update_fields=['status'])
+        messages.success(request, f"Cancelled {order_item.menu_item.name}.")
+
+    tab = order_item.order.bar_tab
+    return redirect(f"{reverse('dashboard:bar_tab_pos', args=[tab.id])}?order={order_item.order_id}")
+
+@staff_module_required('bar')
+def bar_cancel_order(request, order_id):
+    if request.method != 'POST':
+        return redirect('dashboard:bar')
+    order = get_object_or_404(Order, id=order_id)
+    reason = request.POST.get('reason', '').strip()
+    tab = order.bar_tab
+
+    if not reason:
+        messages.error(request, "A reason is required to cancel an order.")
+        return redirect('dashboard:bar_tab_pos', tab_id=tab.id)
+
+    cancellable = order.items.filter(is_cancelled=False, prep_status__in=['queued', 'preparing'])
+    already_served = order.items.filter(is_cancelled=False, prep_status__in=['ready', 'served']).exists()
+
+    with transaction.atomic():
+        for order_item in cancellable:
+            stock = getattr(order_item.menu_item, 'stock_item', None)
+            if stock:
+                StockItem.objects.filter(id=stock.id).select_for_update().update(quantity_on_hand=stock.quantity_on_hand + order_item.quantity)
+            order_item.is_cancelled = True
+            order_item.cancel_reason = reason
+            order_item.cancelled_by = request.user
+            order_item.cancelled_at = timezone.now()
+            order_item.save(update_fields=['is_cancelled', 'cancel_reason', 'cancelled_by', 'cancelled_at'])
+
+        if already_served:
+            messages.success(request, f"Cancelled {cancellable.count()} not-yet-served item(s). Order stays open.")
+        else:
+            order.status = 'cancelled'
+            order.save(update_fields=['status'])
+            messages.success(request, "Order cancelled.")
+
+    return redirect('dashboard:bar_tab_pos', tab_id=tab.id)
+
+@staff_module_required('bar')
+def bar_record_payment(request, order_id):
+    order = get_object_or_404(Order, id=order_id, bar_tab__isnull=False)
+
+    if not order.is_fully_served:
+        messages.error(request, "This order can't be paid yet, every drink must be marked Served first.")
+        return redirect('dashboard:bar_tab_pos', tab_id=order.bar_tab_id)
+
+    if request.method == 'POST':
+        instance = Payment(order=order)
+        form = PaymentForm(request.POST, instance=instance)
+        if form.is_valid():
+            payment = form.save(commit=False)
+            payment.received_by = request.user
+            payment.save()
+
+            tab = order.bar_tab
+            if not tab.open_orders:
+                tab.status = 'closed'
+                tab.closed_at = timezone.now()
+                tab.save(update_fields=['status', 'closed_at'])
+                messages.success(request, f"Payment recorded. Tab for {tab.customer_name} is now closed.")
+            else:
+                messages.success(request, f"Payment of KSh {payment.amount:,.0f} recorded.")
+            return redirect('dashboard:bar')
+    else:
+        form = PaymentForm(initial={'amount': order.balance_due})
+
+    return render(request, 'dashboard/bar_payment.html', {'form': form, 'order': order})
+
+@staff_module_required('bar')
+def bar_wastage_log(request):
+    if request.method == 'POST':
+        try:
+            stock_item = StockItem.objects.get(id=request.POST.get('stock_item'), department='bar')
+            quantity = Decimal(request.POST.get('quantity'))
+            reason = request.POST.get('reason', '').strip()
+        except (StockItem.DoesNotExist, ValueError, TypeError):
+            messages.error(request, "Invalid entry.")
+            return redirect('dashboard:bar_wastage')
+
+        if not reason:
+            messages.error(request, "A reason is required.")
+        elif quantity > stock_item.quantity_on_hand:
+            messages.error(request, f"Can't log more waste than is in stock ({stock_item.quantity_on_hand} {stock_item.unit}).")
+        else:
+            WastageLog.objects.create(stock_item=stock_item, quantity=quantity, reason=reason, logged_by=request.user)
+            messages.success(request, "Wastage logged and stock adjusted.")
+        return redirect('dashboard:bar_wastage')
+
+    stock_items = StockItem.objects.filter(department='bar', is_active=True)
+    recent = WastageLog.objects.filter(stock_item__department='bar').select_related('stock_item', 'logged_by').order_by('-logged_at')[:20]
+    return render(request, 'dashboard/bar_wastage.html', {'stock_items': stock_items, 'recent': recent})
+
+@staff_module_required('bar')
+def bar_export_pdf(request):
+    date_from = request.GET.get('date_from', '').strip()
+    date_to = request.GET.get('date_to', '').strip()
+
+    orders_qs = Order.objects.filter(bar_tab__isnull=False, status='confirmed').prefetch_related('items__menu_item').order_by('created_at')
+    if date_from:
+        orders_qs = orders_qs.filter(created_at__date__gte=date_from)
+    if date_to:
+        orders_qs = orders_qs.filter(created_at__date__lte=date_to)
+
+    grand_total = sum(order.total_amount for order in orders_qs) or Decimal('0')
+    subtotal_excl_vat = grand_total / (1 + VAT_RATE)
+    vat_amount = grand_total - subtotal_excl_vat
+
+    html_string = render_to_string('dashboard/bar_report_pdf.html', {
+        'orders': orders_qs, 'date_from': date_from, 'date_to': date_to,
+        'generated_at': timezone.now(), 'generated_by': request.user.get_full_name() or request.user.username,
+        'grand_total': grand_total, 'subtotal_excl_vat': subtotal_excl_vat, 'vat_amount': vat_amount,
+    })
+    pdf_file = HTML(string=html_string, base_url=request.build_absolute_uri('/')).write_pdf()
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="bar_sales_{timezone.now().date()}.pdf"'
+    return response
+
+#### end of bar views
 
 @staff_module_required('gate')
 def gate_view(request):

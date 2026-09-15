@@ -1,0 +1,49 @@
+<input type="text" id="menu-search" placeholder="Search..." class="w-full border border-[#0B6B3A] rounded-lg px-4 py-2.5 text-sm mb-3">
+<div class="flex gap-2 overflow-x-auto pb-2 mb-4">
+    <span class="cat-chip active" data-cat="all">All</span>
+    {% for cat in categories %}<span class="cat-chip" data-cat="{{ cat }}">{{ cat }}</span>{% endfor %}
+</div>
+
+<div id="menu-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+    {% for item in pos_items %}
+    <div class="menu-card" data-category="{{ item.category }}" data-name="{{ item.name|lower }}">
+        <div class="img-wrap">
+            {% with img=item.images.first %}
+            {% if img %}
+            <img src="{{ img.image.url }}" alt="{{ item.name }}" loading="lazy">
+            {% else %}
+            <div class="w-full h-full flex items-center justify-center text-gray-300">
+                <i class="fa-solid {% if item.item_type == 'drink' %}fa-martini-glass-citrus{% else %}fa-utensils{% endif %} text-xl"></i>
+            </div>
+            {% endif %}
+            {% endwith %}
+            {% if item.stock_level is not None %}
+            <span class="stock-pill {% if item.is_low_stock %}stock-low{% else %}stock-ok{% endif %}">{{ item.stock_level|floatformat:"-2" }}</span>
+            {% endif %}
+        </div>
+        <div class="p-2.5">
+            <p class="text-[9px] uppercase text-gray-400 truncate">{{ item.category }}</p>
+            <p class="text-xs font-bold text-black leading-tight mb-1 line-clamp-2" title="{{ item.name }}">{{ item.name }}</p>
+            <p class="text-[11px] text-gray-500 mb-2">
+                KSh {{ item.regular_price|floatformat:0 }}{% if item.vip_price %}<span class="text-[9px] text-[#C9A227]"> / {{ item.vip_price|floatformat:0 }}</span>{% endif %}
+            </p>
+            <button type="button" class="add-item-btn w-full text-[11px] font-semibold bg-[#0B6B3A] text-white py-1.5 rounded-full hover:bg-[#095430] transition"
+                    data-id="{{ item.id }}" data-name="{{ item.name }}"
+                    data-regular-price="{{ item.regular_price }}"
+                    data-vip-price="{% if item.vip_price %}{{ item.vip_price }}{% else %}{{ item.regular_price }}{% endif %}">
+                <i class="fa-solid fa-plus mr-1"></i>Add
+            </button>
+        </div>
+    </div>
+    {% empty %}
+    <p class="text-gray-400 col-span-full text-center py-10">{{ empty_message|default:"Nothing available right now." }}</p>
+    {% endfor %}
+</div>
+
+<div id="pagination-bar" class="flex items-center justify-between mt-4 text-sm hidden">
+    <span class="text-gray-500 text-xs"><span id="page-info"></span></span>
+    <div class="flex gap-2">
+        <button type="button" id="prev-page" class="px-3 py-1.5 border border-[#0B6B3A] rounded-lg text-[#0B6B3A] text-xs font-semibold disabled:opacity-30">Previous</button>
+        <button type="button" id="next-page" class="px-3 py-1.5 border border-[#0B6B3A] rounded-lg text-[#0B6B3A] text-xs font-semibold disabled:opacity-30">Next</button>
+    </div>
+</div>

@@ -1,0 +1,34 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+<a href="{% url 'dashboard:bar' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; Back to Bar</a>
+<h1 class="text-2xl font-bold text-black mt-1 mb-6">Log Wastage</h1>
+
+{% if messages %}{% for message in messages %}
+<div class="bg-red-50 border border-red-300 text-red-700 text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
+{% endfor %}{% endif %}
+
+<div class="grid lg:grid-cols-2 gap-6">
+    <div class="bg-white border border-[#0B6B3A] rounded-2xl p-6">
+        <form method="post" class="space-y-3">
+            {% csrf_token %}
+            <select name="stock_item" class="w-full border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
+                {% for item in stock_items %}<option value="{{ item.id }}">{{ item.name }} ({{ item.quantity_on_hand }} {{ item.unit }} in stock)</option>{% endfor %}
+            </select>
+            <input type="number" step="0.01" name="quantity" placeholder="Quantity wasted" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            <textarea name="reason" required rows="2" placeholder="e.g. Bottle dropped and broke" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"></textarea>
+            <button type="submit" class="w-full bg-red-500 text-white font-semibold py-2.5 rounded-full hover:bg-red-600 transition">Log Wastage</button>
+        </form>
+    </div>
+    <div>
+        <h2 class="font-bold text-black text-sm mb-3">Recent Wastage</h2>
+        <div class="space-y-2">
+            {% for w in recent %}
+            <div class="border border-gray-200 rounded-lg p-3 text-sm">
+                <p class="font-semibold">{{ w.quantity }} {{ w.stock_item.unit }} {{ w.stock_item.name }}</p>
+                <p class="text-xs text-gray-500">{{ w.reason }} &middot; {{ w.logged_by.get_full_name|default:w.logged_by.username }} &middot; {{ w.logged_at|date:"M d, H:i" }}</p>
+            </div>
+            {% empty %}<p class="text-gray-400 text-sm">No wastage logged yet.</p>{% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

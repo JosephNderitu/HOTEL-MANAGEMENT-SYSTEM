@@ -1,0 +1,48 @@
+<style>
+    .cat-chip { padding: 5px 12px; border-radius: 9999px; border: 1px solid #0B6B3A; font-size: 11px; font-weight: 600; color: #0B6B3A; cursor: pointer; white-space: nowrap; user-select: none; }
+    .cat-chip.active { background: #0B6B3A; color: #fff; }
+
+    .menu-card { border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; background: #fff; transition: box-shadow 0.15s, border-color 0.15s; }
+    .menu-card:hover { box-shadow: 0 4px 14px rgba(11,107,58,0.12); border-color: #0B6B3A; }
+    .menu-card .img-wrap {
+        position: relative; width: 100%; aspect-ratio: 1/1;
+        background: #FAFAF8; display: flex; align-items: center; justify-content: center; overflow: hidden;
+    }
+    /* contain, not cover: the whole product is always visible, just scaled down */
+    .menu-card img { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; display: block; }
+
+    .stock-pill { position: absolute; top: 5px; right: 5px; font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 9999px; }
+    .stock-ok { background: rgba(11,107,58,0.9); color: #fff; }
+    .stock-low { background: #dc2626; color: #fff; }
+
+    .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.2em; }
+
+    .order-pill { padding: 7px 14px; border-radius: 9999px; border: 1px solid #d1d5db; font-size: 12px; font-weight: 600; color: #6b7280; text-decoration: none; white-space: nowrap; }
+    .order-pill.active { background: #0B6B3A; border-color: #0B6B3A; color: #fff; }
+
+    .cart-panel { position: sticky; top: 90px; }
+    .sent-item-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; padding: 5px 0; border-bottom: 1px solid #f3f4f6; gap: 8px; }
+    .new-item-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; padding: 6px 0; border-bottom: 1px solid #f3f4f6; }
+    .qty-badge { font-size: 9px; font-weight: 700; padding: 1px 7px; border-radius: 9999px; white-space: nowrap; }
+    .qty-queued { background: #FEF9EC; color: #92722a; }
+    .qty-preparing { background: #DBEAFE; color: #1e40af; }
+    .qty-ready { background: #DCFCE7; color: #0B6B3A; }
+    .qty-served { background: #F3F4F6; color: #6b7280; }
+
+    .tier-toggle { position: relative; width: 170px; height: 36px; background: #e5e7eb; border-radius: 9999px; cursor: pointer; flex-shrink: 0; }
+    .tier-toggle .tier-slider { position: absolute; top: 3px; left: 3px; width: 82px; height: 30px; background: #0B6B3A; border-radius: 9999px; transition: transform 0.25s ease, background 0.25s ease; }
+    .tier-toggle.vip .tier-slider { transform: translateX(82px); background: #C9A227; }
+    .tier-toggle .tier-label { position: relative; z-index: 2; width: 50%; text-align: center; font-size: 11px; font-weight: 700; color: #6b7280; }
+    .tier-toggle:not(.vip) .tier-label.regular, .tier-toggle.vip .tier-label.vip { color: white; }
+    .tier-toggle.vip .tier-label.vip { color: #000; }
+
+    /* Below lg, the cart stops being a sticky sidebar and sits under the menu */
+    @media (max-width: 1023px) {
+        .cart-panel { position: static; }
+    }
+    /* Small phones: 2 columns stays readable, tighter padding */
+    @media (max-width: 400px) {
+        .menu-card .p-2\.5 { padding: 8px; }
+        #menu-grid { gap: 8px; }
+    }
+</style>

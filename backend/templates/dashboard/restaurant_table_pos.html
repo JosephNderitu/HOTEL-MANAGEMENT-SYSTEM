@@ -1,31 +1,7 @@
 {% extends "dashboard/base_dashboard.html" %}
 {% load static %}
 {% block dashboard_content %}
-<style>
-    .order-pill { padding: 8px 16px; border-radius: 9999px; border: 1px solid #d1d5db; font-size: 12px; font-weight: 600; color: #6b7280; text-decoration: none; white-space: nowrap; }
-    .order-pill.active { background: #0B6B3A; border-color: #0B6B3A; color: #fff; }
-    .cat-chip { padding: 6px 14px; border-radius: 9999px; border: 1px solid #0B6B3A; font-size: 12px; font-weight: 600; color: #0B6B3A; cursor: pointer; white-space: nowrap; }
-    .cat-chip.active { background: #0B6B3A; color: #fff; }
-    .menu-card { border: 1px solid #e5e7eb; border-radius: 14px; overflow: hidden; transition: box-shadow 0.15s; }
-    .menu-card:hover { box-shadow: 0 6px 18px rgba(11,107,58,0.12); }
-    .menu-card .img-wrap { width: 100%; aspect-ratio: 4/3; background: #f3f4f6; overflow: hidden; }
-    .menu-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .cart-panel { position: sticky; top: 90px; }
-    .sent-item-row { display: flex; justify-content: space-between; font-size: 12px; padding: 5px 0; border-bottom: 1px solid #f3f4f6; }
-    .new-item-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; padding: 6px 0; border-bottom: 1px solid #f3f4f6; }
-    .qty-badge { font-size: 9px; font-weight: 700; padding: 1px 7px; border-radius: 9999px; }
-    .qty-queued { background: #FEF9EC; color: #92722a; }
-    .qty-preparing { background: #DBEAFE; color: #1e40af; }
-    .qty-ready { background: #DCFCE7; color: #0B6B3A; }
-    .qty-served { background: #F3F4F6; color: #6b7280; }
-
-    .tier-toggle { position: relative; width: 190px; height: 38px; background: #e5e7eb; border-radius: 9999px; cursor: pointer; }
-    .tier-toggle .tier-slider { position: absolute; top: 3px; left: 3px; width: 92px; height: 32px; background: #0B6B3A; border-radius: 9999px; transition: transform 0.25s ease, background 0.25s ease; }
-    .tier-toggle.vip .tier-slider { transform: translateX(92px); background: #C9A227; }
-    .tier-toggle .tier-label { position: relative; z-index: 2; width: 50%; text-align: center; font-size: 12px; font-weight: 700; color: #6b7280; }
-    .tier-toggle:not(.vip) .tier-label.regular, .tier-toggle.vip .tier-label.vip { color: white; }
-    .tier-toggle.vip .tier-label.vip { color: #000; }
-</style>
+{% include "dashboard/_pos_styles.html" %}
 
 <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
     <div>
@@ -56,49 +32,10 @@
     </a>
 </div>
 
-<div class="grid lg:grid-cols-3 gap-6">
+<div class="grid lg:grid-cols-4 gap-6">
     <!-- Menu -->
-    <div class="lg:col-span-2">
-        <input type="text" id="menu-search" placeholder="Search menu..." class="w-full border border-[#0B6B3A] rounded-lg px-4 py-2.5 text-sm mb-3">
-        <div class="flex gap-2 overflow-x-auto pb-2 mb-4">
-            <span class="cat-chip active" data-cat="all">All Menu</span>
-            {% for cat in categories %}
-            <span class="cat-chip" data-cat="{{ cat }}">{{ cat }}</span>
-            {% endfor %}
-        </div>
-        <div id="menu-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            {% for item in menu_items %}
-            <div class="menu-card" data-category="{{ item.category }}" data-name="{{ item.name|lower }}">
-                <div class="img-wrap">
-                    {% with img=item.images.first %}
-                    {% if img %}
-                    <img src="{{ img.image.url }}" alt="{{ item.name }}" loading="lazy">
-                    {% else %}
-                    <div class="w-full h-full flex items-center justify-center text-gray-300">
-                        <i class="fa-solid {% if item.item_type == 'drink' %}fa-mug-hot{% else %}fa-utensils{% endif %} text-2xl"></i>
-                    </div>
-                    {% endif %}
-                    {% endwith %}
-                </div>
-                <div class="p-3">
-                    <p class="text-[10px] uppercase text-gray-400 mb-1">{{ item.category }}</p>
-                    <p class="text-sm font-bold text-black mb-1">{{ item.name }}</p>
-                    <p class="text-xs text-gray-500 mb-2">
-                        <span class="item-price">KSh {{ item.regular_price|floatformat:0 }}</span>
-                        {% if item.vip_price %}<span class="text-[10px] text-[#C9A227] ml-1">(VIP KSh {{ item.vip_price|floatformat:0 }})</span>{% endif %}
-                    </p>
-                    <button type="button" class="add-item-btn w-full text-xs font-semibold bg-[#0B6B3A] text-white py-2 rounded-full hover:bg-[#095430] transition"
-                            data-id="{{ item.id }}" data-name="{{ item.name }}"
-                            data-regular-price="{{ item.regular_price }}"
-                            data-vip-price="{% if item.vip_price %}{{ item.vip_price }}{% else %}{{ item.regular_price }}{% endif %}">
-                        <i class="fa-solid fa-plus mr-1"></i>Add
-                    </button>
-                </div>
-            </div>
-            {% empty %}
-            <p class="text-gray-400 col-span-full text-center py-10">No items available right now.</p>
-            {% endfor %}
-        </div>
+    <div class="lg:col-span-3">
+        {% include "dashboard/_pos_menu_grid.html" with pos_items=menu_items empty_message="No items available right now." %}
     </div>
 
     <!-- Cart -->
@@ -180,157 +117,29 @@
     </div>
 </div>
 
+{% include "dashboard/_pos_cancel_modal.html" %}
+<script>window.POS_DEFAULT_TIER = '{{ default_tier }}';</script>
+{% include "dashboard/_pos_scripts.html" %}
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    let cart = [];
-    let currentTier = '{{ default_tier }}';
-
-    function getCookie(name) {
-        const value = `; ${document.cookie}`;
-        const parts = value.split(`; ${name}=`);
-        if (parts.length === 2) return parts.pop().split(';').shift();
-    }
-    const csrftoken = getCookie('csrftoken');
-
-    const tierToggle = document.getElementById('tier-toggle');
-    tierToggle.addEventListener('click', function () {
-        currentTier = currentTier === 'regular' ? 'vip' : 'regular';
-        tierToggle.classList.toggle('vip', currentTier === 'vip');
+document.getElementById('submit-btn').addEventListener('click', async function () {
+    const errorEl = document.getElementById('cart-error');
+    errorEl.classList.add('hidden');
+    if (window.posCart.length === 0) { errorEl.textContent = 'Add at least one item first.'; errorEl.classList.remove('hidden'); return; }
+    const items = window.posCart.map(i => ({ id: i.id, qty: i.qty, tier: i.tier }));
+    {% if selected_order %}
+    const res = await fetch("{% url 'dashboard:restaurant_add_items' selected_order.id %}", {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+        body: JSON.stringify({ items }),
     });
-
-    function hideError() {
-        document.getElementById('cart-error').classList.add('hidden');
-    }
-
-    function renderCart() {
-        const container = document.getElementById('new-cart-items');
-        const emptyMsg = document.getElementById('empty-cart-msg');
-        container.innerHTML = '';
-        if (cart.length === 0) {
-            container.appendChild(emptyMsg);
-        } else {
-            cart.forEach((item, idx) => {
-                const row = document.createElement('div');
-                row.className = 'new-item-row';
-                row.innerHTML = `
-                    <span>${item.qty}x ${item.name}${item.tier === 'vip' ? ' <span class="text-[9px] text-[#C9A227] font-bold">VIP</span>' : ''}</span>
-                    <div class="flex items-center gap-2">
-                        <button class="cart-minus text-gray-400" data-idx="${idx}">-</button>
-                        <button class="cart-remove text-red-400" data-idx="${idx}"><i class="fa-solid fa-xmark text-xs"></i></button>
-                    </div>
-                `;
-                container.appendChild(row);
-            });
-        }
-        const subtotal = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
-        document.getElementById('cart-subtotal').textContent = `KSh ${subtotal.toLocaleString()}`;
-
-        container.querySelectorAll('.cart-minus').forEach(btn => {
-            btn.addEventListener('click', function () {
-                const idx = parseInt(this.dataset.idx);
-                cart[idx].qty -= 1;
-                if (cart[idx].qty <= 0) cart.splice(idx, 1);
-                renderCart();
-            });
-        });
-        container.querySelectorAll('.cart-remove').forEach(btn => {
-            btn.addEventListener('click', function () {
-                cart.splice(parseInt(this.dataset.idx), 1);
-                renderCart();
-            });
-        });
-    }
-
-    document.querySelectorAll('.add-item-btn').forEach(btn => {
-        btn.addEventListener('click', function () {
-            hideError();
-            const id = this.dataset.id;
-            const price = currentTier === 'vip' ? parseFloat(this.dataset.vipPrice) : parseFloat(this.dataset.regularPrice);
-            const existing = cart.find(i => i.id === id && i.tier === currentTier);
-            if (existing) existing.qty += 1;
-            else cart.push({ id, name: this.dataset.name, price, tier: currentTier, qty: 1 });
-            renderCart();
-        });
+    {% else %}
+    const res = await fetch("{% url 'dashboard:restaurant_new_order' table.id %}", {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+        body: JSON.stringify({ items, customer_name: document.getElementById('order-customer-name').value, customer_phone: document.getElementById('order-customer-phone').value }),
     });
-
-    document.getElementById('menu-search').addEventListener('input', function () {
-        const q = this.value.toLowerCase();
-        document.querySelectorAll('.menu-card').forEach(card => {
-            card.style.display = card.dataset.name.includes(q) ? '' : 'none';
-        });
-    });
-
-    document.querySelectorAll('.cat-chip').forEach(chip => {
-        chip.addEventListener('click', function () {
-            document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active'));
-            this.classList.add('active');
-            const cat = this.dataset.cat;
-            document.querySelectorAll('.menu-card').forEach(card => {
-                card.style.display = (cat === 'all' || card.dataset.category === cat) ? '' : 'none';
-            });
-        });
-    });
-
-    document.getElementById('submit-btn').addEventListener('click', async function () {
-        hideError();
-        const errorEl = document.getElementById('cart-error');
-        if (cart.length === 0) {
-            errorEl.textContent = 'Add at least one item first.';
-            errorEl.classList.remove('hidden');
-            return;
-        }
-        const items = cart.map(i => ({ id: i.id, qty: i.qty, tier: i.tier }));
-
-        {% if selected_order %}
-        const url = "{% url 'dashboard:restaurant_add_items' selected_order.id %}";
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
-            body: JSON.stringify({ items }),
-        });
-        {% else %}
-        const url = "{% url 'dashboard:restaurant_new_order' table.id %}";
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
-            body: JSON.stringify({
-                items,
-                customer_name: document.getElementById('order-customer-name').value,
-                customer_phone: document.getElementById('order-customer-phone').value,
-            }),
-        });
-        {% endif %}
-
-        const data = await res.json();
-        if (data.error) {
-            errorEl.textContent = data.error;
-            errorEl.classList.remove('hidden');
-            return;
-        }
-        window.location.reload();
-    });
+    {% endif %}
+    const data = await res.json();
+    if (data.error) { errorEl.textContent = data.error; errorEl.classList.remove('hidden'); return; }
+    window.location.reload();
 });
-</script>
-
-<div id="cancel-modal" class="fixed inset-0 bg-black/60 z-50 items-center justify-center px-4" style="display:none;">
-    <div class="bg-white rounded-2xl max-w-sm w-full p-6">
-        <h3 class="font-bold text-black mb-1">Cancel <span id="cancel-modal-label"></span></h3>
-        <p class="text-xs text-gray-500 mb-4">A reason is required for the record.</p>
-        <form id="cancel-form" method="post">
-            {% csrf_token %}
-            <textarea name="reason" required rows="2" placeholder="e.g. Guest changed their mind, wrong item entered..." class="w-full border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm mb-3"></textarea>
-            <div class="flex gap-2">
-                <button type="submit" class="flex-1 bg-red-500 text-white text-sm font-semibold py-2 rounded-full">Confirm Cancel</button>
-                <button type="button" onclick="document.getElementById('cancel-modal').style.display='none';" class="flex-1 border border-gray-300 text-gray-600 text-sm font-semibold py-2 rounded-full">Back</button>
-            </div>
-        </form>
-    </div>
-</div>
-<script>
-function openCancelModal(url, label) {
-    document.getElementById('cancel-form').action = url;
-    document.getElementById('cancel-modal-label').textContent = label;
-    document.getElementById('cancel-modal').style.display = 'flex';
-}
 </script>
 {% endblock %}

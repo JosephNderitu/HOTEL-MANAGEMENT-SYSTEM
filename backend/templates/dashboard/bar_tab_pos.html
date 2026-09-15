@@ -1,0 +1,118 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+{% include "dashboard/_pos_styles.html" %}
+
+<div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+    <div>
+        <a href="{% url 'dashboard:bar' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; All Tabs</a>
+        <h1 class="text-xl md:text-2xl font-bold text-black mt-1">{{ tab.customer_name }}</h1>
+        {% if active_hh %}
+        <span class="inline-block mt-1 text-xs font-bold bg-[#C9A227] text-black px-3 py-1 rounded-full">
+            <i class="fa-solid fa-champagne-glasses mr-1"></i>{{ active_hh.discount_percent }}% happy hour active
+        </span>
+        {% endif %}
+    </div>
+    <div class="tier-toggle" id="tier-toggle">
+        <div class="tier-slider"></div>
+        <div class="absolute inset-0 flex">
+            <span class="tier-label regular flex items-center justify-center">Regular</span>
+            <span class="tier-label vip flex items-center justify-center">VIP</span>
+        </div>
+    </div>
+</div>
+
+{% if low_stock_drinks %}
+<div class="bg-red-50 border border-red-300 text-red-700 text-xs rounded-lg px-4 py-2.5 mb-4">
+    <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+    <strong>Low stock:</strong>
+    {% for d in low_stock_drinks %}{{ d.name }} ({{ d.stock_level|floatformat:"-2" }} left){% if not forloop.last %}, {% endif %}{% endfor %}
+</div>
+{% endif %}
+
+{% if messages %}{% for message in messages %}
+<div class="bg-red-50 border border-red-300 text-red-700 text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
+{% endfor %}{% endif %}
+
+<div class="flex gap-2 overflow-x-auto pb-2 mb-5">
+    {% for order in open_orders %}
+    <a href="?order={{ order.id }}" class="order-pill {% if selected_order.id == order.id %}active{% endif %}">Order #{{ order.id }} &middot; {{ order.items.count }}</a>
+    {% endfor %}
+    <a href="?order=new" class="order-pill {% if not selected_order %}active{% endif %}"><i class="fa-solid fa-plus mr-1"></i>New Round</a>
+</div>
+
+<div class="grid lg:grid-cols-4 gap-5">
+    <div class="lg:col-span-3">
+        {% include "dashboard/_pos_menu_grid.html" with pos_items=drinks empty_message="No drinks in stock. Check Store & Inventory." %}
+    </div>
+
+    <div>
+        <div class="cart-panel bg-white border border-[#0B6B3A] rounded-2xl p-5">
+            {% if selected_order %}
+            <p class="text-xs font-semibold text-gray-500 uppercase mb-2">Already Ordered</p>
+            <div class="mb-4 max-h-48 overflow-y-auto">
+                {% for item in selected_order.items.all %}{% if not item.is_cancelled %}
+                <div class="sent-item-row">
+                    <span class="flex-1 min-w-0 truncate">{{ item.quantity }}x {{ item.menu_item.name }}{% if item.tier == 'vip' %} <span class="text-[9px] text-[#C9A227] font-bold">VIP</span>{% endif %}{% if item.unit_price_override %} <span class="text-[9px] text-[#0B6B3A] font-bold">HH</span>{% endif %}</span>
+                    <div class="flex items-center gap-1.5 flex-shrink-0">
+                        <span class="qty-badge qty-{{ item.prep_status }}">{{ item.get_prep_status_display }}</span>
+                        {% if item.prep_status == 'queued' %}
+                        <form method="post" action="{% url 'dashboard:bar_advance_item' item.id 'preparing' %}">{% csrf_token %}<button class="text-blue-500 text-[10px] font-semibold">Start</button></form>
+                        {% elif item.prep_status == 'preparing' %}
+                        <form method="post" action="{% url 'dashboard:bar_advance_item' item.id 'ready' %}">{% csrf_token %}<button class="text-[#0B6B3A] text-[10px] font-semibold">Ready</button></form>
+                        {% elif item.prep_status == 'ready' %}
+                        <form method="post" action="{% url 'dashboard:bar_advance_item' item.id 'served' %}">{% csrf_token %}<button class="text-[#C9A227] text-[10px] font-semibold">Served</button></form>
+                        {% endif %}
+                        {% if item.prep_status == 'queued' or item.prep_status == 'preparing' %}
+                        <button type="button" onclick="openCancelModal('{% url 'dashboard:bar_cancel_item' item.id %}', '{{ item.menu_item.name|escapejs }}')" class="text-red-400 hover:text-red-600"><i class="fa-solid fa-xmark text-xs"></i></button>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}{% endfor %}
+            </div>
+            <div class="flex gap-2 mb-4 flex-wrap">
+                {% if selected_order.is_fully_served %}
+                <a href="{% url 'dashboard:bar_record_payment' selected_order.id %}" class="flex-1 text-center text-xs font-semibold bg-[#C9A227] text-black py-2 rounded-full">Record Payment</a>
+                {% else %}
+                <span class="flex-1 text-center text-xs font-semibold bg-gray-100 text-gray-400 py-2 rounded-full"><i class="fa-solid fa-lock mr-1"></i>Locked until served</span>
+                {% endif %}
+                <button type="button" onclick="openCancelModal('{% url 'dashboard:bar_cancel_order' selected_order.id %}', 'Order #{{ selected_order.id }}')" class="flex-1 text-xs font-semibold border border-red-400 text-red-500 py-2 rounded-full">Cancel Order</button>
+            </div>
+            <p class="text-xs font-semibold text-gray-500 uppercase mb-2">Add More</p>
+            {% else %}
+            <p class="text-xs font-semibold text-gray-500 uppercase mb-2">New Round</p>
+            {% endif %}
+
+            <div id="new-cart-items" class="mb-4 max-h-52 overflow-y-auto"></div>
+            <div class="border-t border-gray-100 pt-3 mb-4 flex justify-between font-bold text-black">
+                <span>Subtotal</span><span id="cart-subtotal">KSh 0</span>
+            </div>
+            <p id="cart-error" class="text-red-600 text-xs mb-2 hidden"></p>
+            <button id="submit-btn" class="w-full bg-[#C9A227] text-black font-semibold py-3 rounded-full hover:bg-[#b8931f] transition">
+                <i class="fa-solid fa-martini-glass mr-1"></i>{% if selected_order %}Send Round{% else %}Open Round{% endif %}
+            </button>
+        </div>
+    </div>
+</div>
+
+{% include "dashboard/_pos_cancel_modal.html" %}
+{% include "dashboard/_pos_scripts.html" %}
+
+<script>
+document.getElementById('submit-btn').addEventListener('click', async function () {
+    const errorEl = document.getElementById('cart-error');
+    errorEl.classList.add('hidden');
+    if (window.posCart.length === 0) { errorEl.textContent = 'Add at least one item first.'; errorEl.classList.remove('hidden'); return; }
+    const res = await fetch("{% url 'dashboard:bar_add_items' tab.id %}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+        body: JSON.stringify({
+            order_id: {% if selected_order %}{{ selected_order.id }}{% else %}null{% endif %},
+            items: window.posCart.map(i => ({ id: i.id, qty: i.qty, tier: i.tier })),
+        }),
+    });
+    const data = await res.json();
+    if (data.error) { errorEl.textContent = data.error; errorEl.classList.remove('hidden'); return; }
+    window.location.href = `?order=${data.order_id}`;
+});
+</script>
+{% endblock %}

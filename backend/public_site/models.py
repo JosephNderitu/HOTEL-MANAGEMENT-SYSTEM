@@ -240,6 +240,47 @@ class WaitlistEntry(models.Model):
     def __str__(self):
         return f"{self.guest_name} ({self.party_size}) — {self.get_status_display()}"
     
+class BarTab(models.Model):
+    STATUS_CHOICES = [('open', 'Open'), ('closed', 'Closed')]
+    customer_name = models.CharField(max_length=150)
+    phone_number = models.CharField(max_length=20, blank=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='open')
+    opened_at = models.DateTimeField(auto_now_add=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+
+    @property
+    def open_orders(self):
+        return [o for o in self.orders.exclude(status='cancelled').order_by('-created_at') if o.balance_due > 0]
+
+    def __str__(self):
+        return f"Tab — {self.customer_name}"
+
+
+class HappyHourWindow(models.Model):
+    label = models.CharField(max_length=100, blank=True)
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    discount_percent = models.PositiveIntegerField(help_text="e.g. 20 for 20% off")
+    is_active = models.BooleanField(default=True)
+
+    def is_now(self):
+        if not self.is_active:
+            return False
+        now = timezone.localtime().time()
+        if self.start_time <= self.end_time:
+            return self.start_time <= now <= self.end_time
+        return now >= self.start_time or now <= self.end_time
+
+    def __str__(self):
+        return f"{self.label or 'Happy Hour'} ({self.start_time}–{self.end_time}, {self.discount_percent}% off)"
+
+
+def get_active_happy_hour():
+    for window in HappyHourWindow.objects.filter(is_active=True):
+        if window.is_now():
+            return window
+    return None
+
 
 class MenuItem(models.Model):
     ITEM_TYPE_CHOICES = [
@@ -274,6 +315,30 @@ class MenuItem(models.Model):
     )
     description = models.TextField(blank=True)
     is_available = models.BooleanField(default=True)
+    cost_price = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text="What one unit costs you to buy. Used for profit tracking."
+    )
+
+    @property
+    def profit_per_unit(self):
+        if self.cost_price is None:
+            return None
+        return self.regular_price - self.cost_price
+
+    @property
+    def stock_level(self):
+        stock = getattr(self, 'stock_item', None)
+        return stock.quantity_on_hand if stock else None
+
+    @property
+    def is_low_stock(self):
+        stock = getattr(self, 'stock_item', None)
+        return stock.is_low_stock if stock else False
+
+    @property
+    def requires_stock_link(self):
+        return self.item_type == 'drink' and self.serving_point == 'bar'
 
     @property
     def is_in_stock(self):
@@ -289,6 +354,13 @@ class MenuItem(models.Model):
     def clean(self):
         if self.vip_price is not None and self.vip_price < self.regular_price:
             raise ValidationError("VIP price should not be lower than the regular price.")
+        if self.cost_price is not None and self.cost_price > self.regular_price:
+            raise ValidationError("Cost price is higher than the selling price. Check the figures.")
+        if self.requires_stock_link and self.is_available and not hasattr(self, 'stock_item'):
+            raise ValidationError(
+                "Bar drinks must be linked to a stock item before they can be made available. "
+                "Create the stock record first, then link it from Store & Inventory."
+            )
 
     def __str__(self):
         return self.name
@@ -332,6 +404,7 @@ class Order(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     room_booking = models.ForeignKey('Booking', on_delete=models.SET_NULL, null=True, blank=True, related_name='room_service_orders')
     table = models.ForeignKey(Table, on_delete=models.SET_NULL, null=True, blank=True, related_name='orders')
+    bar_tab = models.ForeignKey(BarTab, on_delete=models.SET_NULL, null=True, blank=True, related_name='orders')
 
     @property
     def total_amount(self):
@@ -357,6 +430,20 @@ class Order(models.Model):
             return False
         return all(i.prep_status == 'served' for i in active_items)
     
+    @property
+    def total_cost(self):
+        costs = [i.cost_total for i in self.items.all() if not i.is_cancelled]
+        if any(c is None for c in costs) or not costs:
+            return None
+        return sum(costs)
+
+    @property
+    def total_profit(self):
+        cost = self.total_cost
+        if cost is None:
+            return None
+        return self.total_amount - cost
+    
     def __str__(self):
         return f"Order #{self.id} — {self.customer_name}"
 
@@ -377,12 +464,28 @@ class OrderItem(models.Model):
     cancel_reason = models.CharField(max_length=200, blank=True)
     cancelled_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='order_items_cancelled')
     cancelled_at = models.DateTimeField(null=True, blank=True)
+    unit_price_override = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
 
     @property
     def unit_price(self):
+        if self.unit_price_override is not None:
+            return self.unit_price_override
         if self.tier == 'vip' and self.menu_item.vip_price is not None:
             return self.menu_item.vip_price
         return self.menu_item.regular_price
+    
+    @property
+    def cost_total(self):
+        if self.menu_item.cost_price is None:
+            return None
+        return self.menu_item.cost_price * self.quantity
+
+    @property
+    def profit(self):
+        cost = self.cost_total
+        if cost is None:
+            return None
+        return (self.unit_price * self.quantity) - cost
 
     def __str__(self):
         return f"{self.quantity} x {self.menu_item.name} ({self.get_tier_display()})"

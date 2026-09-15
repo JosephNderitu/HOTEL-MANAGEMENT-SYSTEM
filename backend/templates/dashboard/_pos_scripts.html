@@ -1,0 +1,115 @@
+<script>
+const POS_PAGE_SIZE = 30;
+
+document.addEventListener('DOMContentLoaded', function () {
+    const grid = document.getElementById('menu-grid');
+    const allCards = Array.from(grid.querySelectorAll('.menu-card'));
+    const paginationBar = document.getElementById('pagination-bar');
+    const pageInfo = document.getElementById('page-info');
+    const prevBtn = document.getElementById('prev-page');
+    const nextBtn = document.getElementById('next-page');
+
+    let currentPage = 1;
+    let filtered = allCards.slice();
+
+    function applyFilters() {
+        const q = document.getElementById('menu-search').value.toLowerCase().trim();
+        const activeCat = document.querySelector('.cat-chip.active').dataset.cat;
+        filtered = allCards.filter(card => {
+            const matchesText = !q || card.dataset.name.includes(q);
+            const matchesCat = activeCat === 'all' || card.dataset.category === activeCat;
+            return matchesText && matchesCat;
+        });
+        currentPage = 1;
+        renderPage();
+    }
+
+    function renderPage() {
+        const totalPages = Math.max(Math.ceil(filtered.length / POS_PAGE_SIZE), 1);
+        if (currentPage > totalPages) currentPage = totalPages;
+        const start = (currentPage - 1) * POS_PAGE_SIZE;
+        const end = start + POS_PAGE_SIZE;
+
+        allCards.forEach(card => { card.style.display = 'none'; });
+        filtered.slice(start, end).forEach(card => { card.style.display = ''; });
+
+        if (filtered.length > POS_PAGE_SIZE) {
+            paginationBar.classList.remove('hidden');
+            paginationBar.classList.add('flex');
+            pageInfo.textContent = `Showing ${start + 1}–${Math.min(end, filtered.length)} of ${filtered.length}`;
+            prevBtn.disabled = currentPage === 1;
+            nextBtn.disabled = currentPage === totalPages;
+        } else {
+            paginationBar.classList.add('hidden');
+            paginationBar.classList.remove('flex');
+        }
+    }
+
+    document.getElementById('menu-search').addEventListener('input', applyFilters);
+    document.querySelectorAll('.cat-chip').forEach(chip => {
+        chip.addEventListener('click', function () {
+            document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active'));
+            this.classList.add('active');
+            applyFilters();
+        });
+    });
+    prevBtn.addEventListener('click', () => { if (currentPage > 1) { currentPage--; renderPage(); window.scrollTo({top: 0, behavior: 'smooth'}); } });
+    nextBtn.addEventListener('click', () => { currentPage++; renderPage(); window.scrollTo({top: 0, behavior: 'smooth'}); });
+
+    renderPage();
+
+    // ---------- Cart (shared) ----------
+    window.posCart = [];
+    window.posCurrentTier = window.POS_DEFAULT_TIER || 'regular';
+
+    const tierToggle = document.getElementById('tier-toggle');
+    if (tierToggle) {
+        tierToggle.addEventListener('click', function () {
+            window.posCurrentTier = window.posCurrentTier === 'regular' ? 'vip' : 'regular';
+            this.classList.toggle('vip', window.posCurrentTier === 'vip');
+        });
+    }
+
+    window.renderPosCart = function () {
+        const container = document.getElementById('new-cart-items');
+        const cart = window.posCart;
+        container.innerHTML = cart.length === 0
+            ? '<p class="text-gray-300 text-xs">No items added yet.</p>'
+            : cart.map((i, idx) => `<div class="new-item-row"><span>${i.qty}x ${i.name}${i.tier === 'vip' ? ' <span class="text-[9px] text-[#C9A227] font-bold">VIP</span>' : ''}</span><div class="flex items-center gap-2"><button class="cart-minus text-gray-400" data-idx="${idx}">−</button><button class="cart-remove text-red-400" data-idx="${idx}"><i class="fa-solid fa-xmark text-xs"></i></button></div></div>`).join('');
+        document.getElementById('cart-subtotal').textContent = `KSh ${cart.reduce((s, i) => s + i.price * i.qty, 0).toLocaleString()}`;
+        container.querySelectorAll('.cart-minus').forEach(b => b.addEventListener('click', function () {
+            const i = parseInt(this.dataset.idx); cart[i].qty -= 1; if (cart[i].qty <= 0) cart.splice(i, 1); window.renderPosCart();
+        }));
+        container.querySelectorAll('.cart-remove').forEach(b => b.addEventListener('click', function () {
+            cart.splice(parseInt(this.dataset.idx), 1); window.renderPosCart();
+        }));
+    };
+
+    document.querySelectorAll('.add-item-btn').forEach(btn => {
+        btn.addEventListener('click', function () {
+            document.getElementById('cart-error').classList.add('hidden');
+            const id = this.dataset.id;
+            const tier = window.posCurrentTier;
+            const price = tier === 'vip' ? parseFloat(this.dataset.vipPrice) : parseFloat(this.dataset.regularPrice);
+            const existing = window.posCart.find(i => i.id === id && i.tier === tier);
+            if (existing) existing.qty += 1;
+            else window.posCart.push({ id, name: this.dataset.name, price, tier, qty: 1 });
+            window.renderPosCart();
+        });
+    });
+
+    window.renderPosCart();
+});
+
+function getCsrfToken() {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; csrftoken=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+}
+
+function openCancelModal(url, label) {
+    document.getElementById('cancel-form').action = url;
+    document.getElementById('cancel-modal-label').textContent = label;
+    document.getElementById('cancel-modal').style.display = 'flex';
+}
+</script>

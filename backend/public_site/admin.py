@@ -289,9 +289,9 @@ class MenuItemImageInline(admin.TabularInline):
 
 @admin.register(MenuItem)
 class MenuItemAdmin(admin.ModelAdmin):
-    list_display = ('thumbnail', 'name', 'item_type', 'category', 'regular_price', 'vip_price', 'is_available', 'serving_point')
+    list_display = ('thumbnail', 'name', 'item_type', 'serving_point', 'category', 'cost_price', 'regular_price', 'margin_display', 'stock_display', 'is_available')
+    list_editable = ('cost_price', 'regular_price', 'is_available')
     list_display_links = ('name',)
-    list_editable = ('regular_price', 'vip_price', 'is_available')
     list_filter = ('item_type', 'category', 'is_available', 'serving_point')
     search_fields = ('name', 'category', 'description')
     ordering = ('item_type', 'name')
@@ -299,9 +299,28 @@ class MenuItemAdmin(admin.ModelAdmin):
 
     fieldsets = (
         ('Item Details', {'fields': ('name', 'item_type', 'category', 'course', 'serving_point', 'is_quick_serve', 'description')}),
-        ('Pricing & Availability', {'fields': (('regular_price', 'vip_price'), 'is_available')}),
+        ('Pricing & Availability', {'fields': (('cost_price', 'regular_price', 'vip_price'), 'is_available')}),
     )
 
+    @admin.display(description='Margin')
+    def margin_display(self, obj):
+        profit = obj.profit_per_unit
+        if profit is None:
+            return format_html('<span style="color:#9ca3af;">—</span>')
+        pct = (profit / obj.regular_price * 100) if obj.regular_price else 0
+        color = '#0B6B3A' if profit > 0 else '#dc2626'
+        return format_html('<span style="color:{}; font-weight:600;">KSh {} ({}%)</span>', color, f"{profit:,.0f}", f"{pct:.0f}")
+
+    @admin.display(description='Stock')
+    def stock_display(self, obj):
+        stock = getattr(obj, 'stock_item', None)
+        if stock is None:
+            if obj.requires_stock_link:
+                return format_html('<span style="color:#dc2626; font-weight:700;">NOT LINKED</span>')
+            return format_html('<span style="color:#9ca3af;">Not tracked</span>')
+        color = '#dc2626' if stock.is_low_stock else '#0B6B3A'
+        return format_html('<span style="color:{}; font-weight:600;">{} {}</span>', color, f"{stock.quantity_on_hand:g}", stock.unit)
+    
     @admin.display(description='Photo')
     def thumbnail(self, obj):
         first = obj.images.first()
@@ -485,3 +504,20 @@ class WaitlistEntryAdmin(admin.ModelAdmin):
     list_filter = ('status',)
     search_fields = ('guest_name', 'phone_number')
     readonly_fields = ('created_at', 'seated_at')
+    
+
+@admin.register(BarTab)
+class BarTabAdmin(admin.ModelAdmin):
+    list_display = ('customer_name', 'phone_number', 'status', 'opened_at', 'closed_at')
+    list_filter = ('status',)
+    search_fields = ('customer_name', 'phone_number')
+
+
+@admin.register(HappyHourWindow)
+class HappyHourWindowAdmin(admin.ModelAdmin):
+    list_display = ('label', 'start_time', 'end_time', 'discount_percent', 'is_active', 'currently_active')
+    list_editable = ('is_active',)
+
+    @admin.display(description='Active Now', boolean=True)
+    def currently_active(self, obj):
+        return obj.is_now()

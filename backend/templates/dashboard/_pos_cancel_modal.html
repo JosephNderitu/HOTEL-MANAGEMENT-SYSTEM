@@ -1,0 +1,14 @@
+<div id="cancel-modal" class="fixed inset-0 bg-black/60 z-50 items-center justify-center px-4" style="display:none;">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-6">
+        <h3 class="font-bold text-black mb-1">Cancel <span id="cancel-modal-label"></span></h3>
+        <p class="text-xs text-gray-500 mb-4">A reason is required for the record.</p>
+        <form id="cancel-form" method="post">
+            {% csrf_token %}
+            <textarea name="reason" required rows="2" placeholder="e.g. Guest changed their mind, wrong item rung up..." class="w-full border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm mb-3"></textarea>
+            <div class="flex gap-2">
+                <button type="submit" class="flex-1 bg-red-500 text-white text-sm font-semibold py-2 rounded-full">Confirm Cancel</button>
+                <button type="button" onclick="document.getElementById('cancel-modal').style.display='none';" class="flex-1 border border-gray-300 text-gray-600 text-sm font-semibold py-2 rounded-full">Back</button>
+            </div>
+        </form>
+    </div>
+</div>

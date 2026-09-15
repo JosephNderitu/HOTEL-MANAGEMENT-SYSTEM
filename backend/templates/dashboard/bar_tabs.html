@@ -1,0 +1,79 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+<style>
+    .tab-card { border: 1px solid #0B6B3A; border-radius: 14px; padding: 18px; text-align: center; text-decoration: none; display: block; transition: box-shadow 0.2s; }
+    .tab-card:hover { box-shadow: 0 6px 18px rgba(11,107,58,0.15); }
+    .bar-stat { border: 1px solid #0B6B3A; border-radius: 14px; padding: 16px 18px; background: #fff; }
+</style>
+
+<div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+    <div>
+        <h1 class="text-2xl font-bold text-black">Bar</h1>
+        <p class="text-gray-500 text-sm">Open tabs and drink orders</p>
+        {% if active_hh %}
+        <span class="inline-block mt-2 text-xs font-bold bg-[#C9A227] text-black px-3 py-1 rounded-full">
+            <i class="fa-solid fa-champagne-glasses mr-1"></i>{{ active_hh.label|default:"Happy Hour" }} active — {{ active_hh.discount_percent }}% off
+        </span>
+        {% endif %}
+    </div>
+    <div class="flex gap-3 flex-wrap">
+        <a href="{% url 'dashboard:bar_wastage' %}" class="bg-white border-2 border-red-400 text-red-500 font-semibold px-5 py-2.5 rounded-full hover:bg-red-50 transition flex items-center gap-2">
+            <i class="fa-solid fa-wine-bottle"></i> Log Wastage
+        </a>
+    </div>
+</div>
+
+{% if messages %}{% for message in messages %}
+<div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
+{% endfor %}{% endif %}
+
+{% if out_of_stock_items or low_stock_items %}
+<div class="bg-red-50 border border-red-300 rounded-lg px-4 py-3 mb-5 text-sm">
+    {% if out_of_stock_items %}
+    <p class="text-red-700 font-semibold"><i class="fa-solid fa-circle-xmark mr-1"></i>Out of stock: {% for s in out_of_stock_items %}{{ s.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+    {% endif %}
+    {% if low_stock_items %}
+    <p class="text-amber-700 mt-1"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Low stock: {% for s in low_stock_items %}{{ s.name }} ({{ s.quantity_on_hand|floatformat:"-2" }} {{ s.unit }}){% if not forloop.last %}, {% endif %}{% endfor %}</p>
+    {% endif %}
+</div>
+{% endif %}
+
+<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 mb-8">
+    <div class="bar-stat"><p class="text-[11px] text-gray-500 uppercase mb-1">Today's Total</p><p class="text-lg font-bold text-[#0B6B3A]">KSh {{ today_revenue|floatformat:0 }}</p></div>
+    <div class="bar-stat"><p class="text-[11px] text-gray-500 uppercase mb-1">Today's Profit</p><p class="text-lg font-bold {% if today_profit > 0 %}text-[#0B6B3A]{% else %}text-gray-400{% endif %}">KSh {{ today_profit|floatformat:0 }}</p></div>
+    <div class="bar-stat"><p class="text-[11px] text-gray-500 uppercase mb-1">Cash</p><p class="text-lg font-bold text-black">KSh {{ revenue_by_method.cash|floatformat:0 }}</p></div>
+    <div class="bar-stat"><p class="text-[11px] text-gray-500 uppercase mb-1">M-Pesa</p><p class="text-lg font-bold text-black">KSh {{ revenue_by_method.mpesa|floatformat:0 }}</p></div>
+    <div class="bar-stat"><p class="text-[11px] text-gray-500 uppercase mb-1">Swipe</p><p class="text-lg font-bold text-black">KSh {{ revenue_by_method.swipe|floatformat:0 }}</p></div>
+    <div class="bar-stat"><p class="text-[11px] text-gray-500 uppercase mb-1">Bank</p><p class="text-lg font-bold text-black">KSh {{ revenue_by_method.bank_equity|add:revenue_by_method.bank_family|add:revenue_by_method.bank_coop|floatformat:0 }}</p></div>
+    <div class="bar-stat flex flex-col justify-center">
+        <form method="get" action="{% url 'dashboard:bar_export_pdf' %}" class="flex flex-col gap-1">
+            <input type="date" name="date_from" class="border border-[#0B6B3A] rounded text-[10px] px-1 py-1">
+            <input type="date" name="date_to" class="border border-[#0B6B3A] rounded text-[10px] px-1 py-1">
+            <button type="submit" class="bg-[#C9A227] text-black text-[10px] font-semibold py-1.5 rounded-full"><i class="fa-solid fa-file-pdf mr-1"></i>Sales Report</button>
+        </form>
+    </div>
+</div>
+
+<div class="bg-white border border-[#0B6B3A] rounded-2xl p-5 mb-8 max-w-sm">
+    <h2 class="font-bold text-black text-sm mb-3">Open a New Tab</h2>
+    <form method="post" class="space-y-2">
+        {% csrf_token %}
+        <input type="text" name="customer_name" placeholder="Customer or group name" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+        <input type="tel" name="phone_number" placeholder="Phone (optional)" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+        <button type="submit" class="w-full bg-[#0B6B3A] text-white font-semibold py-2.5 rounded-full hover:bg-[#095430] transition">Open Tab</button>
+    </form>
+</div>
+
+<h2 class="font-bold text-black mb-3">Open Tabs</h2>
+<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+    {% for tab in open_tabs %}
+    <a href="{% url 'dashboard:bar_tab_pos' tab.id %}" class="tab-card">
+        <i class="fa-solid fa-martini-glass-citrus text-xl text-[#0B6B3A] mb-2"></i>
+        <p class="font-bold text-black">{{ tab.customer_name }}</p>
+        <p class="text-xs text-gray-500">{{ tab.open_orders|length }} open order{{ tab.open_orders|length|pluralize }}</p>
+    </a>
+    {% empty %}
+    <p class="text-gray-400 col-span-full text-center py-10">No open tabs right now.</p>
+    {% endfor %}
+</div>
+{% endblock %}
