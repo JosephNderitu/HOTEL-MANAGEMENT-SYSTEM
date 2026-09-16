@@ -1,111 +1,171 @@
 {% extends "dashboard/base_dashboard.html" %}
 {% block dashboard_content %}
 <style>
-    .kd-stat { border: 1px solid #0B6B3A; border-radius: 14px; padding: 14px 16px; background: #fff; text-align: center; }
-    .kd-stat p.num { font-size: 26px; font-weight: 800; color: #0B6B3A; }
-    .kd-stat.served p.num { color: #0B6B3A; }
-    .kd-stat.pending p.num { color: #C9A227; }
-    .kd-stat.progress p.num { color: #3b82f6; }
+    .kd-hero {
+        background: linear-gradient(135deg, #0B6B3A, #095430);
+        border-radius: 18px; padding: 22px 26px; color: #fff;
+        display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;
+        margin-bottom: 22px;
+    }
+    .kd-hero h1 { font-size: 22px; font-weight: 800; }
+    .kd-hero .live-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+    .kd-live-dot { width: 8px; height: 8px; border-radius: 9999px; background: rgba(255,255,255,0.4); transition: background 0.3s; }
+    .kd-live-dot.on { background: #C9A227; box-shadow: 0 0 0 4px rgba(201,162,39,0.25); }
 
-    #order-feed { max-height: 640px; overflow-y: auto; scroll-behavior: smooth; }
-    #order-feed::-webkit-scrollbar { width: 6px; }
-    #order-feed::-webkit-scrollbar-thumb { background: #0B6B3A; border-radius: 9999px; }
+    .kd-stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-bottom: 26px; }
+    @media (min-width: 768px) { .kd-stat-grid { grid-template-columns: repeat(4, 1fr); } }
+    .kd-stat {
+        background: #fff; border-radius: 16px; padding: 18px; position: relative; overflow: hidden;
+        border: 1px solid #eef0ee; box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+    .kd-stat .icon-badge {
+        width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+        font-size: 14px; margin-bottom: 10px;
+    }
+    .kd-stat .num { font-size: 28px; font-weight: 800; line-height: 1; }
+    .kd-stat .lbl { font-size: 11px; color: #8a8f8a; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 4px; }
+    .kd-stat.total .icon-badge { background: #EEF2FF; color: #4338ca; }
+    .kd-stat.total .num { color: #4338ca; }
+    .kd-stat.pending .icon-badge { background: #FEF9EC; color: #92722a; }
+    .kd-stat.pending .num { color: #C9A227; }
+    .kd-stat.progress .icon-badge { background: #DBEAFE; color: #1e40af; }
+    .kd-stat.progress .num { color: #3b82f6; }
+    .kd-stat.served .icon-badge { background: #DCFCE7; color: #0B6B3A; }
+    .kd-stat.served .num { color: #0B6B3A; }
 
-    .order-card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 14px; margin-bottom: 10px; background: #fff; transition: box-shadow 0.2s, border-color 0.2s; }
+    .kd-panel { background: #fff; border-radius: 18px; border: 1px solid #eef0ee; box-shadow: 0 1px 3px rgba(0,0,0,0.03); }
+    .kd-panel-head { padding: 18px 20px; border-bottom: 1px solid #f2f4f2; display: flex; align-items: center; gap: 10px; }
+    .kd-panel-head .dot { width: 8px; height: 8px; border-radius: 9999px; background: #C9A227; }
+    .kd-panel-head h2 { font-size: 14px; font-weight: 700; color: #1a1a1a; }
+
+    #order-feed { max-height: 640px; overflow-y: auto; scroll-behavior: smooth; padding: 14px; }
+    #order-feed::-webkit-scrollbar { width: 5px; }
+    #order-feed::-webkit-scrollbar-thumb { background: #C9A227; border-radius: 9999px; }
+
+    .order-card {
+        border: 1px solid #eef0ee; border-radius: 14px; padding: 14px 16px; margin-bottom: 10px; background: #fafbfa;
+        transition: box-shadow 0.2s, border-color 0.2s, transform 0.15s;
+        display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    }
+    .order-card:hover { box-shadow: 0 4px 14px rgba(11,107,58,0.08); border-color: #d7e6dc; transform: translateY(-1px); }
     .order-card.flash { animation: flashHighlight 1.8s ease; }
-    @keyframes flashHighlight { 0% { background: #FEF9EC; border-color: #C9A227; } 100% { background: #fff; border-color: #e5e7eb; } }
+    @keyframes flashHighlight { 0% { background: #FEF9EC; border-color: #C9A227; box-shadow: 0 0 0 3px rgba(201,162,39,0.2); } 100% { background: #fafbfa; border-color: #eef0ee; box-shadow: none; } }
+    .order-avatar {
+        width: 40px; height: 40px; border-radius: 12px; background: #0B6B3A; color: #fff; font-weight: 800; font-size: 13px;
+        display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .order-card .meta { min-width: 0; flex: 1; }
+    .order-card .meta p.name { font-weight: 700; font-size: 14px; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .order-card .meta p.sub { font-size: 11.5px; color: #8a8f8a; }
+    .vip-tag { font-size: 8.5px; font-weight: 800; background: #C9A227; color: #000; padding: 1px 7px; border-radius: 9999px; margin-left: 6px; letter-spacing: 0.03em; }
+    .view-btn { font-size: 12px; font-weight: 700; background: #0B6B3A; color: #fff; padding: 8px 16px; border-radius: 9999px; flex-shrink: 0; transition: background 0.15s; }
+    .view-btn:hover { background: #095430; }
+
+    .pdf-panel { background: linear-gradient(160deg, #fff, #FBF9F1); border: 1px solid #f0e6c8; border-radius: 18px; padding: 22px; }
+    .pdf-panel .icon-circle { width: 44px; height: 44px; border-radius: 12px; background: #C9A227; display: flex; align-items: center; justify-content: center; color: #000; font-size: 18px; margin-bottom: 12px; }
+    .pdf-input { border: 1px solid #e2decb; border-radius: 10px; padding: 9px 12px; font-size: 13px; width: 100%; background: #fff; }
+    .pdf-input:focus { outline: none; border-color: #C9A227; box-shadow: 0 0 0 3px rgba(201,162,39,0.12); }
+
+    .closed-table th { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; color: #8a8f8a; text-align: left; padding: 10px 16px; border-bottom: 1px solid #f2f4f2; }
+    .closed-table td { padding: 12px 16px; font-size: 13px; border-bottom: 1px solid #f7f8f7; }
+    .closed-table tr:last-child td { border-bottom: none; }
+    .closed-pill { font-size: 10px; font-weight: 700; background: #F3F4F6; color: #6b7280; padding: 3px 10px; border-radius: 9999px; }
 
     .order-modal-backdrop { display: none; }
     .order-modal-backdrop.open { display: flex; }
-
-    .qty-badge { font-size: 9px; font-weight: 700; padding: 1px 7px; border-radius: 9999px; }
+    .qty-badge { font-size: 9px; font-weight: 700; padding: 2px 9px; border-radius: 9999px; }
     .qty-queued { background: #FEF9EC; color: #92722a; }
     .qty-preparing { background: #DBEAFE; color: #1e40af; }
     .qty-ready { background: #DCFCE7; color: #0B6B3A; }
     .qty-served { background: #F3F4F6; color: #6b7280; }
 </style>
 
-<div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+<a href="{% url 'dashboard:restaurant_kitchen' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline"><i class="fa-solid fa-arrow-left mr-1 text-xs"></i>All Tables</a>
+
+<div class="kd-hero mt-3">
     <div>
-        <a href="{% url 'dashboard:restaurant_kitchen' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; All Tables</a>
-        <h1 class="text-2xl font-bold text-black mt-1">Kitchen Display</h1>
-        <p class="text-gray-500 text-sm flex items-center gap-2">
-            <span id="live-dot" class="w-2 h-2 rounded-full bg-gray-300"></span>
-            <span id="live-label" class="text-xs text-gray-400">connecting live updates...</span>
-        </p>
+        <h1><i class="fa-solid fa-fire-burner mr-2"></i>Kitchen Display</h1>
+        <div class="live-row">
+            <span id="live-dot" class="kd-live-dot"></span>
+            <span id="live-label" class="text-xs text-white/70">connecting live updates...</span>
+        </div>
     </div>
-    <a href="{% url 'dashboard:kitchen_usage_log' %}" class="bg-white border-2 border-[#0B6B3A] text-[#0B6B3A] font-semibold px-5 py-2.5 rounded-full hover:bg-[#0B6B3A] hover:text-white transition">
-        <i class="fa-solid fa-clipboard-list mr-1"></i> Today's Ingredient Usage
+    <a href="{% url 'dashboard:kitchen_usage_log' %}" class="bg-white text-[#0B6B3A] font-bold text-sm px-5 py-2.5 rounded-full hover:bg-[#C9A227] hover:text-black transition flex items-center gap-2">
+        <i class="fa-solid fa-clipboard-list"></i> Today's Ingredient Usage
     </a>
 </div>
 
-<!-- Stats -->
-<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-    <div class="kd-stat"><p class="text-xs text-gray-500 uppercase mb-1">Total Orders Today</p><p class="num">{{ stats.total }}</p></div>
-    <div class="kd-stat pending"><p class="text-xs text-gray-500 uppercase mb-1">Pending</p><p class="num">{{ stats.pending }}</p></div>
-    <div class="kd-stat progress"><p class="text-xs text-gray-500 uppercase mb-1">In Progress</p><p class="num">{{ stats.in_progress }}</p></div>
-    <div class="kd-stat served"><p class="text-xs text-gray-500 uppercase mb-1">Served</p><p class="num">{{ stats.served }}</p></div>
+<div class="kd-stat-grid">
+    <div class="kd-stat total"><div class="icon-badge"><i class="fa-solid fa-receipt"></i></div><p class="num">{{ stats.total }}</p><p class="lbl">Total Orders Today</p></div>
+    <div class="kd-stat pending"><div class="icon-badge"><i class="fa-regular fa-clock"></i></div><p class="num">{{ stats.pending }}</p><p class="lbl">Pending</p></div>
+    <div class="kd-stat progress"><div class="icon-badge"><i class="fa-solid fa-fire"></i></div><p class="num">{{ stats.in_progress }}</p><p class="lbl">In Progress</p></div>
+    <div class="kd-stat served"><div class="icon-badge"><i class="fa-solid fa-check"></i></div><p class="num">{{ stats.served }}</p><p class="lbl">Served</p></div>
 </div>
 
 <div class="grid lg:grid-cols-3 gap-6">
-    <!-- Left: sales report -->
     <div>
-        <div class="bg-white border border-[#0B6B3A] rounded-2xl p-5">
-            <h2 class="font-bold text-black text-sm mb-3"><i class="fa-solid fa-file-pdf text-[#C9A227] mr-1"></i>Item Sales Report</h2>
-            <p class="text-xs text-gray-500 mb-3">Quantity sold per food/kitchen-drink item, highest to lowest, including items not sold.</p>
-            <form method="get" action="{% url 'dashboard:kitchen_item_sales_pdf' %}" class="space-y-2">
-                <input type="date" name="date_from" class="w-full border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
-                <input type="date" name="date_to" class="w-full border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
-                <button type="submit" class="w-full bg-[#C9A227] text-black text-sm font-semibold py-2.5 rounded-full hover:bg-[#b8931f] transition">Download PDF</button>
+        <div class="pdf-panel">
+            <div class="icon-circle"><i class="fa-solid fa-file-pdf"></i></div>
+            <h2 class="font-bold text-black text-sm mb-1">Item Sales Report</h2>
+            <p class="text-xs text-gray-500 mb-4 leading-relaxed">Quantity sold per food/kitchen-drink item, highest to lowest, unsold items included as zero.</p>
+            <form method="get" action="{% url 'dashboard:kitchen_item_sales_pdf' %}" class="space-y-2.5">
+                <div>
+                    <label class="text-[10px] font-semibold text-gray-500 uppercase block mb-1">From</label>
+                    <input type="date" name="date_from" class="pdf-input">
+                </div>
+                <div>
+                    <label class="text-[10px] font-semibold text-gray-500 uppercase block mb-1">To</label>
+                    <input type="date" name="date_to" class="pdf-input">
+                </div>
+                <button type="submit" class="w-full bg-[#C9A227] text-black text-sm font-bold py-2.5 rounded-full hover:bg-[#b8931f] transition mt-1">
+                    <i class="fa-solid fa-download mr-1"></i>Download PDF
+                </button>
             </form>
         </div>
     </div>
 
-    <!-- Right: live auto-scrolling queue -->
     <div class="lg:col-span-2">
-        <h2 class="font-bold text-black text-sm mb-3">Active Orders</h2>
-        <div id="order-feed">
-            {% for order in active_orders %}
-            <div class="order-card" data-order-id="{{ order.id }}">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="font-bold text-black">Order #{{ order.id }} — {{ order.customer_name }}
-                            {% if order.has_vip_kitchen_item %}<span class="text-[9px] bg-[#C9A227] text-black font-bold px-2 py-0.5 rounded-full ml-1">VIP</span>{% endif %}
-                        </p>
-                        <p class="text-xs text-gray-400">
-                            {% if order.table %}Table {{ order.table.number }}{% else %}{{ order.get_order_type_display }}{% endif %}
-                            &middot; {{ order.created_at|date:"H:i" }} &middot; {{ order.kitchen_items|length }} item{{ order.kitchen_items|length|pluralize }}
-                        </p>
+        <div class="kd-panel">
+            <div class="kd-panel-head"><span class="dot"></span><h2>Active Orders</h2></div>
+            <div id="order-feed">
+                {% for order in active_orders %}
+                <div class="order-card" data-order-id="{{ order.id }}">
+                    <div class="order-avatar">{{ order.customer_name|slice:":1"|upper }}</div>
+                    <div class="meta">
+                        <p class="name">Order #{{ order.id }} — {{ order.customer_name }}{% if order.has_vip_kitchen_item %}<span class="vip-tag">VIP</span>{% endif %}</p>
+                        <p class="sub">{% if order.table %}Table {{ order.table.number }}{% else %}{{ order.get_order_type_display }}{% endif %} &middot; {{ order.created_at|date:"H:i" }} &middot; {{ order.kitchen_items|length }} item{{ order.kitchen_items|length|pluralize }}</p>
                     </div>
-                    <button type="button" onclick="openOrderModal({{ order.id }})" class="text-xs font-semibold bg-[#0B6B3A] text-white px-4 py-2 rounded-full hover:bg-[#095430] transition">View</button>
+                    <button type="button" onclick="openOrderModal({{ order.id }})" class="view-btn">View</button>
                 </div>
+                {% empty %}
+                <div class="text-center py-16">
+                    <i class="fa-regular fa-circle-check text-3xl text-gray-200 mb-2"></i>
+                    <p class="text-gray-400 text-sm">No active kitchen orders. All caught up.</p>
+                </div>
+                {% endfor %}
             </div>
-            {% empty %}
-            <p class="text-gray-400 text-center py-10">No active kitchen orders.</p>
-            {% endfor %}
         </div>
     </div>
 </div>
 
-<!-- Closed orders -->
-<div class="mt-10">
-    <h2 class="font-bold text-black text-sm mb-3">Today's Closed Orders (view only)</h2>
-    <div class="border border-gray-200 rounded-xl overflow-x-auto">
-        <table class="w-full text-sm">
-            <thead><tr class="text-left text-xs text-gray-500 uppercase border-b border-gray-200">
-                <th class="p-3">Order</th><th class="p-3">Customer</th><th class="p-3">Items</th><th class="p-3">Time</th>
-            </tr></thead>
-            <tbody>
-                {% for order in closed_orders %}
-                <tr class="border-b border-gray-100">
-                    <td class="p-3 font-semibold">#{{ order.id }}</td>
-                    <td class="p-3">{{ order.customer_name }}</td>
-                    <td class="p-3">{% for item in order.kitchen_items %}{{ item.quantity }}x {{ item.menu_item.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
-                    <td class="p-3 text-gray-400">{{ order.created_at|date:"H:i" }}</td>
-                </tr>
-                {% empty %}<tr><td colspan="4" class="p-6 text-center text-gray-400">No orders closed yet today.</td></tr>{% endfor %}
-            </tbody>
-        </table>
+<div class="mt-8">
+    <div class="kd-panel">
+        <div class="kd-panel-head"><span class="dot" style="background:#9ca3af;"></span><h2>Today's Closed Orders <span class="font-normal text-gray-400">(view only)</span></h2></div>
+        <div class="overflow-x-auto">
+            <table class="closed-table w-full">
+                <thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Time</th></tr></thead>
+                <tbody>
+                    {% for order in closed_orders %}
+                    <tr>
+                        <td class="font-semibold">#{{ order.id }}</td>
+                        <td>{{ order.customer_name }}</td>
+                        <td class="text-gray-600">{% for item in order.kitchen_items %}{{ item.quantity }}x {{ item.menu_item.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+                        <td><span class="closed-pill">{{ order.created_at|date:"H:i" }}</span></td>
+                    </tr>
+                    {% empty %}<tr><td colspan="4" class="text-center text-gray-400 py-10">No orders closed yet today.</td></tr>{% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 
@@ -121,22 +181,27 @@
 const ORDER_DETAIL_TEMPLATES = {};
 {% for order in active_orders %}
 ORDER_DETAIL_TEMPLATES[{{ order.id }}] = `
-    <h3 class="text-lg font-bold text-black mb-1">Order #{{ order.id }} — {{ order.customer_name }}</h3>
-    <p class="text-xs text-gray-400 mb-4">{% if order.table %}Table {{ order.table.number }}{% else %}{{ order.get_order_type_display }}{% endif %} &middot; {{ order.created_at|date:"H:i" }}</p>
-    <div class="space-y-3">
+    <div class="flex items-center gap-3 mb-1">
+        <div class="order-avatar">{{ order.customer_name|slice:":1"|upper }}</div>
+        <div>
+            <h3 class="text-lg font-bold text-black">Order #{{ order.id }} — {{ order.customer_name }}</h3>
+            <p class="text-xs text-gray-400">{% if order.table %}Table {{ order.table.number }}{% else %}{{ order.get_order_type_display }}{% endif %} &middot; {{ order.created_at|date:"H:i" }}</p>
+        </div>
+    </div>
+    <div class="space-y-3 mt-4">
     {% for item in order.kitchen_items %}
-        <div class="border border-gray-200 rounded-lg p-3 flex items-center justify-between">
+        <div class="border border-gray-200 rounded-xl p-3 flex items-center justify-between">
             <div>
-                <p class="font-semibold text-sm">{{ item.quantity }}x {{ item.menu_item.name }}{% if item.tier == 'vip' %} <span class="text-[9px] text-[#C9A227] font-bold">VIP</span>{% endif %}</p>
+                <p class="font-semibold text-sm">{{ item.quantity }}x {{ item.menu_item.name }}{% if item.tier == 'vip' %} <span class="vip-tag">VIP</span>{% endif %}</p>
                 <span class="qty-badge qty-{{ item.prep_status }}">{{ item.get_prep_status_display }}</span>
             </div>
-            <div class="flex gap-1">
+            <div class="flex gap-1.5">
                 {% if item.prep_status == 'queued' %}
-                <form method="post" action="{% url 'dashboard:restaurant_advance_item' item.id 'preparing' %}"><button class="text-xs font-semibold bg-blue-500 text-white px-3 py-1.5 rounded-full">Start</button></form>
+                <form method="post" action="{% url 'dashboard:restaurant_advance_item' item.id 'preparing' %}"><button class="text-xs font-bold bg-blue-500 text-white px-3.5 py-2 rounded-full hover:bg-blue-600 transition">Start</button></form>
                 {% elif item.prep_status == 'preparing' %}
-                <form method="post" action="{% url 'dashboard:restaurant_advance_item' item.id 'ready' %}"><button class="text-xs font-semibold bg-[#0B6B3A] text-white px-3 py-1.5 rounded-full">Ready</button></form>
+                <form method="post" action="{% url 'dashboard:restaurant_advance_item' item.id 'ready' %}"><button class="text-xs font-bold bg-[#0B6B3A] text-white px-3.5 py-2 rounded-full hover:bg-[#095430] transition">Ready</button></form>
                 {% elif item.prep_status == 'ready' %}
-                <form method="post" action="{% url 'dashboard:restaurant_advance_item' item.id 'served' %}"><button class="text-xs font-semibold bg-[#C9A227] text-black px-3 py-1.5 rounded-full">Served</button></form>
+                <form method="post" action="{% url 'dashboard:restaurant_advance_item' item.id 'served' %}"><button class="text-xs font-bold bg-[#C9A227] text-black px-3.5 py-2 rounded-full hover:bg-[#b8931f] transition">Served</button></form>
                 {% endif %}
                 {% if item.prep_status == 'queued' or item.prep_status == 'preparing' %}
                 <button type="button" onclick="openCancelModal('{% url 'dashboard:restaurant_cancel_item' item.id %}', '{{ item.menu_item.name|escapejs }}')" class="text-red-400 hover:text-red-600 px-2"><i class="fa-solid fa-xmark"></i></button>
@@ -193,24 +258,23 @@ document.addEventListener('DOMContentLoaded', function () {
     function connectKitchenSocket() {
         const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
         const socket = new WebSocket(`${protocol}://${window.location.host}/ws/kitchen/`);
-        socket.onopen = () => { liveDot.className = 'w-2 h-2 rounded-full bg-[#0B6B3A]'; liveLabel.textContent = 'live updates on'; };
-        socket.onclose = () => { liveDot.className = 'w-2 h-2 rounded-full bg-gray-300'; liveLabel.textContent = 'reconnecting...'; setTimeout(connectKitchenSocket, 3000); };
-        socket.onerror = () => { liveDot.className = 'w-2 h-2 rounded-full bg-red-400'; };
+        socket.onopen = () => { liveDot.classList.add('on'); liveLabel.textContent = 'live updates on'; };
+        socket.onclose = () => { liveDot.classList.remove('on'); liveLabel.textContent = 'reconnecting...'; setTimeout(connectKitchenSocket, 3000); };
+        socket.onerror = () => { liveDot.classList.remove('on'); };
         socket.onmessage = (e) => {
             const data = JSON.parse(e.data);
-            const emptyMsg = feed.querySelector('p.text-gray-400.text-center');
-            if (emptyMsg) emptyMsg.remove();
+            const emptyState = feed.querySelector('.text-center.py-16');
+            if (emptyState) emptyState.remove();
             const card = document.createElement('div');
             card.className = 'order-card flash';
             card.dataset.orderId = data.order_id;
             card.innerHTML = `
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="font-bold text-black">Order #${data.order_id} — ${data.customer_name}${data.is_vip ? ' <span class="text-[9px] bg-[#C9A227] text-black font-bold px-2 py-0.5 rounded-full ml-1">VIP</span>' : ''}</p>
-                        <p class="text-xs text-gray-400">${data.source} &middot; just now</p>
-                    </div>
-                    <button type="button" class="text-xs font-semibold bg-[#0B6B3A] text-white px-4 py-2 rounded-full opacity-50 cursor-not-allowed" title="Refresh the page to view this order's items">View</button>
-                </div>`;
+                <div class="order-avatar">${data.customer_name.charAt(0).toUpperCase()}</div>
+                <div class="meta">
+                    <p class="name">Order #${data.order_id} — ${data.customer_name}${data.is_vip ? '<span class="vip-tag">VIP</span>' : ''}</p>
+                    <p class="sub">${data.source} &middot; just now</p>
+                </div>
+                <button type="button" class="view-btn opacity-40 cursor-not-allowed" title="Refresh to view this order's items">View</button>`;
             feed.insertBefore(card, feed.firstChild);
             feed.scrollTo({ top: 0, behavior: 'smooth' });
             userInteracting = false;
