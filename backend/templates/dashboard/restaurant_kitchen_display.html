@@ -197,11 +197,11 @@ ORDER_DETAIL_TEMPLATES[{{ order.id }}] = `
             </div>
             <div class="flex gap-1.5">
                 {% if item.prep_status == 'queued' %}
-                <form method="post" action="{% url 'dashboard:restaurant_advance_item' item.id 'preparing' %}"><button class="text-xs font-bold bg-blue-500 text-white px-3.5 py-2 rounded-full hover:bg-blue-600 transition">Start</button></form>
+                <form method="post" action="{% url 'dashboard:restaurant_advance_item' item.id 'preparing' %}">{% csrf_token %}<button class="text-xs font-bold bg-blue-500 text-white px-3.5 py-2 rounded-full hover:bg-blue-600 transition">Start</button></form>
                 {% elif item.prep_status == 'preparing' %}
-                <form method="post" action="{% url 'dashboard:restaurant_advance_item' item.id 'ready' %}"><button class="text-xs font-bold bg-[#0B6B3A] text-white px-3.5 py-2 rounded-full hover:bg-[#095430] transition">Ready</button></form>
+                <form method="post" action="{% url 'dashboard:restaurant_advance_item' item.id 'ready' %}">{% csrf_token %}<button class="text-xs font-bold bg-[#0B6B3A] text-white px-3.5 py-2 rounded-full hover:bg-[#095430] transition">Ready</button></form>
                 {% elif item.prep_status == 'ready' %}
-                <form method="post" action="{% url 'dashboard:restaurant_advance_item' item.id 'served' %}"><button class="text-xs font-bold bg-[#C9A227] text-black px-3.5 py-2 rounded-full hover:bg-[#b8931f] transition">Served</button></form>
+                <form method="post" action="{% url 'dashboard:restaurant_advance_item' item.id 'served' %}">{% csrf_token %}<button class="text-xs font-bold bg-[#C9A227] text-black px-3.5 py-2 rounded-full hover:bg-[#b8931f] transition">Served</button></form>
                 {% endif %}
                 {% if item.prep_status == 'queued' or item.prep_status == 'preparing' %}
                 <button type="button" onclick="openCancelModal('{% url 'dashboard:restaurant_cancel_item' item.id %}', '{{ item.menu_item.name|escapejs }}')" class="text-red-400 hover:text-red-600 px-2"><i class="fa-solid fa-xmark"></i></button>
