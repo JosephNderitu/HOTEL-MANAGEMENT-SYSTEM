@@ -43,11 +43,14 @@ ROLE_MODULE_MAP = {
     'Front Office Manager': ['reception', 'rooms'],
     'Receptionist': ['reception', 'rooms'],
     'Housekeeping': ['rooms'],
+    'Room Manager': ['rooms'],
     'Bar Manager': ['bar'],
     'Chef': ['restaurant_kitchen'],
     'Kitchen Staff': ['restaurant_kitchen'],
     'Security': ['gate'],
 }
+
+FRONT_DESK_CAPABLE_GROUPS = {'Front Office Manager', 'Receptionist', 'Room Manager'}
 
 
 def has_full_access(user):
@@ -71,3 +74,8 @@ def get_allowed_modules(user):
 
 def can_access(user, module_code):
     return module_code in get_allowed_modules(user)
+
+def can_manage_bookings_from_rooms(user):
+    if has_full_access(user):
+        return True
+    return user.groups.filter(name__in=FRONT_DESK_CAPABLE_GROUPS).exists()

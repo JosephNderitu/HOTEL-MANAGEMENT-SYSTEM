@@ -1,0 +1,56 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+<a href="{% url 'dashboard:room_detail' from_room.id %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; Back to Room {{ from_room.number }}</a>
+<div class="max-w-lg mx-auto mt-4">
+    <h1 class="text-2xl font-bold text-black mb-1">Transfer Guest</h1>
+    <p class="text-gray-500 text-sm mb-6">{{ booking.guest_name }} is currently in Room {{ from_room.number }} ({{ from_room.room_type.name }}). This keeps their bill, payments, and orders intact.</p>
+
+    {% if messages %}{% for message in messages %}
+    <div class="bg-red-50 border border-red-300 text-red-700 text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
+    {% endfor %}{% endif %}
+
+    <form method="post" class="bg-white border border-[#0B6B3A] rounded-2xl p-6 space-y-4">
+        {% csrf_token %}
+        <div>
+            <label class="block text-xs font-semibold text-gray-500 mb-1 uppercase">Move To</label>
+            <select name="to_room" id="to-room-select" required class="w-full border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
+                <option value="">Select an available room</option>
+                {% for r in available_rooms %}
+                <option value="{{ r.id }}" data-type="{{ r.room_type_id }}" data-type-name="{{ r.room_type.name }}" data-min="{{ r.room_type.price_min }}" data-max="{{ r.room_type.price_max }}">
+                    Room {{ r.number }} — {{ r.room_type.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div id="rate-field" class="hidden">
+            <label class="block text-xs font-semibold text-gray-500 mb-1 uppercase">New Nightly Rate</label>
+            <input type="number" step="0.01" name="new_rate" id="new-rate-input" class="w-full border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
+            <p class="text-xs text-gray-400 mt-1" id="rate-hint"></p>
+        </div>
+
+        <div>
+            <label class="block text-xs font-semibold text-gray-500 mb-1 uppercase">Reason for Transfer</label>
+            <textarea name="reason" required rows="2" placeholder="e.g. Guest requested upgrade, AC issue in original room..." class="w-full border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm"></textarea>
+        </div>
+
+        <button type="submit" class="w-full bg-[#0B6B3A] text-white font-bold py-3 rounded-full hover:bg-[#095430] transition">Transfer Guest</button>
+    </form>
+</div>
+
+<script>
+document.getElementById('to-room-select').addEventListener('change', function () {
+    const opt = this.options[this.selectedIndex];
+    const currentType = "{{ booking.room_type_id }}";
+    const rateField = document.getElementById('rate-field');
+    const hint = document.getElementById('rate-hint');
+    if (opt.value && opt.dataset.type !== currentType) {
+        rateField.classList.remove('hidden');
+        hint.textContent = `${opt.dataset.typeName} rate range: KSh ${parseFloat(opt.dataset.min).toLocaleString()}–${parseFloat(opt.dataset.max).toLocaleString()}`;
+        document.getElementById('new-rate-input').value = opt.dataset.min;
+    } else {
+        rateField.classList.add('hidden');
+    }
+});
+</script>
+{% endblock %}

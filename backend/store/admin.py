@@ -51,8 +51,13 @@ class WastageLogAdmin(admin.ModelAdmin):
 
 class DailyUsageItemInline(admin.TabularInline):
     model = DailyUsageItem
+    verbose_name = "Logged Usage Item"
+    verbose_name_plural = "Logged Usage Items"
     extra = 0
-    readonly_fields = ('stock_item', 'custom_name', 'custom_unit', 'quantity', 'added_by', 'added_at')
+    readonly_fields = (
+        'stock_item', 'custom_name', 'custom_unit', 'quantity', 
+        'added_by', 'added_at', 'is_locked', 'confirmed_by', 'confirmed_at'
+    )
     can_delete = False
 
     def has_add_permission(self, request, obj=None):
@@ -61,6 +66,15 @@ class DailyUsageItemInline(admin.TabularInline):
 
 @admin.register(DailyUsageLog)
 class DailyUsageLogAdmin(admin.ModelAdmin):
-    list_display = ('department', 'date', 'status', 'confirmed_by', 'confirmed_at')
-    list_filter = ('department', 'status')
+    verbose_name = "Daily Department Usage Log"
+    verbose_name_plural = "Daily Department Usage Logs"
+    
+    # Only use fields that actually exist on DailyUsageLog
+    list_display = ('department', 'date', 'total_items_logged', 'created_at')
+    list_filter = ('department', 'date')
+    date_hierarchy = 'date'
     inlines = [DailyUsageItemInline]
+
+    @admin.display(description='Total Items Logged')
+    def total_items_logged(self, obj):
+        return obj.items.count()

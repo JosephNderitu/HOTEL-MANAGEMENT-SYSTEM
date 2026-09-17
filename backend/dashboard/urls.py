@@ -22,6 +22,11 @@ urlpatterns = [
     path('reception/confirm-all-orders/<int:booking_id>/', views.reception_confirm_all_orders, name='reception_confirm_all_orders'),
 
     path('rooms/', views.rooms_view, name='rooms'),
+    path('rooms/room/<int:room_id>/', views.room_detail, name='room_detail'),
+    path('rooms/room/<int:room_id>/checkin/', views.room_quick_checkin, name='room_quick_checkin'),
+    path('rooms/room/<int:room_id>/checkout/', views.room_checkout, name='room_checkout'),
+    path('rooms/room/<int:room_id>/add-order/', views.room_add_service_order, name='room_add_service_order'),
+    path('rooms/booking/<int:booking_id>/settle/', views.room_settle_stay, name='room_settle_stay'),
     path('rooms/<int:room_id>/start-cleaning/', views.room_start_cleaning, name='room_start_cleaning'),
     path('rooms/<int:room_id>/checklist/', views.room_cleaning_checklist, name='room_cleaning_checklist'),
     path('rooms/<int:room_id>/report-issue/', views.room_report_issue, name='room_report_issue'),
@@ -32,6 +37,8 @@ urlpatterns = [
     path('rooms/lost-found/add/', views.lostfound_add, name='lostfound_add'),
     path('rooms/lost-found/<int:item_id>/claim/', views.lostfound_claim, name='lostfound_claim'),
     path('rooms/lost-found/<int:item_id>/dispose/', views.lostfound_dispose, name='lostfound_dispose'),
+    path('rooms/room/<int:room_id>/transfer/', views.room_transfer, name='room_transfer'),
+    path('rooms/room/<int:room_id>/extend-stay/', views.room_extend_stay, name='room_extend_stay'),
    
     path('restaurant-kitchen/', views.restaurant_tables_view, name='restaurant_kitchen'),
     path('restaurant-kitchen/table/<int:table_id>/new-order/', views.restaurant_new_order, name='restaurant_new_order'),
@@ -90,6 +97,11 @@ urlpatterns = [
     
     ##receipt uRLs
     path('receipt/<int:order_id>/', views.order_receipt, name='order_receipt'),
+    
+    path('housekeeping-usage-log/', views.housekeeping_usage_log_view, name='housekeeping_usage_log'),
+    path('housekeeping-usage-log/add/', views.housekeeping_usage_log_add, name='housekeeping_usage_log_add'),
+    path('housekeeping-usage-log/<int:item_id>/delete/', views.housekeeping_usage_log_delete, name='housekeeping_usage_log_delete'),
+    path('housekeeping-usage-log/confirm/', views.housekeeping_usage_log_confirm, name='housekeeping_usage_log_confirm'),
     
     
 ]

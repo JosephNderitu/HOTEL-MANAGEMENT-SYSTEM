@@ -29,6 +29,8 @@ from .services import *
 
 from decimal import Decimal
 from django.urls import reverse
+from datetime import datetime
+from .permissions import can_manage_bookings_from_rooms
 
 @login_required
 def dashboard_home(request):
@@ -302,7 +304,10 @@ def reception_record_payment(request, target_type, target_id):
 
 ##end of reception views
 
-### start of room view ####
+# ==============================================================================
+# ROOMS & HOUSEKEEPING MANAGEMENT
+# ==============================================================================
+
 @staff_module_required('rooms')
 def rooms_view(request):
     status_filter = request.GET.get('status', '')
@@ -310,20 +315,10 @@ def rooms_view(request):
     if status_filter:
         rooms = rooms.filter(status=status_filter)
 
-    counts = {
-        'available': Room.objects.filter(status='available').count(),
-        'occupied': Room.objects.filter(status='occupied').count(),
-        'cleaning': Room.objects.filter(status='cleaning').count(),
-        'maintenance': Room.objects.filter(status='maintenance').count(),
-    }
-
+    counts = {s: Room.objects.filter(status=s).count() for s in ('available', 'occupied', 'cleaning', 'maintenance')}
     open_maintenance_count = MaintenanceRequest.objects.filter(status__in=['open', 'in_progress']).count()
     unclaimed_lost_count = LostFoundItem.objects.filter(status='unclaimed').count()
-
-    active_bookings = {
-        b.assigned_room_id: b
-        for b in Booking.objects.filter(status='checked_in', assigned_room__isnull=False)
-    }
+    active_bookings = {b.assigned_room_id: b for b in Booking.objects.filter(status='checked_in', assigned_room__isnull=False)}
 
     return render(request, 'dashboard/rooms.html', {
         'rooms': rooms,
@@ -333,6 +328,165 @@ def rooms_view(request):
         'unclaimed_lost_count': unclaimed_lost_count,
         'active_bookings': active_bookings,
     })
+
+
+@staff_module_required('rooms')
+def room_detail(request, room_id):
+    room = get_object_or_404(Room.objects.select_related('room_type'), id=room_id)
+    booking = Booking.objects.filter(assigned_room=room, status='checked_in').select_related('room_type').prefetch_related(
+        'room_service_orders__items__menu_item', 'payments'
+    ).first()
+
+    can_manage = can_manage_bookings_from_rooms(request.user)
+    active_cleaning = room.cleaning_logs.filter(completed_at__isnull=True).first()
+    open_maintenance = room.maintenance_requests.filter(status__in=['open', 'in_progress'])
+
+    checkin_form = RoomCheckinForm(initial={'check_out': timezone.localdate() + timezone.timedelta(days=1)})
+
+    menu_items, categories = [], []
+    if booking:
+        drinks = MenuItem.objects.filter(item_type='drink', serving_point='kitchen', is_available=True).select_related('stock_item').prefetch_related('images')
+        food = MenuItem.objects.filter(item_type='food', is_available=True).select_related('stock_item').prefetch_related('images')
+        menu_items = [i for i in list(food) + list(drinks) if i.is_in_stock]
+        categories = sorted(set(i.category for i in menu_items if i.category))
+
+    return render(request, 'dashboard/room_detail.html', {
+        'room': room, 
+        'booking': booking, 
+        'can_manage': can_manage,
+        'active_cleaning': active_cleaning, 
+        'open_maintenance': open_maintenance,
+        'checkin_form': checkin_form, 
+        'menu_items': menu_items, 
+        'categories': categories,
+    })
+
+
+@staff_module_required('rooms')
+def room_quick_checkin(request, room_id):
+    if not can_manage_bookings_from_rooms(request.user):
+        messages.error(request, "You don't have permission to check in guests.")
+        return redirect('dashboard:room_detail', room_id=room_id)
+    
+    room = get_object_or_404(Room, id=room_id, status='available')
+    if request.method != 'POST':
+        return redirect('dashboard:room_detail', room_id=room_id)
+
+    form = RoomCheckinForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, "Fill in all required fields correctly.")
+        return redirect('dashboard:room_detail', room_id=room_id)
+
+    check_in, check_out = timezone.localdate(), form.cleaned_data['check_out']
+    amount = form.cleaned_data['amount']
+    if check_out <= check_in:
+        messages.error(request, "Check-out must be after today.")
+        return redirect('dashboard:room_detail', room_id=room_id)
+    if not (room.room_type.price_min <= amount <= room.room_type.price_max):
+        messages.error(request, f"Rate must be between KSh {room.room_type.price_min:,.0f} and KSh {room.room_type.price_max:,.0f}.")
+        return redirect('dashboard:room_detail', room_id=room_id)
+
+    booking = Booking.objects.create(
+        booking_type='room', 
+        guest_name=form.cleaned_data['guest_name'], 
+        guest_phone=form.cleaned_data['guest_phone'],
+        guest_id_no=form.cleaned_data.get('guest_id_no', ''), 
+        room_type=room.room_type, 
+        assigned_room=room,
+        check_in=check_in, 
+        check_out=check_out, 
+        amount=amount, 
+        status='checked_in', 
+        source='walkin',
+    )
+    room.status = 'occupied'
+    room.save(update_fields=['status'])
+    messages.success(request, f"{booking.guest_name} checked in to Room {room.number}.")
+    return redirect('dashboard:room_detail', room_id=room_id)
+
+
+def _room_checkout_view(request, room_id):
+    room = get_object_or_404(Room, id=room_id)
+    booking = get_object_or_404(Booking, assigned_room=room, status='checked_in')
+
+    if booking.total_balance_due > 0:
+        return redirect('dashboard:room_settle_stay', booking_id=booking.id)
+
+    booking.status = 'checked_out'
+    booking.save(update_fields=['status'])
+    room.status = 'cleaning'
+    room.save(update_fields=['status'])
+    messages.success(request, f"{booking.guest_name} checked out of Room {room.number}.")
+    return redirect('dashboard:room_detail', room_id=room_id)
+
+
+@staff_module_required('rooms')
+def room_checkout(request, room_id):
+    if not can_manage_bookings_from_rooms(request.user):
+        messages.error(request, "You don't have permission to check out guests.")
+        return redirect('dashboard:room_detail', room_id=room_id)
+    return _room_checkout_view(request, room_id)
+
+
+@staff_module_required('rooms')
+def room_settle_stay(request, booking_id):
+    if not can_manage_bookings_from_rooms(request.user):
+        messages.error(request, "You don't have permission to settle payments.")
+        return redirect('dashboard:rooms')
+    
+    booking = get_object_or_404(Booking, id=booking_id)
+    response = _settle_stay_view(request, booking_id, back_url_name='dashboard:rooms')
+    
+    if request.method == 'POST' and booking.total_balance_due <= 0 and booking.status == 'checked_in':
+        booking.refresh_from_db()
+        if booking.total_balance_due <= 0:
+            booking.status = 'checked_out'
+            booking.save(update_fields=['status'])
+            if booking.assigned_room:
+                booking.assigned_room.status = 'cleaning'
+                booking.assigned_room.save(update_fields=['status'])
+    return response
+
+
+@staff_module_required('rooms')
+def room_add_service_order(request, room_id):
+    if not can_manage_bookings_from_rooms(request.user):
+        return JsonResponse({'error': "You don't have permission to place orders."}, status=403)
+    if request.method != 'POST':
+        return redirect('dashboard:room_detail', room_id=room_id)
+
+    room = get_object_or_404(Room, id=room_id)
+    booking = get_object_or_404(Booking, assigned_room=room, status='checked_in')
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid request.'}, status=400)
+
+    items = data.get('items', [])
+    if not items:
+        return JsonResponse({'error': 'Add at least one item.'}, status=400)
+
+    order = Order.objects.create(
+        customer_name=booking.guest_name, 
+        customer_phone=booking.guest_phone, 
+        room_booking=booking, 
+        status='pending'
+    )
+    
+    for item in items:
+        try:
+            menu_item = MenuItem.objects.get(id=item['id'], is_available=True)
+        except (MenuItem.DoesNotExist, KeyError):
+            continue
+        tier = item.get('tier') if item.get('tier') in ('regular', 'vip') else 'regular'
+        OrderItem.objects.create(order=order, menu_item=menu_item, tier=tier, quantity=max(int(item.get('qty', 1)), 1))
+
+    success, shortfalls = confirm_order_and_deduct_stock(order)
+    if not success:
+        order.delete()
+        return JsonResponse({'error': f"Insufficient stock: {', '.join(shortfalls)}."}, status=409)
+    return JsonResponse({'success': True})
 
 
 @staff_module_required('rooms')
@@ -373,7 +527,9 @@ def room_cleaning_checklist(request, room_id):
             messages.error(request, f"All items must be checked before this room can go Available. Still missing: {', '.join(missing)}.")
 
     return render(request, 'dashboard/room_cleaning_checklist.html', {
-        'room': room, 'log': log, 'checklist_items': CLEANING_CHECKLIST_ITEMS,
+        'room': room, 
+        'log': log, 
+        'checklist_items': CLEANING_CHECKLIST_ITEMS,
     })
 
 
@@ -400,6 +556,76 @@ def room_report_issue(request, room_id):
     messages.success(request, f"Issue reported for Room {room.number}. Room marked under Maintenance.")
     return redirect('dashboard:rooms')
 
+@staff_module_required('rooms')
+def room_transfer(request, room_id):
+    if not can_manage_bookings_from_rooms(request.user):
+        messages.error(request, "You don't have permission to transfer guests.")
+        return redirect('dashboard:room_detail', room_id=room_id)
+
+    from_room = get_object_or_404(Room, id=room_id)
+    booking = get_object_or_404(Booking, assigned_room=from_room, status='checked_in')
+    available_rooms = Room.objects.filter(status='available').exclude(id=from_room.id).select_related('room_type')
+
+    if request.method == 'POST':
+        to_room = get_object_or_404(Room, id=request.POST.get('to_room'), status='available')
+        reason = request.POST.get('reason', '').strip()
+        if not reason:
+            messages.error(request, "A reason is required for the transfer record.")
+            return redirect('dashboard:room_transfer', room_id=from_room.id)
+
+        new_rate = booking.amount
+        if to_room.room_type_id != booking.room_type_id:
+            try:
+                new_rate = Decimal(request.POST.get('new_rate') or '0')
+            except Exception:
+                new_rate = Decimal('0')
+            if not (to_room.room_type.price_min <= new_rate <= to_room.room_type.price_max):
+                messages.error(request, f"New rate must be between KSh {to_room.room_type.price_min:,.0f} and KSh {to_room.room_type.price_max:,.0f} for {to_room.room_type.name}.")
+                return redirect('dashboard:room_transfer', room_id=from_room.id)
+
+        with transaction.atomic():
+            RoomTransferLog.objects.create(booking=booking, from_room=from_room, to_room=to_room, reason=reason, transferred_by=request.user)
+            from_room.status = 'cleaning'
+            from_room.save(update_fields=['status'])
+            to_room.status = 'occupied'
+            to_room.save(update_fields=['status'])
+            booking.assigned_room = to_room
+            booking.room_type = to_room.room_type
+            booking.amount = new_rate
+            booking.save(update_fields=['assigned_room', 'room_type', 'amount'])
+
+        messages.success(request, f"{booking.guest_name} moved from Room {from_room.number} to Room {to_room.number}.")
+        return redirect('dashboard:room_detail', room_id=to_room.id)
+
+    return render(request, 'dashboard/room_transfer.html', {
+        'from_room': from_room, 'booking': booking, 'available_rooms': available_rooms,
+    })
+    
+@staff_module_required('rooms')
+def room_extend_stay(request, room_id):
+    if not can_manage_bookings_from_rooms(request.user):
+        messages.error(request, "You don't have permission to extend a stay.")
+        return redirect('dashboard:room_detail', room_id=room_id)
+
+    room = get_object_or_404(Room, id=room_id)
+    booking = get_object_or_404(Booking, assigned_room=room, status='checked_in')
+
+    if request.method == 'POST':
+        try:
+            new_checkout = datetime.strptime(request.POST.get('new_checkout', ''), '%Y-%m-%d').date()
+        except ValueError:
+            messages.error(request, "Enter a valid date.")
+            return redirect('dashboard:room_detail', room_id=room_id)
+
+        if new_checkout <= booking.check_out:
+            messages.error(request, f"New check-out must be after the current one ({booking.check_out}).")
+            return redirect('dashboard:room_detail', room_id=room_id)
+
+        booking.check_out = new_checkout
+        booking.save(update_fields=['check_out'])
+        messages.success(request, f"{booking.guest_name}'s stay extended to {new_checkout}.")
+
+    return redirect('dashboard:room_detail', room_id=room_id)
 
 @staff_module_required('rooms')
 def maintenance_list(request):
@@ -431,7 +657,6 @@ def maintenance_resolve(request, request_id):
     req.resolved_at = timezone.now()
     req.save(update_fields=['status', 'resolved_by', 'resolved_at'])
 
-    # Fixed rooms go through Cleaning before reuse, repair work disturbs the room.
     req.room.status = 'cleaning'
     req.room.save(update_fields=['status'])
     messages.success(request, f"Resolved. Room {req.room.number} moved to Cleaning before it's marked Available.")
@@ -494,7 +719,6 @@ def lostfound_dispose(request, item_id):
     item.save(update_fields=['status'])
     messages.success(request, "Marked disposed.")
     return redirect('dashboard:lostfound_list')
-
 #### end of room views ####
 
 ### start of restaurant views
@@ -712,70 +936,90 @@ def kitchen_item_sales_pdf(request):
     return response
 
 
-def _can_touch_usage_log(user):
-    return can_access(user, 'restaurant_kitchen') or can_access(user, 'store')
+# ==============================================================================
+# DAILY USAGE LOGS (Generic Helpers & Views for Kitchen & Housekeeping)
+# ==============================================================================
+
+def _can_touch_usage_log(user, department):
+    module = 'restaurant_kitchen' if department == 'kitchen' else 'rooms'
+    return can_access(user, module) or can_access(user, 'store')
 
 
-@login_required
-def kitchen_usage_log_view(request):
-    if not _can_touch_usage_log(request.user):
-        return render(request, 'dashboard/restricted.html', {'module_label': 'Kitchen Usage Log'}, status=403)
+def _usage_log_view(request, department, template_name, back_url_name):
+    if not _can_touch_usage_log(request.user, department):
+        return render(request, 'dashboard/restricted.html', {'module_label': 'Daily Usage Log'}, status=403)
 
     today = timezone.localdate()
-    log, _ = DailyUsageLog.objects.get_or_create(department='kitchen', date=today)
-    stock_items = StockItem.objects.filter(department='kitchen', is_active=True)
+    log, _ = DailyUsageLog.objects.get_or_create(department=department, date=today)
+    stock_items = StockItem.objects.filter(department=department, is_active=True)
+    items = log.items.select_related('stock_item', 'added_by', 'confirmed_by').order_by('-added_at')
 
-    return render(request, 'dashboard/kitchen_usage_log.html', {
-        'log': log, 'stock_items': stock_items,
-        'items': log.items.select_related('stock_item', 'added_by').order_by('-added_at'),
+    return render(request, template_name, {
+        'log': log,
+        'stock_items': stock_items,
+        'items': items,
+        'unlocked_count': items.filter(is_locked=False).count(),
+        'department': department,
+        'back_url_name': back_url_name,
     })
 
 
-@login_required
-def kitchen_usage_log_add(request):
-    if request.method != 'POST' or not _can_touch_usage_log(request.user):
-        return redirect('dashboard:kitchen_usage_log')
+def _usage_log_add(request, department):
+    if request.method != 'POST' or not _can_touch_usage_log(request.user, department):
+        return redirect(request.META.get('HTTP_REFERER', 'dashboard:home'))
 
     today = timezone.localdate()
-    log, _ = DailyUsageLog.objects.get_or_create(department='kitchen', date=today)
-    if log.status != 'draft':
-        messages.error(request, "Today's log is already confirmed and locked.")
-        return redirect('dashboard:kitchen_usage_log')
-
+    log, _ = DailyUsageLog.objects.get_or_create(department=department, date=today)
     mode = request.POST.get('mode')
     quantity = Decimal(request.POST.get('quantity') or '0')
+
     if quantity <= 0:
         messages.error(request, "Enter a quantity greater than zero.")
-        return redirect('dashboard:kitchen_usage_log')
+        return redirect(request.META.get('HTTP_REFERER', 'dashboard:home'))
 
     with transaction.atomic():
         if mode == 'stock':
-            stock = get_object_or_404(StockItem, id=request.POST.get('stock_item'), department='kitchen')
+            stock = get_object_or_404(StockItem, id=request.POST.get('stock_item'), department=department)
             if quantity > stock.quantity_on_hand:
                 messages.error(request, f"Can't log more than what's in stock ({stock.quantity_on_hand} {stock.unit}).")
-                return redirect('dashboard:kitchen_usage_log')
-            DailyUsageItem.objects.create(log=log, stock_item=stock, quantity=quantity, added_by=request.user)
-            StockItem.objects.filter(id=stock.id).select_for_update().update(quantity_on_hand=stock.quantity_on_hand - quantity)
+                return redirect(request.META.get('HTTP_REFERER', 'dashboard:home'))
+            
+            DailyUsageItem.objects.create(
+                log=log,
+                stock_item=stock,
+                quantity=quantity,
+                added_by=request.user
+            )
+            StockItem.objects.filter(id=stock.id).select_for_update().update(
+                quantity_on_hand=stock.quantity_on_hand - quantity
+            )
         else:
             name = request.POST.get('custom_name', '').strip()
             unit = request.POST.get('custom_unit', '')
             if not name:
                 messages.error(request, "Enter a name for the item.")
-                return redirect('dashboard:kitchen_usage_log')
-            DailyUsageItem.objects.create(log=log, custom_name=name, custom_unit=unit, quantity=quantity, added_by=request.user)
+                return redirect(request.META.get('HTTP_REFERER', 'dashboard:home'))
+            
+            DailyUsageItem.objects.create(
+                log=log,
+                custom_name=name,
+                custom_unit=unit,
+                quantity=quantity,
+                added_by=request.user
+            )
 
     messages.success(request, "Usage logged.")
-    return redirect('dashboard:kitchen_usage_log')
+    return redirect(request.META.get('HTTP_REFERER', 'dashboard:home'))
 
 
-@login_required
-def kitchen_usage_log_delete(request, item_id):
-    if request.method != 'POST' or not _can_touch_usage_log(request.user):
-        return redirect('dashboard:kitchen_usage_log')
-    item = get_object_or_404(DailyUsageItem, id=item_id)
-    if item.log.status != 'draft':
-        messages.error(request, "This log is confirmed and locked.")
-        return redirect('dashboard:kitchen_usage_log')
+def _usage_log_delete(request, item_id, department):
+    if request.method != 'POST' or not _can_touch_usage_log(request.user, department):
+        return redirect(request.META.get('HTTP_REFERER', 'dashboard:home'))
+
+    item = get_object_or_404(DailyUsageItem, id=item_id, log__department=department)
+    if item.is_locked:
+        messages.error(request, "This entry is already confirmed and locked, it can't be removed here.")
+        return redirect(request.META.get('HTTP_REFERER', 'dashboard:home'))
 
     with transaction.atomic():
         if item.stock_item:
@@ -783,25 +1027,87 @@ def kitchen_usage_log_delete(request, item_id):
                 quantity_on_hand=item.stock_item.quantity_on_hand + item.quantity
             )
         item.delete()
+
     messages.success(request, "Entry removed.")
-    return redirect('dashboard:kitchen_usage_log')
+    return redirect(request.META.get('HTTP_REFERER', 'dashboard:home'))
+
+
+def _usage_log_confirm(request, department):
+    if request.method != 'POST' or not _can_touch_usage_log(request.user, department):
+        return redirect(request.META.get('HTTP_REFERER', 'dashboard:home'))
+
+    today = timezone.localdate()
+    log, _ = DailyUsageLog.objects.get_or_create(department=department, date=today)
+    unlocked = log.items.filter(is_locked=False)
+    count = unlocked.count()
+
+    if count == 0:
+        messages.error(request, "Nothing new to confirm right now.")
+    else:
+        unlocked.update(
+            is_locked=True,
+            confirmed_by=request.user,
+            confirmed_at=timezone.now()
+        )
+        messages.success(
+            request,
+            f"Confirmed and locked {count} entr{'y' if count == 1 else 'ies'}. You can still add more usage later today."
+        )
+
+    return redirect(request.META.get('HTTP_REFERER', 'dashboard:home'))
+
+
+# ------------------------------------------------------------------------------
+# KITCHEN USAGE LOG ENDPOINTS
+# ------------------------------------------------------------------------------
+
+@login_required
+def kitchen_usage_log_view(request):
+    return _usage_log_view(
+        request, 'kitchen', 'dashboard/kitchen_usage_log.html', 'dashboard:restaurant_kitchen_display'
+    )
+
+
+@login_required
+def kitchen_usage_log_add(request):
+    return _usage_log_add(request, 'kitchen')
+
+
+@login_required
+def kitchen_usage_log_delete(request, item_id):
+    return _usage_log_delete(request, item_id, 'kitchen')
 
 
 @login_required
 def kitchen_usage_log_confirm(request):
-    if request.method != 'POST' or not _can_touch_usage_log(request.user):
-        return redirect('dashboard:kitchen_usage_log')
-    today = timezone.localdate()
-    log, _ = DailyUsageLog.objects.get_or_create(department='kitchen', date=today)
-    if not log.items.exists():
-        messages.error(request, "Add at least one item before confirming.")
-        return redirect('dashboard:kitchen_usage_log')
-    log.status = 'confirmed'
-    log.confirmed_by = request.user
-    log.confirmed_at = timezone.now()
-    log.save(update_fields=['status', 'confirmed_by', 'confirmed_at'])
-    messages.success(request, "Today's usage log confirmed and locked.")
-    return redirect('dashboard:kitchen_usage_log')
+    return _usage_log_confirm(request, 'kitchen')
+
+
+# ------------------------------------------------------------------------------
+# HOUSEKEEPING USAGE LOG ENDPOINTS
+# ------------------------------------------------------------------------------
+
+@login_required
+def housekeeping_usage_log_view(request):
+    return _usage_log_view(
+        request, 'housekeeping', 'dashboard/housekeeping_usage_log.html', 'dashboard:rooms'
+    )
+
+
+@login_required
+def housekeeping_usage_log_add(request):
+    return _usage_log_add(request, 'housekeeping')
+
+
+@login_required
+def housekeeping_usage_log_delete(request, item_id):
+    return _usage_log_delete(request, item_id, 'housekeeping')
+
+
+@login_required
+def housekeeping_usage_log_confirm(request):
+    return _usage_log_confirm(request, 'housekeeping')
+
 
 @staff_module_required('restaurant_kitchen')
 def restaurant_advance_item(request, item_id, new_status):

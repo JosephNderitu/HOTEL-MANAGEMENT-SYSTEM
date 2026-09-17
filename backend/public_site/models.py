@@ -270,6 +270,16 @@ class Booking(models.Model):
         target = self.room_type or self.conference_room
         return f"{self.guest_name} — {target} ({self.check_in} to {self.check_out})"
 
+class RoomTransferLog(models.Model):
+    booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name='transfers')
+    from_room = models.ForeignKey(Room, on_delete=models.PROTECT, related_name='transfers_from')
+    to_room = models.ForeignKey(Room, on_delete=models.PROTECT, related_name='transfers_to')
+    reason = models.CharField(max_length=200)
+    transferred_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='room_transfers')
+    transferred_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.booking.guest_name}: Room {self.from_room.number} → Room {self.to_room.number}"
 
 class Table(models.Model):
     STATUS_CHOICES = [

@@ -111,19 +111,15 @@ class WastageLog(models.Model):
         return f"{self.quantity} {self.stock_item.unit} {self.stock_item.name} wasted — {self.reason}"
     
 class DailyUsageLog(models.Model):
-    STATUS_CHOICES = [('draft', 'Draft'), ('confirmed', 'Confirmed')]
     department = models.CharField(max_length=20, choices=StockItem.DEPARTMENT_CHOICES)
     date = models.DateField()
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='draft')
-    confirmed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name='usage_logs_confirmed')
-    confirmed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         unique_together = ('department', 'date')
 
     def __str__(self):
-        return f"{self.get_department_display()} usage — {self.date} ({self.get_status_display()})"
+        return f"{self.get_department_display()} usage — {self.date}"
 
 
 class DailyUsageItem(models.Model):
@@ -134,6 +130,9 @@ class DailyUsageItem(models.Model):
     quantity = models.DecimalField(max_digits=10, decimal_places=2)
     added_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='usage_items_added')
     added_at = models.DateTimeField(auto_now_add=True)
+    is_locked = models.BooleanField(default=False)
+    confirmed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name='usage_items_confirmed')
+    confirmed_at = models.DateTimeField(null=True, blank=True)
 
     @property
     def display_name(self):

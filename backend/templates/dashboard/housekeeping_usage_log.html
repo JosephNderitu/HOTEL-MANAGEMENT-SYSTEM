@@ -30,11 +30,11 @@
     .confirm-btn:hover { transform: translateY(-1px); }
 </style>
 
-<a href="{% url 'dashboard:restaurant_kitchen_display' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline"><i class="fa-solid fa-arrow-left mr-1 text-xs"></i>Kitchen Display</a>
+<a href="{% url 'dashboard:rooms' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline"><i class="fa-solid fa-arrow-left mr-1 text-xs"></i>Rooms</a>
 
 <div class="ul-hero mt-3">
     <div>
-        <h1><i class="fa-solid fa-clipboard-list mr-2"></i>Today's Ingredient Usage</h1>
+        <h1><i class="fa-solid fa-clipboard-list mr-2"></i>Today's Housekeeping Usage</h1>
         <p class="text-white/70 text-xs mt-1">{{ log.date }}</p>
     </div>
     <span class="ul-status {% if unlocked_count == 0 and items %}locked{% else %}draft{% endif %}">
@@ -53,7 +53,7 @@
             <div id="mode-stock-btn" class="ul-mode-btn active">From Stock</div>
             <div id="mode-custom-btn" class="ul-mode-btn">Not In Stock</div>
         </div>
-        <form method="post" action="{% url 'dashboard:kitchen_usage_log_add' %}" class="space-y-3">
+        <form method="post" action="{% url 'dashboard:housekeeping_usage_log_add' %}" class="space-y-3">
             {% csrf_token %}
             <input type="hidden" name="mode" id="mode-input" value="stock">
             <div id="stock-fields">
@@ -62,7 +62,7 @@
                 </select>
             </div>
             <div id="custom-fields" class="hidden space-y-3">
-                <input type="text" name="custom_name" placeholder="Item name, e.g. Tomatoes" class="ul-input">
+                <input type="text" name="custom_name" placeholder="Item name, e.g. Detergent" class="ul-input">
                 <select name="custom_unit" class="ul-select">
                     <option value="kg">Kilogram</option><option value="g">Gram</option><option value="l">Litre</option>
                     <option value="ml">Millilitre</option><option value="piece">Piece</option><option value="pack">Pack</option>
@@ -91,7 +91,7 @@
                     <p class="text-[11px] text-gray-400">{{ item.added_by.get_full_name|default:item.added_by.username }} &middot; {{ item.added_at|date:"H:i" }}</p>
                 </div>
                 {% if not item.is_locked %}
-                <form method="post" action="{% url 'dashboard:kitchen_usage_log_delete' item.id %}" onsubmit="return confirm('Remove this entry?');">
+                <form method="post" action="{% url 'dashboard:housekeeping_usage_log_delete' item.id %}" onsubmit="return confirm('Remove this entry?');">
                     {% csrf_token %}
                     <button class="text-red-400 hover:text-red-600 ml-2"><i class="fa-solid fa-trash text-xs"></i></button>
                 </form>
@@ -107,7 +107,7 @@
             {% endfor %}
         </div>
         {% if unlocked_count > 0 %}
-        <form method="post" action="{% url 'dashboard:kitchen_usage_log_confirm' %}" onsubmit="return confirm('Confirm and lock {{ unlocked_count }} new entr{{ unlocked_count|pluralize:"y,ies" }}? You can still add more after.');">
+        <form method="post" action="{% url 'dashboard:housekeeping_usage_log_confirm' %}" onsubmit="return confirm('Confirm and lock {{ unlocked_count }} new entr{{ unlocked_count|pluralize:\'y,ies\' }}? You can still add more after.');">
             {% csrf_token %}
             <button type="submit" class="confirm-btn"><i class="fa-solid fa-lock mr-1"></i>Confirm {{ unlocked_count }} New Entr{{ unlocked_count|pluralize:"y,ies" }}</button>
         </form>

@@ -1,0 +1,143 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% load static %}
+{% block dashboard_content %}
+{% include "dashboard/_pos_styles.html" %}
+<style>
+    .rd-hero { background: linear-gradient(135deg, #0B6B3A, #095430); border-radius: 18px; padding: 22px 26px; color: #fff; margin-bottom: 22px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+    .rd-badge { font-size: 10.5px; font-weight: 800; padding: 4px 12px; border-radius: 9999px; text-transform: uppercase; }
+    .rd-badge.available { background: #fff; color: #0B6B3A; }
+    .rd-badge.occupied { background: #C9A227; color: #000; }
+    .rd-badge.cleaning { background: #3b82f6; color: #fff; }
+    .rd-badge.maintenance { background: #dc2626; color: #fff; }
+    .rd-card { background: #fff; border: 1px solid #eef0ee; border-radius: 16px; padding: 20px; }
+    .rd-action-btn { font-size: 13px; font-weight: 700; padding: 10px 18px; border-radius: 9999px; text-align: center; }
+</style>
+
+<a href="{% url 'dashboard:rooms' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline"><i class="fa-solid fa-arrow-left mr-1 text-xs"></i>All Rooms</a>
+
+<div class="rd-hero mt-3">
+    <div>
+        <h1 class="text-xl font-extrabold">Room {{ room.number }}</h1>
+        <p class="text-white/70 text-xs mt-1">{{ room.room_type.name }} &middot; {{ room.room_type.capacity }} guests</p>
+    </div>
+    <span class="rd-badge {{ room.status }}">{{ room.get_status_display }}</span>
+</div>
+
+{% if messages %}{% for message in messages %}
+<div class="bg-{% if message.tags == 'error' %}red-50 border-red-300 text-red-700{% else %}[#0B6B3A]/10 border-[#0B6B3A] text-[#0B6B3A]{% endif %} border text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
+{% endfor %}{% endif %}
+
+{% if room.status == 'occupied' and booking %}
+<div class="grid lg:grid-cols-3 gap-6">
+    <div class="rd-card">
+        <h2 class="font-bold text-black text-sm mb-4"><i class="fa-solid fa-id-card text-[#C9A227] mr-1"></i>Guest</h2>
+        <p class="font-bold text-lg text-black">{{ booking.guest_name }}</p>
+        <p class="text-sm text-gray-500 mb-3">{{ booking.guest_phone }} {% if booking.guest_id_no %}&middot; {{ booking.guest_id_no }}{% endif %}</p>
+        <div class="text-sm space-y-1 text-gray-600 mb-4">
+            <p>Check In: <strong>{{ booking.check_in|date:"M d, Y" }}</strong></p>
+            <p>Check Out: <strong>{{ booking.check_out|date:"M d, Y" }}</strong> ({{ booking.nights }} night{{ booking.nights|pluralize }})</p>
+            <form method="post" action="{% url 'dashboard:room_extend_stay' room.id %}" class="flex items-center gap-2 mt-2">
+                {% csrf_token %}
+                <input type="date" name="new_checkout" min="{{ booking.check_out|date:'Y-m-d' }}" required class="border border-gray-300 rounded-lg px-2 py-1.5 text-xs flex-1">
+                <button type="submit" class="text-xs font-semibold bg-[#C9A227] text-black px-3 py-1.5 rounded-full whitespace-nowrap">Extend</button>
+            </form>
+            <p class="pt-1">Rate: <strong>KSh {{ booking.amount|floatformat:0 }}/night</strong></p>
+        </div>
+        <div class="border-t border-gray-100 pt-3 flex justify-between font-bold">
+            <span>Balance Due</span>
+            <span class="{% if booking.total_balance_due > 0 %}text-red-600{% else %}text-[#0B6B3A]{% endif %}">KSh {{ booking.total_balance_due|floatformat:0 }}</span>
+        </div>
+        {% if can_manage %}
+        <div class="mt-4 space-y-2">
+            <a href="{% url 'dashboard:booking_bill' booking.id %}" target="_blank" class="rd-action-btn block border border-[#0B6B3A] text-[#0B6B3A] hover:bg-[#0B6B3A] hover:text-white transition"><i class="fa-solid fa-print mr-1"></i>Print Bill</a>
+            <a href="{% url 'dashboard:room_transfer' room.id %}" class="rd-action-btn block border border-blue-400 text-blue-500 hover:bg-blue-50 transition"><i class="fa-solid fa-right-left mr-1"></i>Transfer Room</a>
+            {% if booking.total_balance_due > 0 %}
+            <a href="{% url 'dashboard:room_settle_stay' booking.id %}" class="rd-action-btn block bg-[#C9A227] text-black hover:bg-[#b8931f] transition">Settle &amp; Check Out</a>
+            {% else %}
+            <form method="post" action="{% url 'dashboard:room_checkout' room.id %}">{% csrf_token %}
+                <button class="rd-action-btn w-full bg-[#0B6B3A] text-white hover:bg-[#095430] transition">Check Out</button>
+            </form>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    {% if can_manage %}
+    <div class="lg:col-span-2">
+        <div class="rd-card">
+            <h2 class="font-bold text-black text-sm mb-4"><i class="fa-solid fa-bell-concierge text-[#C9A227] mr-1"></i>Room Service</h2>
+            {% include "dashboard/_pos_menu_grid.html" with pos_items=menu_items empty_message="No items available right now." %}
+            <div id="rs-cart-error" class="text-red-600 text-xs mt-3 hidden"></div>
+            <div id="new-cart-items" class="mt-3 max-h-40 overflow-y-auto"></div>
+            <div class="border-t border-gray-100 mt-3 pt-3 flex justify-between font-bold"><span>Subtotal</span><span id="cart-subtotal">KSh 0</span></div>
+            <button id="submit-btn" type="button" class="w-full bg-[#0B6B3A] text-white font-bold py-3 rounded-full hover:bg-[#095430] transition mt-3">
+                <i class="fa-solid fa-cart-plus mr-1"></i>Send Order to Kitchen
+            </button>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{% elif room.status == 'available' %}
+<div class="grid lg:grid-cols-2 gap-6">
+    <div class="rd-card text-center py-10">
+        <i class="fa-solid fa-door-open text-3xl text-[#0B6B3A] mb-3"></i>
+        <p class="text-gray-500 text-sm">This room is available and ready.</p>
+    </div>
+    {% if can_manage %}
+    <div class="rd-card">
+        <h2 class="font-bold text-black text-sm mb-4"><i class="fa-solid fa-user-plus text-[#C9A227] mr-1"></i>Check In Guest</h2>
+        <form method="post" action="{% url 'dashboard:room_quick_checkin' room.id %}" class="space-y-3">
+            {% csrf_token %}
+            {% for field in checkin_form %}
+            <div><label class="block text-xs font-semibold text-gray-500 mb-1 uppercase">{{ field.label }}</label>{{ field }}</div>
+            {% endfor %}
+            <p class="text-xs text-gray-400">Rate must be between KSh {{ room.room_type.price_min|floatformat:0 }} and KSh {{ room.room_type.price_max|floatformat:0 }}.</p>
+            <button type="submit" class="w-full bg-[#0B6B3A] text-white font-bold py-3 rounded-full hover:bg-[#095430] transition">Check In Now</button>
+        </form>
+    </div>
+    {% else %}
+    <div class="rd-card text-center text-gray-400 text-sm py-10">You don't have permission to check in guests.</div>
+    {% endif %}
+</div>
+
+{% elif room.status == 'cleaning' %}
+<div class="rd-card text-center py-12">
+    <i class="fa-solid fa-broom text-3xl text-blue-500 mb-3"></i>
+    <p class="font-bold text-black mb-1">Being Cleaned</p>
+    {% if active_cleaning %}<p class="text-xs text-gray-400 mb-4">Started by {{ active_cleaning.started_by.get_full_name|default:active_cleaning.started_by.username }} at {{ active_cleaning.started_at|date:"H:i" }}</p>{% endif %}
+    <a href="{% url 'dashboard:room_cleaning_checklist' room.id %}" class="rd-action-btn inline-block bg-blue-500 text-white hover:bg-blue-600 transition">Open Checklist</a>
+</div>
+
+{% elif room.status == 'maintenance' %}
+<div class="rd-card">
+    <h2 class="font-bold text-black text-sm mb-4"><i class="fa-solid fa-screwdriver-wrench text-red-500 mr-1"></i>Maintenance Issues</h2>
+    {% for req in open_maintenance %}
+    <div class="border border-gray-200 rounded-lg p-3 mb-2">
+        <p class="font-semibold text-sm">{{ req.issue }}</p>
+        <p class="text-xs text-gray-500">{{ req.get_priority_display }} priority &middot; reported {{ req.created_at|date:"M d, H:i" }}</p>
+    </div>
+    {% empty %}<p class="text-gray-400 text-sm">No open issue on file, resolved from elsewhere.</p>{% endfor %}
+    <a href="{% url 'dashboard:maintenance_list' %}" class="rd-action-btn inline-block border border-[#0B6B3A] text-[#0B6B3A] hover:bg-[#0B6B3A] hover:text-white transition mt-2">View in Maintenance</a>
+</div>
+{% endif %}
+
+{% include "dashboard/_pos_cancel_modal.html" %}
+{% include "dashboard/_pos_scripts.html" %}
+{% if booking %}
+<script>
+document.getElementById('submit-btn').addEventListener('click', async function () {
+    const errorEl = document.getElementById('rs-cart-error');
+    errorEl.classList.add('hidden');
+    if (window.posCart.length === 0) { errorEl.textContent = 'Add at least one item first.'; errorEl.classList.remove('hidden'); return; }
+    const res = await fetch("{% url 'dashboard:room_add_service_order' room.id %}", {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+        body: JSON.stringify({ items: window.posCart.map(i => ({ id: i.id, qty: i.qty, tier: i.tier })) }),
+    });
+    const data = await res.json();
+    if (data.error) { errorEl.textContent = data.error; errorEl.classList.remove('hidden'); return; }
+    window.location.reload();
+});
+</script>
+{% endif %}
+{% endblock %}

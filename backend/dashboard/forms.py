@@ -98,3 +98,10 @@ class SettlementForm(forms.Form):
     method = forms.ChoiceField(choices=Payment.METHOD_CHOICES, widget=forms.Select(attrs={'class': FIELD_CLASS}))
     reference = forms.CharField(required=False, widget=forms.TextInput(
         attrs={'class': FIELD_CLASS, 'placeholder': 'M-Pesa code / reference (optional)'}))
+    
+class RoomCheckinForm(forms.Form):
+    guest_name = forms.CharField(widget=forms.TextInput(attrs={'class': FIELD_CLASS, 'placeholder': 'Guest full name'}))
+    guest_phone = forms.CharField(widget=forms.TextInput(attrs={'class': FIELD_CLASS, 'placeholder': 'Phone number'}))
+    guest_id_no = forms.CharField(required=False, widget=forms.TextInput(attrs={'class': FIELD_CLASS, 'placeholder': 'National ID / Passport'}))
+    check_out = forms.DateField(widget=forms.DateInput(attrs={'class': FIELD_CLASS, 'type': 'date'}))
+    amount = forms.DecimalField(widget=forms.NumberInput(attrs={'class': FIELD_CLASS, 'step': '0.01', 'placeholder': 'Rate per night'}))

@@ -60,42 +60,30 @@
 </div>
 {% if status_filter %}<a href="{% url 'dashboard:rooms' %}" class="text-xs text-[#0B6B3A] font-semibold hover:underline mb-4 inline-block">Clear filter &times;</a>{% endif %}
 
+<!-- Redesigned Room Cards Grid -->
 <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4">
     {% for room in rooms %}
     <div class="room-card {{ room.status }}">
-        <div class="flex items-center justify-between mb-2">
-            <p class="font-bold text-black">Room {{ room.number }}</p>
-            <span class="rm-badge {{ room.status }}">{{ room.get_status_display }}</span>
-        </div>
-        <p class="text-xs text-gray-500 mb-3">{{ room.room_type.name }}</p>
-
-        {% if room.status == 'occupied' %}
+        <a href="{% url 'dashboard:room_detail' room.id %}" class="block mb-2">
+            <div class="flex items-center justify-between mb-1">
+                <p class="font-bold text-black">Room {{ room.number }}</p>
+                <span class="rm-badge {{ room.status }}">{{ room.get_status_display }}</span>
+            </div>
+            <p class="text-xs text-gray-500">{{ room.room_type.name }}</p>
             {% with b=active_bookings|get_item:room.id %}
-            {% if b %}<p class="text-xs text-gray-600 mb-3"><i class="fa-solid fa-user mr-1"></i>{{ b.guest_name }} &middot; until {{ b.check_out|date:"M d" }}</p>{% endif %}
+            {% if b %}<p class="text-xs text-gray-600 mt-2"><i class="fa-solid fa-user mr-1"></i>{{ b.guest_name }} &middot; until {{ b.check_out|date:"M d" }}</p>{% endif %}
             {% endwith %}
-        {% endif %}
-
-        <div class="flex flex-col gap-1.5">
-            {% if room.status == 'cleaning' %}
-            <form method="post" action="{% url 'dashboard:room_start_cleaning' room.id %}">
-                {% csrf_token %}
-                <button class="w-full text-xs font-bold bg-blue-500 text-white py-2 rounded-full hover:bg-blue-600 transition">
-                    <i class="fa-solid fa-broom mr-1"></i>Cleaning Checklist
-                </button>
-            </form>
-            {% endif %}
-            {% if room.status != 'maintenance' %}
-            <button type="button" onclick="openIssueModal('{{ room.id }}', '{{ room.number }}')" class="w-full text-xs font-semibold border border-red-300 text-red-500 py-2 rounded-full hover:bg-red-50 transition">
-                <i class="fa-solid fa-triangle-exclamation mr-1"></i>Report Issue
-            </button>
-            {% endif %}
-        </div>
+        </a>
+        <a href="{% url 'dashboard:room_detail' room.id %}" class="block text-center text-xs font-bold bg-[#0B6B3A] text-white py-2 rounded-full hover:bg-[#095430] transition">
+            Open Room <i class="fa-solid fa-arrow-right ml-1"></i>
+        </a>
     </div>
     {% empty %}
     <p class="text-gray-400 col-span-full text-center py-14">No rooms match this filter.</p>
     {% endfor %}
 </div>
 
+<!-- Maintenance Report Modal -->
 <div id="issue-modal" class="rm-modal-backdrop fixed inset-0 bg-black/60 z-50 items-center justify-center px-4">
     <div class="bg-white rounded-2xl max-w-sm w-full p-6">
         <h3 class="font-bold text-black mb-1">Report Issue — Room <span id="issue-room-number"></span></h3>
