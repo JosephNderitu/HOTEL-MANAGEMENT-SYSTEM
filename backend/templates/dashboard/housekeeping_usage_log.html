@@ -107,7 +107,7 @@
             {% endfor %}
         </div>
         {% if unlocked_count > 0 %}
-        <form method="post" action="{% url 'dashboard:housekeeping_usage_log_confirm' %}" onsubmit="return confirm('Confirm and lock {{ unlocked_count }} new entr{{ unlocked_count|pluralize:\'y,ies\' }}? You can still add more after.');">
+        <form method="post" action="{% url 'dashboard:housekeeping_usage_log_confirm' %}" onsubmit="return confirm('Confirm and lock {{ unlocked_count }} new entr{{ unlocked_count|pluralize:"y,ies" }}? You can still add more after.');">
             {% csrf_token %}
             <button type="submit" class="confirm-btn"><i class="fa-solid fa-lock mr-1"></i>Confirm {{ unlocked_count }} New Entr{{ unlocked_count|pluralize:"y,ies" }}</button>
         </form>

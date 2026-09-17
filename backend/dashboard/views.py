@@ -1,5 +1,10 @@
 import uuid
 import json
+import base64
+import io
+import qrcode
+from .permissions import can_access
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from .permissions import MODULES, get_allowed_modules, has_full_access
@@ -488,26 +493,16 @@ def room_add_service_order(request, room_id):
         return JsonResponse({'error': f"Insufficient stock: {', '.join(shortfalls)}."}, status=409)
     return JsonResponse({'success': True})
 
-
-@staff_module_required('rooms')
-def room_start_cleaning(request, room_id):
-    if request.method != 'POST':
-        return redirect('dashboard:rooms')
-    room = get_object_or_404(Room, id=room_id, status='cleaning')
-
-    log = room.cleaning_logs.filter(completed_at__isnull=True).first()
-    if not log:
-        log = RoomCleaningLog.objects.create(room=room, started_by=request.user)
-    return redirect('dashboard:room_cleaning_checklist', room_id=room.id)
-
-
 @staff_module_required('rooms')
 def room_cleaning_checklist(request, room_id):
     room = get_object_or_404(Room, id=room_id)
+    if room.status != 'cleaning':
+        messages.error(request, f"Room {room.number} is not currently in Cleaning status.")
+        return redirect('dashboard:room_detail', room_id=room.id)
+
     log = room.cleaning_logs.filter(completed_at__isnull=True).order_by('-started_at').first()
     if not log:
-        messages.error(request, "No active cleaning session for this room. Start one from the room board.")
-        return redirect('dashboard:rooms')
+        log = RoomCleaningLog.objects.create(room=room, started_by=request.user)
 
     if request.method == 'POST':
         checklist_data = {key: (request.POST.get(key) == 'on') for key, _ in CLEANING_CHECKLIST_ITEMS}
@@ -527,11 +522,8 @@ def room_cleaning_checklist(request, room_id):
             messages.error(request, f"All items must be checked before this room can go Available. Still missing: {', '.join(missing)}.")
 
     return render(request, 'dashboard/room_cleaning_checklist.html', {
-        'room': room, 
-        'log': log, 
-        'checklist_items': CLEANING_CHECKLIST_ITEMS,
+        'room': room, 'log': log, 'checklist_items': CLEANING_CHECKLIST_ITEMS,
     })
-
 
 @staff_module_required('rooms')
 def room_report_issue(request, room_id):
@@ -551,8 +543,6 @@ def room_report_issue(request, room_id):
         priority=request.POST.get('priority', 'medium'),
         reported_by=request.user,
     )
-    room.status = 'maintenance'
-    room.save(update_fields=['status'])
     messages.success(request, f"Issue reported for Room {room.number}. Room marked under Maintenance.")
     return redirect('dashboard:rooms')
 
@@ -657,8 +647,6 @@ def maintenance_resolve(request, request_id):
     req.resolved_at = timezone.now()
     req.save(update_fields=['status', 'resolved_by', 'resolved_at'])
 
-    req.room.status = 'cleaning'
-    req.room.save(update_fields=['status'])
     messages.success(request, f"Resolved. Room {req.room.number} moved to Cleaning before it's marked Available.")
     return redirect('dashboard:maintenance_list')
 
@@ -1972,12 +1960,6 @@ def store_disbursement_reconcile(request, disbursement_id):
 
 #### end of store views
 #### start of receipt views
-import base64
-import io
-import qrcode
-from .permissions import can_access
-from django.conf import settings
-
 
 @login_required
 def order_receipt(request, order_id):

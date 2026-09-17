@@ -45,6 +45,9 @@
             <i class="fa-solid fa-magnifying-glass mr-1"></i> Lost &amp; Found
             {% if unclaimed_lost_count > 0 %}<span class="ml-1 bg-[#C9A227] text-black text-[10px] font-bold px-2 py-0.5 rounded-full">{{ unclaimed_lost_count }}</span>{% endif %}
         </a>
+        <a href="{% url 'dashboard:housekeeping_usage_log' %}" class="bg-white text-[#0B6B3A] font-bold text-sm px-5 py-2.5 rounded-full hover:bg-[#C9A227] hover:text-black transition">
+            <i class="fa-solid fa-clipboard-list mr-1"></i> Daily Usage Log
+        </a>
     </div>
 </div>
 

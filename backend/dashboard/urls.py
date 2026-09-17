@@ -27,7 +27,6 @@ urlpatterns = [
     path('rooms/room/<int:room_id>/checkout/', views.room_checkout, name='room_checkout'),
     path('rooms/room/<int:room_id>/add-order/', views.room_add_service_order, name='room_add_service_order'),
     path('rooms/booking/<int:booking_id>/settle/', views.room_settle_stay, name='room_settle_stay'),
-    path('rooms/<int:room_id>/start-cleaning/', views.room_start_cleaning, name='room_start_cleaning'),
     path('rooms/<int:room_id>/checklist/', views.room_cleaning_checklist, name='room_cleaning_checklist'),
     path('rooms/<int:room_id>/report-issue/', views.room_report_issue, name='room_report_issue'),
     path('rooms/maintenance/', views.maintenance_list, name='maintenance_list'),

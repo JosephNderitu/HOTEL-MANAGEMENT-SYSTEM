@@ -3,26 +3,47 @@
 {% block dashboard_content %}
 <a href="{% url 'dashboard:rooms' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; All Rooms</a>
 <div class="max-w-lg mx-auto mt-4">
-    <h1 class="text-2xl font-bold text-black mb-1">Cleaning Checklist — Room {{ room.number }}</h1>
+    <h1 class="text-2xl font-bold text-black mb-1">Cleaning Checklist &mdash; Room {{ room.number }}</h1>
     <p class="text-gray-500 text-sm mb-6">Every item must be checked before this room can go back to Available.</p>
 
     {% if messages %}{% for message in messages %}
     <div class="bg-red-50 border border-red-300 text-red-700 text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
     {% endfor %}{% endif %}
 
-    <form method="post" class="bg-white border border-[#0B6B3A] rounded-2xl p-6">
-        {% csrf_token %}
-        <div class="space-y-3 mb-6">
-            {% for key, label in checklist_items %}
-            <label class="flex items-center gap-3 border border-gray-200 rounded-lg px-4 py-3 cursor-pointer hover:border-[#0B6B3A] transition">
-                <input type="checkbox" name="{{ key }}" {% if log.checklist_data|get_item:key %}checked{% endif %} class="w-5 h-5 accent-[#0B6B3A]">
-                <span class="text-sm">{{ label }}</span>
-            </label>
-            {% endfor %}
+    <div class="bg-white border border-[#0B6B3A] rounded-2xl p-6">
+        <form method="post">
+            {% csrf_token %}
+            <div class="space-y-3 mb-6">
+                {% for key, label in checklist_items %}
+                <label class="flex items-center gap-3 border border-gray-200 rounded-lg px-4 py-3 cursor-pointer hover:border-[#0B6B3A] transition">
+                    <input type="checkbox" name="{{ key }}" {% if log.checklist_data|get_item:key %}checked{% endif %} class="w-5 h-5 accent-[#0B6B3A]">
+                    <span class="text-sm">{{ label }}</span>
+                </label>
+                {% endfor %}
+            </div>
+            <button type="submit" class="w-full bg-[#0B6B3A] text-white font-bold py-3 rounded-full hover:bg-[#095430] transition">
+                <i class="fa-solid fa-check mr-1"></i>Save &amp; Mark Available
+            </button>
+        </form>
+
+        <div class="mt-6 border-t border-gray-100 pt-5">
+            <p class="text-sm text-gray-500 mb-3">Found a problem while cleaning instead of finishing up?</p>
+            <button type="button" onclick="document.getElementById('issue-panel').classList.toggle('hidden')" class="text-sm font-semibold text-red-500 hover:underline">
+                <i class="fa-solid fa-triangle-exclamation mr-1"></i>Report an Issue
+            </button>
+            <form id="issue-panel" method="post" action="{% url 'dashboard:room_report_issue' room.id %}" class="hidden mt-3 space-y-2">
+                {% csrf_token %}
+                <input type="text" name="issue" required placeholder="e.g. AC not cooling" class="w-full border border-red-300 rounded-lg px-3 py-2 text-sm">
+                <textarea name="description" rows="2" placeholder="More detail (optional)" class="w-full border border-red-300 rounded-lg px-3 py-2 text-sm"></textarea>
+                <select name="priority" class="w-full border border-red-300 rounded-lg px-3 py-2 text-sm">
+                    <option value="low">Low priority</option>
+                    <option value="medium" selected>Medium priority</option>
+                    <option value="high">High priority</option>
+                    <option value="urgent">Urgent</option>
+                </select>
+                <button type="submit" class="w-full bg-red-500 text-white text-sm font-semibold py-2 rounded-full">Submit &amp; Mark Under Maintenance</button>
+            </form>
         </div>
-        <button type="submit" class="w-full bg-[#0B6B3A] text-white font-bold py-3 rounded-full hover:bg-[#095430] transition">
-            <i class="fa-solid fa-check mr-1"></i>Save &amp; Mark Available
-        </button>
-    </form>
+    </div>
 </div>
 {% endblock %}
