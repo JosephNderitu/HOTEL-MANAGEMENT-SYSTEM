@@ -95,6 +95,67 @@ class Room(models.Model):
     def __str__(self):
         return f"Room {self.number} ({self.room_type.name})"
 
+CLEANING_CHECKLIST_ITEMS = [
+    ('bed_made', 'Bed made with fresh linen'),
+    ('bathroom_cleaned', 'Bathroom cleaned and sanitized'),
+    ('floor_cleaned', 'Floor vacuumed / mopped'),
+    ('amenities_restocked', 'Amenities restocked (towels, toiletries)'),
+    ('trash_emptied', 'Trash emptied'),
+    ('windows_checked', 'Windows and curtains checked'),
+]
+
+
+class RoomCleaningLog(models.Model):
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='cleaning_logs')
+    started_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='cleanings_started')
+    started_at = models.DateTimeField(auto_now_add=True)
+    completed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name='cleanings_completed')
+    completed_at = models.DateTimeField(null=True, blank=True)
+    checklist_data = models.JSONField(default=dict, blank=True)
+
+    @property
+    def is_complete(self):
+        return all(self.checklist_data.get(key) for key, _ in CLEANING_CHECKLIST_ITEMS)
+
+    def __str__(self):
+        return f"Cleaning — Room {self.room.number} ({self.started_at.date()})"
+
+
+class MaintenanceRequest(models.Model):
+    PRIORITY_CHOICES = [('low', 'Low'), ('medium', 'Medium'), ('high', 'High'), ('urgent', 'Urgent')]
+    STATUS_CHOICES = [('open', 'Open'), ('in_progress', 'In Progress'), ('resolved', 'Resolved')]
+
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='maintenance_requests')
+    issue = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='medium')
+    status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='open')
+    reported_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='maintenance_reported')
+    resolved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name='maintenance_resolved')
+    created_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"Room {self.room.number} — {self.issue} ({self.get_status_display()})"
+
+
+class LostFoundItem(models.Model):
+    STATUS_CHOICES = [('unclaimed', 'Unclaimed'), ('claimed', 'Claimed'), ('disposed', 'Disposed')]
+
+    description = models.CharField(max_length=200)
+    room = models.ForeignKey(Room, on_delete=models.SET_NULL, null=True, blank=True, related_name='lost_found_items')
+    found_location = models.CharField(max_length=150, blank=True, help_text="If not a specific room")
+    found_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='items_found')
+    found_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='unclaimed')
+    claimed_by_name = models.CharField(max_length=150, blank=True)
+    claimed_at = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+
+    def __str__(self):
+        return f"{self.description} — {self.get_status_display()}"
+    
+
 class ConferenceRoom(models.Model):
     TIER_CHOICES = [
         ('regular', 'Regular'),

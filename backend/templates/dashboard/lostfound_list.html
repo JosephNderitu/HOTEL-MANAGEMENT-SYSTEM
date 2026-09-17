@@ -1,0 +1,60 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+<a href="{% url 'dashboard:rooms' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; All Rooms</a>
+<h1 class="text-2xl font-bold text-black mt-1 mb-6">Lost &amp; Found</h1>
+
+{% if messages %}{% for message in messages %}
+<div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
+{% endfor %}{% endif %}
+
+<div class="grid lg:grid-cols-3 gap-6">
+    <div class="bg-white border border-[#0B6B3A] rounded-2xl p-6">
+        <h2 class="font-bold text-black text-sm mb-4">Log Found Item</h2>
+        <form method="post" action="{% url 'dashboard:lostfound_add' %}" class="space-y-3">
+            {% csrf_token %}
+            <input type="text" name="description" required placeholder="e.g. Black wallet" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            <select name="room" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <option value="">Not a specific room</option>
+                {% for r in rooms %}<option value="{{ r.id }}">Room {{ r.number }}</option>{% endfor %}
+            </select>
+            <input type="text" name="found_location" placeholder="Location (if not a room), e.g. Restaurant" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            <button type="submit" class="w-full bg-[#0B6B3A] text-white font-semibold py-2.5 rounded-full hover:bg-[#095430] transition">Log Item</button>
+        </form>
+    </div>
+
+    <div class="lg:col-span-2">
+        <div class="flex gap-2 mb-4">
+            <a href="?status=unclaimed" class="text-xs font-semibold px-4 py-2 rounded-full {% if status_filter == 'unclaimed' %}bg-[#0B6B3A] text-white{% else %}border border-gray-300 text-gray-500{% endif %}">Unclaimed</a>
+            <a href="?status=claimed" class="text-xs font-semibold px-4 py-2 rounded-full {% if status_filter == 'claimed' %}bg-[#0B6B3A] text-white{% else %}border border-gray-300 text-gray-500{% endif %}">Claimed</a>
+            <a href="?status=disposed" class="text-xs font-semibold px-4 py-2 rounded-full {% if status_filter == 'disposed' %}bg-[#0B6B3A] text-white{% else %}border border-gray-300 text-gray-500{% endif %}">Disposed</a>
+        </div>
+        <div class="space-y-2">
+            {% for item in items %}
+            <div class="border border-gray-200 rounded-xl p-4 flex items-center justify-between flex-wrap gap-3">
+                <div>
+                    <p class="font-semibold text-sm">{{ item.description }}</p>
+                    <p class="text-xs text-gray-400">
+                        {% if item.room %}Room {{ item.room.number }}{% else %}{{ item.found_location|default:"Unspecified location" }}{% endif %}
+                        &middot; found by {{ item.found_by.get_full_name|default:item.found_by.username }} on {{ item.found_at|date:"M d" }}
+                        {% if item.status == 'claimed' %} &middot; claimed by {{ item.claimed_by_name }} on {{ item.claimed_at|date:"M d" }}{% endif %}
+                    </p>
+                </div>
+                {% if item.status == 'unclaimed' %}
+                <div class="flex gap-2">
+                    <button type="button" onclick="document.getElementById('claim-form-{{ item.id }}').classList.toggle('hidden')" class="text-xs font-semibold bg-[#C9A227] text-black px-4 py-2 rounded-full">Claim</button>
+                    <form method="post" action="{% url 'dashboard:lostfound_dispose' item.id %}">{% csrf_token %}<button class="text-xs font-semibold border border-red-300 text-red-500 px-4 py-2 rounded-full">Dispose</button></form>
+                </div>
+                {% endif %}
+            </div>
+            {% if item.status == 'unclaimed' %}
+            <form id="claim-form-{{ item.id }}" method="post" action="{% url 'dashboard:lostfound_claim' item.id %}" class="hidden flex gap-2 -mt-1">
+                {% csrf_token %}
+                <input type="text" name="claimed_by_name" required placeholder="Claimed by (name)" class="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-xs">
+                <button type="submit" class="text-xs font-semibold bg-[#0B6B3A] text-white px-4 py-1.5 rounded-full">Confirm</button>
+            </form>
+            {% endif %}
+            {% empty %}<p class="text-gray-400 text-center py-14">Nothing here.</p>{% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

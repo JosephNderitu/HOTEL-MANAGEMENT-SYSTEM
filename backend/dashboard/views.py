@@ -10,7 +10,7 @@ from django.contrib import messages
 from django.utils import timezone
 from django.db.models import Q, Sum
 from .models import GateLog, Payment
-from .forms import GateEntryForm, GateEditForm, ManualBookingForm, PaymentForm
+from .forms import *
 from django.core.paginator import Paginator
 
 from django.http import HttpResponse, JsonResponse
@@ -25,7 +25,7 @@ from dashboard.models import Payment
 from store.models import *
 from store.forms import DisbursementRequestForm, DisbursementRequestForm, QuickPurchaseForm
 from django.db import transaction
-from .services import confirm_order_and_deduct_stock
+from .services import *
 
 from decimal import Decimal
 from django.urls import reverse
@@ -219,49 +219,37 @@ def reception_new_booking(request):
 
 @staff_module_required('reception')
 def reception_settle_stay(request, booking_id):
-    booking = get_object_or_404(Booking, id=booking_id)
+    return _settle_stay_view(request, booking_id, back_url_name='dashboard:reception')
 
+def _settle_stay_view(request, booking_id, back_url_name):
+    booking = get_object_or_404(Booking, id=booking_id)
     debts = []
     if booking.balance_due > 0:
         debts.append(('booking', booking, booking.balance_due))
-    room_orders = booking.room_service_orders.filter(status='confirmed').order_by('created_at')
-    for order in room_orders:
+    for order in booking.room_service_orders.filter(status='confirmed').order_by('created_at'):
         if order.balance_due > 0:
             debts.append(('order', order, order.balance_due))
-
     total_due = sum(d[2] for d in debts)
 
     if request.method == 'POST':
-        form = PaymentForm(request.POST)
+        form = SettlementForm(request.POST)
         if form.is_valid():
-            amount = form.cleaned_data['amount']
-            method = form.cleaned_data['method']
-            reference = form.cleaned_data['reference']
-            group_id = uuid.uuid4()
-            remaining = amount
-
-            for kind, target, owed in debts:
-                if remaining <= 0:
-                    break
-                pay_now = min(owed, remaining)
-                payment = Payment(amount=pay_now, method=method, reference=reference,
-                                   received_by=request.user, settlement_group=group_id)
-                if kind == 'booking':
-                    payment.booking = target
-                else:
-                    payment.order = target
-                payment.save()
-                remaining -= pay_now
-
-            messages.success(request, f"Settled KSh {amount - remaining:,.0f} across {booking.guest_name}'s stay.")
-            return redirect('dashboard:reception')
+            settled, change = settle_booking_stay(
+                booking, form.cleaned_data['amount'], form.cleaned_data.get('amount_tendered'),
+                form.cleaned_data['method'], form.cleaned_data.get('reference', ''), request.user,
+            )
+            if change > 0:
+                messages.success(request, f"Settled KSh {settled:,.0f}. CHANGE DUE: KSh {change:,.0f}")
+            else:
+                messages.success(request, f"Settled KSh {settled:,.0f} across {booking.guest_name}'s stay.")
+            return redirect(back_url_name)
     else:
-        form = PaymentForm(initial={'amount': total_due})
+        form = SettlementForm(initial={'amount': total_due})
 
-    return render(request, 'dashboard/reception_settle_stay.html', {
-        'form': form, 'booking': booking, 'debts': debts, 'total_due': total_due,
+    return render(request, 'dashboard/settle_stay.html', {
+        'form': form, 'booking': booking, 'debts': debts, 'total_due': total_due, 'back_url_name': back_url_name,
     })
-
+    
 
 @staff_module_required('reception')
 def reception_confirm_all_orders(request, booking_id):
@@ -314,10 +302,200 @@ def reception_record_payment(request, target_type, target_id):
 
 ##end of reception views
 
+### start of room view ####
 @staff_module_required('rooms')
 def rooms_view(request):
-    return render(request, 'dashboard/module_placeholder.html', {'module_label': 'Rooms'})
+    status_filter = request.GET.get('status', '')
+    rooms = Room.objects.select_related('room_type').order_by('room_type__name', 'number')
+    if status_filter:
+        rooms = rooms.filter(status=status_filter)
 
+    counts = {
+        'available': Room.objects.filter(status='available').count(),
+        'occupied': Room.objects.filter(status='occupied').count(),
+        'cleaning': Room.objects.filter(status='cleaning').count(),
+        'maintenance': Room.objects.filter(status='maintenance').count(),
+    }
+
+    open_maintenance_count = MaintenanceRequest.objects.filter(status__in=['open', 'in_progress']).count()
+    unclaimed_lost_count = LostFoundItem.objects.filter(status='unclaimed').count()
+
+    active_bookings = {
+        b.assigned_room_id: b
+        for b in Booking.objects.filter(status='checked_in', assigned_room__isnull=False)
+    }
+
+    return render(request, 'dashboard/rooms.html', {
+        'rooms': rooms,
+        'counts': counts,
+        'status_filter': status_filter,
+        'open_maintenance_count': open_maintenance_count,
+        'unclaimed_lost_count': unclaimed_lost_count,
+        'active_bookings': active_bookings,
+    })
+
+
+@staff_module_required('rooms')
+def room_start_cleaning(request, room_id):
+    if request.method != 'POST':
+        return redirect('dashboard:rooms')
+    room = get_object_or_404(Room, id=room_id, status='cleaning')
+
+    log = room.cleaning_logs.filter(completed_at__isnull=True).first()
+    if not log:
+        log = RoomCleaningLog.objects.create(room=room, started_by=request.user)
+    return redirect('dashboard:room_cleaning_checklist', room_id=room.id)
+
+
+@staff_module_required('rooms')
+def room_cleaning_checklist(request, room_id):
+    room = get_object_or_404(Room, id=room_id)
+    log = room.cleaning_logs.filter(completed_at__isnull=True).order_by('-started_at').first()
+    if not log:
+        messages.error(request, "No active cleaning session for this room. Start one from the room board.")
+        return redirect('dashboard:rooms')
+
+    if request.method == 'POST':
+        checklist_data = {key: (request.POST.get(key) == 'on') for key, _ in CLEANING_CHECKLIST_ITEMS}
+        log.checklist_data = checklist_data
+        log.save(update_fields=['checklist_data'])
+
+        if all(checklist_data.values()):
+            log.completed_by = request.user
+            log.completed_at = timezone.now()
+            log.save(update_fields=['completed_by', 'completed_at'])
+            room.status = 'available'
+            room.save(update_fields=['status'])
+            messages.success(request, f"Room {room.number} marked Available. Checklist complete.")
+            return redirect('dashboard:rooms')
+        else:
+            missing = [label for key, label in CLEANING_CHECKLIST_ITEMS if not checklist_data.get(key)]
+            messages.error(request, f"All items must be checked before this room can go Available. Still missing: {', '.join(missing)}.")
+
+    return render(request, 'dashboard/room_cleaning_checklist.html', {
+        'room': room, 'log': log, 'checklist_items': CLEANING_CHECKLIST_ITEMS,
+    })
+
+
+@staff_module_required('rooms')
+def room_report_issue(request, room_id):
+    if request.method != 'POST':
+        return redirect('dashboard:rooms')
+    room = get_object_or_404(Room, id=room_id)
+
+    issue = request.POST.get('issue', '').strip()
+    if not issue:
+        messages.error(request, "Describe the issue before submitting.")
+        return redirect('dashboard:rooms')
+
+    MaintenanceRequest.objects.create(
+        room=room,
+        issue=issue,
+        description=request.POST.get('description', '').strip(),
+        priority=request.POST.get('priority', 'medium'),
+        reported_by=request.user,
+    )
+    room.status = 'maintenance'
+    room.save(update_fields=['status'])
+    messages.success(request, f"Issue reported for Room {room.number}. Room marked under Maintenance.")
+    return redirect('dashboard:rooms')
+
+
+@staff_module_required('rooms')
+def maintenance_list(request):
+    status_filter = request.GET.get('status', '')
+    requests_qs = MaintenanceRequest.objects.select_related('room', 'reported_by', 'resolved_by').order_by('-created_at')
+    if status_filter:
+        requests_qs = requests_qs.filter(status=status_filter)
+    return render(request, 'dashboard/maintenance_list.html', {'requests': requests_qs, 'status_filter': status_filter})
+
+
+@staff_module_required('rooms')
+def maintenance_start(request, request_id):
+    if request.method != 'POST':
+        return redirect('dashboard:maintenance_list')
+    req = get_object_or_404(MaintenanceRequest, id=request_id, status='open')
+    req.status = 'in_progress'
+    req.save(update_fields=['status'])
+    messages.success(request, "Marked in progress.")
+    return redirect('dashboard:maintenance_list')
+
+
+@staff_module_required('rooms')
+def maintenance_resolve(request, request_id):
+    if request.method != 'POST':
+        return redirect('dashboard:maintenance_list')
+    req = get_object_or_404(MaintenanceRequest, id=request_id)
+    req.status = 'resolved'
+    req.resolved_by = request.user
+    req.resolved_at = timezone.now()
+    req.save(update_fields=['status', 'resolved_by', 'resolved_at'])
+
+    # Fixed rooms go through Cleaning before reuse, repair work disturbs the room.
+    req.room.status = 'cleaning'
+    req.room.save(update_fields=['status'])
+    messages.success(request, f"Resolved. Room {req.room.number} moved to Cleaning before it's marked Available.")
+    return redirect('dashboard:maintenance_list')
+
+
+@staff_module_required('rooms')
+def lostfound_list(request):
+    status_filter = request.GET.get('status', 'unclaimed')
+    items = LostFoundItem.objects.select_related('room', 'found_by').order_by('-found_at')
+    if status_filter:
+        items = items.filter(status=status_filter)
+    rooms = Room.objects.all().order_by('number')
+    return render(request, 'dashboard/lostfound_list.html', {'items': items, 'status_filter': status_filter, 'rooms': rooms})
+
+
+@staff_module_required('rooms')
+def lostfound_add(request):
+    if request.method != 'POST':
+        return redirect('dashboard:lostfound_list')
+    description = request.POST.get('description', '').strip()
+    if not description:
+        messages.error(request, "Describe the item before submitting.")
+        return redirect('dashboard:lostfound_list')
+
+    room_id = request.POST.get('room') or None
+    LostFoundItem.objects.create(
+        description=description,
+        room_id=room_id,
+        found_location=request.POST.get('found_location', '').strip(),
+        found_by=request.user,
+    )
+    messages.success(request, "Item logged.")
+    return redirect('dashboard:lostfound_list')
+
+
+@staff_module_required('rooms')
+def lostfound_claim(request, item_id):
+    if request.method != 'POST':
+        return redirect('dashboard:lostfound_list')
+    item = get_object_or_404(LostFoundItem, id=item_id, status='unclaimed')
+    claimant = request.POST.get('claimed_by_name', '').strip()
+    if not claimant:
+        messages.error(request, "Enter who claimed the item.")
+        return redirect('dashboard:lostfound_list')
+    item.status = 'claimed'
+    item.claimed_by_name = claimant
+    item.claimed_at = timezone.now()
+    item.save(update_fields=['status', 'claimed_by_name', 'claimed_at'])
+    messages.success(request, "Marked claimed.")
+    return redirect('dashboard:lostfound_list')
+
+
+@staff_module_required('rooms')
+def lostfound_dispose(request, item_id):
+    if request.method != 'POST':
+        return redirect('dashboard:lostfound_list')
+    item = get_object_or_404(LostFoundItem, id=item_id, status='unclaimed')
+    item.status = 'disposed'
+    item.save(update_fields=['status'])
+    messages.success(request, "Marked disposed.")
+    return redirect('dashboard:lostfound_list')
+
+#### end of room views ####
 
 ### start of restaurant views
 @staff_module_required('restaurant_kitchen')

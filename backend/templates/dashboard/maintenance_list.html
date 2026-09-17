@@ -1,0 +1,45 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+<a href="{% url 'dashboard:rooms' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; All Rooms</a>
+<h1 class="text-2xl font-bold text-black mt-1 mb-6">Maintenance Requests</h1>
+
+{% if messages %}{% for message in messages %}
+<div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
+{% endfor %}{% endif %}
+
+<div class="flex gap-2 mb-5">
+    <a href="?status=" class="text-xs font-semibold px-4 py-2 rounded-full {% if not status_filter %}bg-[#0B6B3A] text-white{% else %}border border-gray-300 text-gray-500{% endif %}">All</a>
+    <a href="?status=open" class="text-xs font-semibold px-4 py-2 rounded-full {% if status_filter == 'open' %}bg-[#0B6B3A] text-white{% else %}border border-gray-300 text-gray-500{% endif %}">Open</a>
+    <a href="?status=in_progress" class="text-xs font-semibold px-4 py-2 rounded-full {% if status_filter == 'in_progress' %}bg-[#0B6B3A] text-white{% else %}border border-gray-300 text-gray-500{% endif %}">In Progress</a>
+    <a href="?status=resolved" class="text-xs font-semibold px-4 py-2 rounded-full {% if status_filter == 'resolved' %}bg-[#0B6B3A] text-white{% else %}border border-gray-300 text-gray-500{% endif %}">Resolved</a>
+</div>
+
+<div class="space-y-3">
+    {% for req in requests %}
+    <div class="border border-gray-200 rounded-xl p-4 flex items-center justify-between flex-wrap gap-3">
+        <div>
+            <p class="font-bold text-black">Room {{ req.room.number }} — {{ req.issue }}
+                <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ml-2
+                    {% if req.priority == 'urgent' %}bg-red-600 text-white{% elif req.priority == 'high' %}bg-orange-400 text-white{% elif req.priority == 'medium' %}bg-[#C9A227] text-black{% else %}bg-gray-200 text-gray-600{% endif %}">
+                    {{ req.get_priority_display }}
+                </span>
+            </p>
+            <p class="text-xs text-gray-500">{{ req.description|default:"No further detail" }}</p>
+            <p class="text-xs text-gray-400 mt-1">Reported by {{ req.reported_by.get_full_name|default:req.reported_by.username }} on {{ req.created_at|date:"M d, H:i" }}
+                {% if req.resolved_by %} &middot; Resolved by {{ req.resolved_by.get_full_name|default:req.resolved_by.username }} on {{ req.resolved_at|date:"M d, H:i" }}{% endif %}
+            </p>
+        </div>
+        <div class="flex gap-2">
+            {% if req.status == 'open' %}
+            <form method="post" action="{% url 'dashboard:maintenance_start' req.id %}">{% csrf_token %}<button class="text-xs font-semibold bg-blue-500 text-white px-4 py-2 rounded-full">Start</button></form>
+            <form method="post" action="{% url 'dashboard:maintenance_resolve' req.id %}">{% csrf_token %}<button class="text-xs font-semibold bg-[#0B6B3A] text-white px-4 py-2 rounded-full">Resolve</button></form>
+            {% elif req.status == 'in_progress' %}
+            <form method="post" action="{% url 'dashboard:maintenance_resolve' req.id %}">{% csrf_token %}<button class="text-xs font-semibold bg-[#0B6B3A] text-white px-4 py-2 rounded-full">Resolve</button></form>
+            {% else %}
+            <span class="text-xs font-semibold bg-gray-100 text-gray-500 px-4 py-2 rounded-full">Resolved</span>
+            {% endif %}
+        </div>
+    </div>
+    {% empty %}<p class="text-gray-400 text-center py-14">No maintenance requests here.</p>{% endfor %}
+</div>
+{% endblock %}

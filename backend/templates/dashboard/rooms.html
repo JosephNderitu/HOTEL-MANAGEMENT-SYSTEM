@@ -1,0 +1,128 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% load dashboard_extras %}
+{% block dashboard_content %}
+<style>
+    .rm-hero { background: linear-gradient(135deg, #0B6B3A, #095430); border-radius: 18px; padding: 20px 26px; color: #fff; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; margin-bottom: 22px; }
+    .rm-hero h1 { font-size: 20px; font-weight: 800; }
+    .rm-stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 22px; }
+    @media (min-width: 768px) { .rm-stat-grid { grid-template-columns: repeat(4, 1fr); } }
+    .rm-stat { border: 1px solid #eef0ee; border-radius: 14px; padding: 14px 16px; background: #fff; cursor: pointer; transition: box-shadow 0.15s; }
+    .rm-stat:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.06); }
+    .rm-stat.active { border-color: #0B6B3A; box-shadow: 0 0 0 2px rgba(11,107,58,0.15); }
+    .rm-stat .num { font-size: 24px; font-weight: 800; }
+    .rm-stat .lbl { font-size: 11px; color: #8a8f8a; text-transform: uppercase; }
+    .rm-stat.available .num { color: #0B6B3A; }
+    .rm-stat.occupied .num { color: #C9A227; }
+    .rm-stat.cleaning .num { color: #3b82f6; }
+    .rm-stat.maintenance .num { color: #dc2626; }
+
+    .room-card { border: 1px solid #eef0ee; border-radius: 14px; padding: 16px; background: #fff; }
+    .room-card.available { border-color: #cfe9d9; background: #F7FCF9; }
+    .room-card.occupied { border-color: #f0e6c8; background: #FFFCF3; }
+    .room-card.cleaning { border-color: #cfe0fb; background: #F5F9FF; }
+    .room-card.maintenance { border-color: #f6cbcb; background: #FFF7F7; }
+    .rm-badge { font-size: 9.5px; font-weight: 800; padding: 3px 10px; border-radius: 9999px; text-transform: uppercase; }
+    .rm-badge.available { background: #0B6B3A; color: #fff; }
+    .rm-badge.occupied { background: #C9A227; color: #000; }
+    .rm-badge.cleaning { background: #3b82f6; color: #fff; }
+    .rm-badge.maintenance { background: #dc2626; color: #fff; }
+
+    .rm-modal-backdrop { display: none; }
+    .rm-modal-backdrop.open { display: flex; }
+</style>
+
+<div class="rm-hero">
+    <div>
+        <h1><i class="fa-solid fa-bed mr-2"></i>Rooms</h1>
+        <p class="text-white/70 text-xs mt-1">Housekeeping status &amp; maintenance</p>
+    </div>
+    <div class="flex gap-3 flex-wrap">
+        <a href="{% url 'dashboard:maintenance_list' %}" class="relative bg-white text-red-600 font-bold text-sm px-5 py-2.5 rounded-full hover:bg-red-50 transition">
+            <i class="fa-solid fa-screwdriver-wrench mr-1"></i> Maintenance
+            {% if open_maintenance_count > 0 %}<span class="ml-1 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">{{ open_maintenance_count }}</span>{% endif %}
+        </a>
+        <a href="{% url 'dashboard:lostfound_list' %}" class="relative bg-white text-[#0B6B3A] font-bold text-sm px-5 py-2.5 rounded-full hover:bg-[#C9A227] hover:text-black transition">
+            <i class="fa-solid fa-magnifying-glass mr-1"></i> Lost &amp; Found
+            {% if unclaimed_lost_count > 0 %}<span class="ml-1 bg-[#C9A227] text-black text-[10px] font-bold px-2 py-0.5 rounded-full">{{ unclaimed_lost_count }}</span>{% endif %}
+        </a>
+    </div>
+</div>
+
+{% if messages %}{% for message in messages %}
+<div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
+{% endfor %}{% endif %}
+
+<div class="rm-stat-grid">
+    <a href="?status=available" class="rm-stat available {% if status_filter == 'available' %}active{% endif %}"><p class="num">{{ counts.available }}</p><p class="lbl">Available</p></a>
+    <a href="?status=occupied" class="rm-stat occupied {% if status_filter == 'occupied' %}active{% endif %}"><p class="num">{{ counts.occupied }}</p><p class="lbl">Occupied</p></a>
+    <a href="?status=cleaning" class="rm-stat cleaning {% if status_filter == 'cleaning' %}active{% endif %}"><p class="num">{{ counts.cleaning }}</p><p class="lbl">Cleaning</p></a>
+    <a href="?status=maintenance" class="rm-stat maintenance {% if status_filter == 'maintenance' %}active{% endif %}"><p class="num">{{ counts.maintenance }}</p><p class="lbl">Maintenance</p></a>
+</div>
+{% if status_filter %}<a href="{% url 'dashboard:rooms' %}" class="text-xs text-[#0B6B3A] font-semibold hover:underline mb-4 inline-block">Clear filter &times;</a>{% endif %}
+
+<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4">
+    {% for room in rooms %}
+    <div class="room-card {{ room.status }}">
+        <div class="flex items-center justify-between mb-2">
+            <p class="font-bold text-black">Room {{ room.number }}</p>
+            <span class="rm-badge {{ room.status }}">{{ room.get_status_display }}</span>
+        </div>
+        <p class="text-xs text-gray-500 mb-3">{{ room.room_type.name }}</p>
+
+        {% if room.status == 'occupied' %}
+            {% with b=active_bookings|get_item:room.id %}
+            {% if b %}<p class="text-xs text-gray-600 mb-3"><i class="fa-solid fa-user mr-1"></i>{{ b.guest_name }} &middot; until {{ b.check_out|date:"M d" }}</p>{% endif %}
+            {% endwith %}
+        {% endif %}
+
+        <div class="flex flex-col gap-1.5">
+            {% if room.status == 'cleaning' %}
+            <form method="post" action="{% url 'dashboard:room_start_cleaning' room.id %}">
+                {% csrf_token %}
+                <button class="w-full text-xs font-bold bg-blue-500 text-white py-2 rounded-full hover:bg-blue-600 transition">
+                    <i class="fa-solid fa-broom mr-1"></i>Cleaning Checklist
+                </button>
+            </form>
+            {% endif %}
+            {% if room.status != 'maintenance' %}
+            <button type="button" onclick="openIssueModal('{{ room.id }}', '{{ room.number }}')" class="w-full text-xs font-semibold border border-red-300 text-red-500 py-2 rounded-full hover:bg-red-50 transition">
+                <i class="fa-solid fa-triangle-exclamation mr-1"></i>Report Issue
+            </button>
+            {% endif %}
+        </div>
+    </div>
+    {% empty %}
+    <p class="text-gray-400 col-span-full text-center py-14">No rooms match this filter.</p>
+    {% endfor %}
+</div>
+
+<div id="issue-modal" class="rm-modal-backdrop fixed inset-0 bg-black/60 z-50 items-center justify-center px-4">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-6">
+        <h3 class="font-bold text-black mb-1">Report Issue — Room <span id="issue-room-number"></span></h3>
+        <p class="text-xs text-gray-500 mb-4">This will mark the room under Maintenance immediately.</p>
+        <form id="issue-form" method="post">
+            {% csrf_token %}
+            <input type="text" name="issue" required placeholder="e.g. AC not cooling" class="w-full border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm mb-2">
+            <textarea name="description" rows="2" placeholder="More detail (optional)" class="w-full border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm mb-2"></textarea>
+            <select name="priority" class="w-full border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm mb-3">
+                <option value="low">Low priority</option>
+                <option value="medium" selected>Medium priority</option>
+                <option value="high">High priority</option>
+                <option value="urgent">Urgent</option>
+            </select>
+            <div class="flex gap-2">
+                <button type="submit" class="flex-1 bg-red-500 text-white text-sm font-semibold py-2 rounded-full">Submit</button>
+                <button type="button" onclick="document.getElementById('issue-modal').classList.remove('open');" class="flex-1 border border-gray-300 text-gray-600 text-sm font-semibold py-2 rounded-full">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function openIssueModal(roomId, roomNumber) {
+    document.getElementById('issue-form').action = `/staff/rooms/${roomId}/report-issue/`;
+    document.getElementById('issue-room-number').textContent = roomNumber;
+    document.getElementById('issue-modal').classList.add('open');
+}
+</script>
+{% endblock %}

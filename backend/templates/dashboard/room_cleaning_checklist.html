@@ -1,0 +1,28 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% load dashboard_extras %}
+{% block dashboard_content %}
+<a href="{% url 'dashboard:rooms' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; All Rooms</a>
+<div class="max-w-lg mx-auto mt-4">
+    <h1 class="text-2xl font-bold text-black mb-1">Cleaning Checklist — Room {{ room.number }}</h1>
+    <p class="text-gray-500 text-sm mb-6">Every item must be checked before this room can go back to Available.</p>
+
+    {% if messages %}{% for message in messages %}
+    <div class="bg-red-50 border border-red-300 text-red-700 text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
+    {% endfor %}{% endif %}
+
+    <form method="post" class="bg-white border border-[#0B6B3A] rounded-2xl p-6">
+        {% csrf_token %}
+        <div class="space-y-3 mb-6">
+            {% for key, label in checklist_items %}
+            <label class="flex items-center gap-3 border border-gray-200 rounded-lg px-4 py-3 cursor-pointer hover:border-[#0B6B3A] transition">
+                <input type="checkbox" name="{{ key }}" {% if log.checklist_data|get_item:key %}checked{% endif %} class="w-5 h-5 accent-[#0B6B3A]">
+                <span class="text-sm">{{ label }}</span>
+            </label>
+            {% endfor %}
+        </div>
+        <button type="submit" class="w-full bg-[#0B6B3A] text-white font-bold py-3 rounded-full hover:bg-[#095430] transition">
+            <i class="fa-solid fa-check mr-1"></i>Save &amp; Mark Available
+        </button>
+    </form>
+</div>
+{% endblock %}

@@ -521,3 +521,29 @@ class HappyHourWindowAdmin(admin.ModelAdmin):
     @admin.display(description='Active Now', boolean=True)
     def currently_active(self, obj):
         return obj.is_now()
+    
+from .models import RoomCleaningLog, MaintenanceRequest, LostFoundItem
+
+
+@admin.register(RoomCleaningLog)
+class RoomCleaningLogAdmin(admin.ModelAdmin):
+    list_display = ('room', 'started_by', 'started_at', 'completed_by', 'completed_at')
+    list_filter = ('room',)
+    readonly_fields = ('room', 'started_by', 'started_at', 'completed_by', 'completed_at', 'checklist_data')
+
+    def has_add_permission(self, request):
+        return False
+
+
+@admin.register(MaintenanceRequest)
+class MaintenanceRequestAdmin(admin.ModelAdmin):
+    list_display = ('room', 'issue', 'priority', 'status', 'reported_by', 'created_at', 'resolved_by')
+    list_filter = ('priority', 'status')
+    search_fields = ('issue', 'description')
+
+
+@admin.register(LostFoundItem)
+class LostFoundItemAdmin(admin.ModelAdmin):
+    list_display = ('description', 'room', 'found_location', 'status', 'found_by', 'found_at')
+    list_filter = ('status',)
+    search_fields = ('description', 'claimed_by_name')

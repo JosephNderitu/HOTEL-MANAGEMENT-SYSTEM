@@ -22,6 +22,16 @@ urlpatterns = [
     path('reception/confirm-all-orders/<int:booking_id>/', views.reception_confirm_all_orders, name='reception_confirm_all_orders'),
 
     path('rooms/', views.rooms_view, name='rooms'),
+    path('rooms/<int:room_id>/start-cleaning/', views.room_start_cleaning, name='room_start_cleaning'),
+    path('rooms/<int:room_id>/checklist/', views.room_cleaning_checklist, name='room_cleaning_checklist'),
+    path('rooms/<int:room_id>/report-issue/', views.room_report_issue, name='room_report_issue'),
+    path('rooms/maintenance/', views.maintenance_list, name='maintenance_list'),
+    path('rooms/maintenance/<int:request_id>/start/', views.maintenance_start, name='maintenance_start'),
+    path('rooms/maintenance/<int:request_id>/resolve/', views.maintenance_resolve, name='maintenance_resolve'),
+    path('rooms/lost-found/', views.lostfound_list, name='lostfound_list'),
+    path('rooms/lost-found/add/', views.lostfound_add, name='lostfound_add'),
+    path('rooms/lost-found/<int:item_id>/claim/', views.lostfound_claim, name='lostfound_claim'),
+    path('rooms/lost-found/<int:item_id>/dispose/', views.lostfound_dispose, name='lostfound_dispose'),
    
     path('restaurant-kitchen/', views.restaurant_tables_view, name='restaurant_kitchen'),
     path('restaurant-kitchen/table/<int:table_id>/new-order/', views.restaurant_new_order, name='restaurant_new_order'),

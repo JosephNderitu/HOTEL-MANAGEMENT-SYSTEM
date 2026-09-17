@@ -90,3 +90,11 @@ class TableRangeForm(forms.Form):
     start = forms.IntegerField()
     end = forms.IntegerField()
     capacity = forms.IntegerField(initial=4)
+    
+class SettlementForm(forms.Form):
+    amount = forms.DecimalField(widget=forms.NumberInput(attrs={'class': FIELD_CLASS, 'step': '0.01', 'id': 'id_amount'}))
+    amount_tendered = forms.DecimalField(required=False, widget=forms.NumberInput(
+        attrs={'class': FIELD_CLASS, 'step': '0.01', 'placeholder': 'Cash given (optional)', 'id': 'id_amount_tendered'}))
+    method = forms.ChoiceField(choices=Payment.METHOD_CHOICES, widget=forms.Select(attrs={'class': FIELD_CLASS}))
+    reference = forms.CharField(required=False, widget=forms.TextInput(
+        attrs={'class': FIELD_CLASS, 'placeholder': 'M-Pesa code / reference (optional)'}))
