@@ -1,0 +1,38 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+<a href="{% url 'dashboard:store' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; Store</a>
+<h1 class="text-2xl font-bold text-black mt-1 mb-6">Stock Takes</h1>
+
+<div class="bg-white border border-[#0B6B3A] rounded-2xl p-6 mb-8 max-w-sm">
+    <h2 class="font-bold text-black text-sm mb-4">Start a New Stock Take</h2>
+    <form method="post" action="{% url 'dashboard:stocktake_start' %}" class="space-y-3">
+        {% csrf_token %}
+        <select name="department" class="w-full border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
+            <option value="kitchen">Kitchen / Restaurant</option>
+            <option value="bar">Bar</option>
+            <option value="housekeeping">Housekeeping / Rooms</option>
+            <option value="front_desk">Front Desk / Reception</option>
+            <option value="conference">Conference &amp; Events</option>
+            <option value="general">General / Other</option>
+        </select>
+        <button type="submit" class="w-full bg-[#0B6B3A] text-white font-bold py-2.5 rounded-full hover:bg-[#095430] transition">Start Count</button>
+    </form>
+</div>
+
+<div class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+    <table class="w-full text-sm">
+        <thead><tr class="text-left text-xs text-gray-500 uppercase border-b border-gray-200"><th class="p-3">Date</th><th class="p-3">Department</th><th class="p-3">Status</th><th class="p-3">Conducted By</th><th class="p-3"></th></tr></thead>
+        <tbody>
+            {% for t in takes %}
+            <tr class="border-b border-gray-100">
+                <td class="p-3">{{ t.date }}</td>
+                <td class="p-3">{{ t.get_department_display }}</td>
+                <td class="p-3"><span class="text-[10px] font-bold px-2.5 py-1 rounded-full {% if t.status == 'finalized' %}bg-gray-200 text-gray-600{% else %}bg-[#C9A227] text-black{% endif %}">{{ t.get_status_display|upper }}</span></td>
+                <td class="p-3 text-gray-500">{{ t.conducted_by.get_full_name|default:t.conducted_by.username }}</td>
+                <td class="p-3"><a href="{% url 'dashboard:stocktake_detail' t.id %}" class="text-[#0B6B3A] text-xs font-semibold hover:underline">Open</a></td>
+            </tr>
+            {% empty %}<tr><td colspan="5" class="p-8 text-center text-gray-400">No stock takes yet.</td></tr>{% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

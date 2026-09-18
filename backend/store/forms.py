@@ -1,6 +1,6 @@
 from decimal import Decimal
 from django import forms
-from .models import StockItem
+from .models import *
 
 FIELD_CLASS = 'w-full border border-[#0B6B3A] rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B6B3A]/20'
 
@@ -26,6 +26,7 @@ class PurchaseLogForm(forms.Form):
     vat_inclusive = forms.BooleanField(required=False, initial=True)
     purchased_at = forms.DateField(widget=forms.DateInput(attrs={'class': FIELD_CLASS, 'type': 'date'}))
     notes = forms.CharField(required=False, widget=forms.TextInput(attrs={'class': FIELD_CLASS, 'placeholder': 'Notes (optional)'}))
+    supplier = forms.ModelChoiceField(queryset=Supplier.objects.filter(is_active=True), required=False, widget=forms.Select(attrs={'class': FIELD_CLASS}))
 
     def __init__(self, *args, department=None, **kwargs):
         super().__init__(*args, **kwargs)

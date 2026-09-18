@@ -1,50 +1,89 @@
 {% extends "dashboard/base_dashboard.html" %}
 {% block dashboard_content %}
 <style>
-    .st-hero { background: linear-gradient(135deg, #0B6B3A, #095430); border-radius: 18px; padding: 22px 26px; color: #fff; display: flex; justify-between: space-between; align-items: center; flex-wrap: wrap; gap: 14px; margin-bottom: 22px; }
-    .st-stat { background: #fff; border: 1px solid #eef0ee; border-radius: 16px; padding: 18px; }
-    .st-stat .num { font-size: 26px; font-weight: 800; color: #0B6B3A; }
-    .st-stat .lbl { font-size: 11px; color: #8a8f8a; text-transform: uppercase; }
-    .st-card { background: #fff; border: 1px solid #eef0ee; border-radius: 16px; padding: 20px; }
-    .st-mode-btn { flex: 1; font-size: 12px; font-weight: 700; padding: 8px; border-radius: 9999px; border: 1.5px solid #0B6B3A; cursor: pointer; text-align: center; }
-    .st-mode-btn.active { background: #0B6B3A; color: #fff; }
-    .st-mode-btn:not(.active) { color: #0B6B3A; }
-    .receipt-drop { border: 2px dashed #cfe0d4; border-radius: 12px; padding: 16px; text-align: center; font-size: 12px; color: #8a8f8a; cursor: pointer; }
+    .st-hero {
+        background: linear-gradient(135deg, #0B6B3A 0%, #095430 60%, #073d24 100%);
+        border-radius: 20px; padding: 26px 30px; color: #fff; position: relative; overflow: hidden;
+        display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 26px;
+    }
+    .st-hero::after {
+        content: ''; position: absolute; top: -60%; right: -10%; width: 280px; height: 280px;
+        background: radial-gradient(circle, rgba(201,162,39,0.18), transparent 70%); border-radius: 50%;
+    }
+    .st-hero h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.01em; }
+    .st-hero .sub { color: rgba(255,255,255,0.65); font-size: 12px; margin-top: 3px; display: flex; align-items: center; gap: 6px; }
+    .st-hero-btn { background: rgba(255,255,255,0.95); color: #0B6B3A; font-weight: 700; font-size: 12.5px; padding: 10px 18px; border-radius: 9999px; transition: all 0.2s; white-space: nowrap; }
+    .st-hero-btn:hover { background: #C9A227; color: #000; transform: translateY(-1px); }
+    .st-hero-btn.primary { background: #C9A227; color: #000; }
+    .st-hero-btn.primary:hover { background: #fff; color: #0B6B3A; }
+
+    .st-stat {
+        background: #fff; border: 1px solid #eef0ee; border-radius: 18px; padding: 20px 22px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.03); position: relative;
+    }
+    .st-stat::before { content: ''; position: absolute; top: 0; left: 22px; right: 22px; height: 3px; border-radius: 0 0 3px 3px; background: linear-gradient(90deg, #0B6B3A, #C9A227); }
+    .st-stat .num { font-size: 28px; font-weight: 800; color: #0B6B3A; letter-spacing: -0.01em; }
+    .st-stat .lbl { font-size: 10.5px; color: #9a9f9a; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+
+    .st-card { background: #fff; border: 1px solid #eef0ee; border-radius: 18px; padding: 22px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); }
+    .st-card h2 { font-size: 13.5px; font-weight: 800; color: #14171c; display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+    .st-card h2 .icon-badge { width: 26px; height: 26px; border-radius: 8px; background: #FEF9EC; color: #C9A227; display: flex; align-items: center; justify-content: center; font-size: 11px; }
+
+    .st-mode-btn { flex: 1; font-size: 11.5px; font-weight: 700; padding: 9px; border-radius: 9999px; border: 1.5px solid #0B6B3A; cursor: pointer; text-align: center; transition: all 0.15s; }
+    .st-mode-btn.active { background: #0B6B3A; color: #fff; box-shadow: 0 2px 8px rgba(11,107,58,0.25); }
+    .st-mode-btn:not(.active) { color: #0B6B3A; background: #fff; }
+
+    .st-field { width: 100%; border: 1px solid #e2e5e2; border-radius: 10px; padding: 10px 13px; font-size: 13px; background: #fafbfa; transition: border-color 0.15s, box-shadow 0.15s; }
+    .st-field:focus { outline: none; border-color: #0B6B3A; box-shadow: 0 0 0 3px rgba(11,107,58,0.1); background: #fff; }
+
+    .receipt-drop { border: 2px dashed #d8e6dc; border-radius: 12px; padding: 18px; text-align: center; font-size: 12px; color: #8a8f8a; background: #FAFCFB; transition: border-color 0.15s; }
+    .receipt-drop:hover { border-color: #C9A227; }
+
+    .st-table-wrap { border-radius: 14px; overflow: hidden; border: 1px solid #f0f1f0; }
+    .st-table-wrap table thead tr { background: #FAFBFA; }
+    .st-table-wrap table th { font-size: 10px; font-weight: 800; letter-spacing: 0.05em; color: #9a9f9a; text-transform: uppercase; padding: 12px 16px; text-align: left; }
+    .st-table-wrap table td { padding: 13px 16px; border-top: 1px solid #f5f6f5; }
+    .st-table-wrap table tbody tr { transition: background 0.15s; }
+    .st-table-wrap table tbody tr:hover { background: #FAFCFB; }
+
+    .submit-btn { width: 100%; background: linear-gradient(135deg, #0B6B3A, #095430); color: #fff; font-weight: 800; padding: 13px; border-radius: 9999px; font-size: 13.5px; transition: transform 0.15s, box-shadow 0.15s; }
+    .submit-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(11,107,58,0.3); }
 </style>
 
 <div class="st-hero">
     <div>
-        <h1 class="text-xl font-extrabold"><i class="fa-solid fa-boxes-stacked mr-2"></i>Store &amp; Inventory</h1>
-        <p class="text-white/70 text-xs mt-1">Purchasing, stock, and expenditure</p>
+        <h1><i class="fa-solid fa-boxes-stacked mr-2"></i>Store &amp; Inventory</h1>
+        <p class="sub"><span id="live-dot" class="w-2 h-2 rounded-full bg-white/40 inline-block"></span> Purchasing, stock, and expenditure &mdash; live monitoring</p>
     </div>
     <div class="flex gap-2 flex-wrap">
-        <a href="{% url 'dashboard:store_inventory' %}" class="bg-white text-[#0B6B3A] font-bold text-sm px-4 py-2.5 rounded-full hover:bg-[#C9A227] hover:text-black transition"><i class="fa-solid fa-chart-simple mr-1"></i>Inventory</a>
-        <a href="{% url 'dashboard:store_usage_logs' %}" class="bg-white text-[#0B6B3A] font-bold text-sm px-4 py-2.5 rounded-full hover:bg-[#C9A227] hover:text-black transition"><i class="fa-solid fa-list-check mr-1"></i>Usage Logs</a>
-        <a href="{% url 'dashboard:store_expenditure_report' %}" class="bg-[#C9A227] text-black font-bold text-sm px-4 py-2.5 rounded-full hover:bg-[#b8931f] transition"><i class="fa-solid fa-file-pdf mr-1"></i>Expenditure Report</a>
+        <a href="{% url 'dashboard:store_inventory' %}" class="st-hero-btn"><i class="fa-solid fa-chart-simple mr-1"></i>Inventory</a>
+        <a href="{% url 'dashboard:store_usage_logs' %}" class="st-hero-btn"><i class="fa-solid fa-list-check mr-1"></i>Usage Logs</a>
+        <a href="{% url 'dashboard:stocktake_list' %}" class="st-hero-btn"><i class="fa-solid fa-clipboard-check mr-1"></i>Stock Takes</a>
+        <a href="{% url 'dashboard:store_expenditure_report' %}" class="st-hero-btn primary"><i class="fa-solid fa-file-pdf mr-1"></i>Expenditure Report</a>
     </div>
 </div>
 
 {% if messages %}{% for message in messages %}
-<div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
+<div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-xl px-4 py-2.5 mb-5">{{ message }}</div>
 {% endfor %}{% endif %}
 
 {% if low_stock_items %}
-<div class="bg-red-50 border border-red-300 text-red-700 text-xs rounded-lg px-4 py-3 mb-5">
+<div class="bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl px-4 py-3 mb-5">
     <i class="fa-solid fa-triangle-exclamation mr-1"></i><strong>Needs attention:</strong>
     {% for item in low_stock_items %}{{ item.name }} ({{ item.quantity_on_hand|floatformat:"-2" }} {{ item.unit }}){% if not forloop.last %}, {% endif %}{% endfor %}
 </div>
 {% endif %}
 
-<div class="grid grid-cols-2 md:grid-cols-2 gap-4 mb-6">
+<div class="grid grid-cols-2 gap-4 mb-6">
     <div class="st-stat"><p class="num">KSh {{ today_total|floatformat:0 }}</p><p class="lbl">Spent Today</p></div>
     <div class="st-stat"><p class="num">KSh {{ week_total|floatformat:0 }}</p><p class="lbl">Spent This Week</p></div>
 </div>
 
 <div class="grid lg:grid-cols-3 gap-6 mb-8">
     <div class="lg:col-span-2 st-card">
-        <h2 class="font-bold text-black text-sm mb-4"><i class="fa-solid fa-cart-plus text-[#C9A227] mr-1"></i>Log a Purchase</h2>
+        <h2><span class="icon-badge"><i class="fa-solid fa-cart-plus"></i></span>Log a Purchase</h2>
         {% if form.non_field_errors %}<p class="text-red-600 text-xs bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3">{{ form.non_field_errors.0 }}</p>{% endif %}
-        <div class="flex gap-2 mb-3">
+        <div class="flex gap-2 mb-4">
             <div id="mode-existing-btn" class="st-mode-btn active">Existing Item</div>
             <div id="mode-new-btn" class="st-mode-btn">New Item</div>
         </div>
@@ -52,11 +91,19 @@
             {% csrf_token %}
             <input type="hidden" name="mode" id="mode-input" value="existing">
             <input type="hidden" name="pricing_mode" id="pricing-mode-input" value="unit">
-            <select name="department" id="department-select" class="w-full border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
-                {% for val, label in department_choices %}<option value="{{ val }}">{{ label }}</option>{% endfor %}
-            </select>
+
+            <div class="grid grid-cols-2 gap-3">
+                <select name="department" id="department-select" class="st-field">
+                    {% for val, label in department_choices %}<option value="{{ val }}">{{ label }}</option>{% endfor %}
+                </select>
+                <select name="supplier" class="st-field">
+                    <option value="">No supplier recorded</option>
+                    {% for s in suppliers %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+                </select>
+            </div>
+
             <div id="existing-fields">
-                <select name="stock_item" id="id_stock_item" class="w-full border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
+                <select name="stock_item" id="id_stock_item" class="st-field">
                     <option value="">Loading items...</option>
                 </select>
             </div>
@@ -65,56 +112,62 @@
                 {{ form.new_item_unit }}
                 {{ form.reorder_level }}
             </div>
+
             {{ form.quantity }}
+
             <div class="flex gap-2 mb-1">
                 <div id="pricing-unit-btn" class="st-mode-btn active">Price Per Unit</div>
                 <div id="pricing-total-btn" class="st-mode-btn">Total Paid</div>
             </div>
             <div id="unit-cost-field">{{ form.unit_cost }}</div>
             <div id="total-cost-field" class="hidden">{{ form.total_cost }}<p class="text-[10px] text-gray-400 mt-1">Per-unit price will be worked out automatically from quantity.</p></div>
-            <label class="flex items-center gap-2 text-xs text-gray-600">{{ form.vat_inclusive }} Price above includes 16% VAT</label>
+
+            <label class="flex items-center gap-2 text-xs text-gray-600"><span class="inline-flex">{{ form.vat_inclusive }}</span> Price above includes 16% VAT</label>
             {{ form.purchased_at }}
             {{ form.notes }}
-            <div class="receipt-drop"><input type="file" name="receipts" multiple accept="image/*" class="w-full text-xs"><p class="mt-1">Upload receipt photo(s), optional, multiple allowed</p></div>
-            <button type="submit" class="w-full bg-[#0B6B3A] text-white font-bold py-2.5 rounded-full hover:bg-[#095430] transition">Log Purchase</button>
+            <div class="receipt-drop"><input type="file" name="receipts" multiple accept="image/*" class="w-full text-xs"><p class="mt-1"><i class="fa-solid fa-paperclip mr-1"></i>Upload receipt photo(s), optional, multiple allowed</p></div>
+            <button type="submit" class="submit-btn">Log Purchase</button>
         </form>
     </div>
 
     <div class="st-card">
-        <h2 class="font-bold text-black text-sm mb-4"><i class="fa-solid fa-chart-line text-[#C9A227] mr-1"></i>Spend by Department &mdash; Last 14 Days</h2>
+        <h2><span class="icon-badge"><i class="fa-solid fa-chart-line"></i></span>Spend by Department</h2>
+        <p class="text-[11px] text-gray-400 mb-3">Last 14 days</p>
         <canvas id="spendChart" height="220"></canvas>
     </div>
 </div>
 
 <div class="st-card">
-    <h2 class="font-bold text-black text-sm mb-4"><i class="fa-solid fa-clock-rotate-left text-[#C9A227] mr-1"></i>Recent Purchases</h2>
-    <div class="overflow-x-auto">
+    <h2><span class="icon-badge"><i class="fa-solid fa-clock-rotate-left"></i></span>Recent Purchases</h2>
+    <div class="st-table-wrap overflow-x-auto">
         <table class="w-full text-sm">
-            <thead><tr class="text-left text-xs text-gray-500 uppercase border-b border-gray-200">
-                <th class="p-3">Date</th><th class="p-3">Department</th><th class="p-3">Item</th><th class="p-3">Qty</th><th class="p-3">Total</th><th class="p-3">By</th><th class="p-3">Receipts</th><th class="p-3"></th>
+            <thead><tr>
+                <th>Date</th><th>Department</th><th>Item</th><th>Supplier</th><th>Qty</th><th>Total</th><th>By</th><th>Receipts</th><th></th>
             </tr></thead>
             <tbody>
                 {% for p in recent_purchases %}
-                <tr class="border-b border-gray-100">
-                    <td class="p-3 text-gray-500">{{ p.purchased_at|date:"M d" }}</td>
-                    <td class="p-3">{{ p.get_department_display }}</td>
-                    <td class="p-3 font-semibold">{{ p.stock_item.name }}</td>
-                    <td class="p-3">{{ p.quantity }} {{ p.stock_item.unit }}</td>
-                    <td class="p-3 font-semibold">KSh {{ p.total_cost|floatformat:0 }}</td>
-                    <td class="p-3 text-gray-500">{{ p.purchased_by.get_full_name|default:p.purchased_by.username }}</td>
-                    <td class="p-3">{% if p.receipts.count %}<i class="fa-solid fa-paperclip text-[#0B6B3A]"></i> {{ p.receipts.count }}{% else %}&mdash;{% endif %}</td>
-                    <td class="p-3"><a href="{% url 'dashboard:store_purchase_detail' p.id %}" class="text-[#0B6B3A] text-xs font-semibold hover:underline">View</a></td>
+                <tr>
+                    <td class="text-gray-500">{{ p.purchased_at|date:"M d" }}</td>
+                    <td>{{ p.get_department_display }}</td>
+                    <td class="font-semibold">{{ p.stock_item.name }}</td>
+                    <td class="text-gray-500">{{ p.supplier.name|default:"—" }}</td>
+                    <td>{{ p.quantity }} {{ p.stock_item.unit }}</td>
+                    <td class="font-semibold">KSh {{ p.total_cost|floatformat:0 }}</td>
+                    <td class="text-gray-500">{{ p.purchased_by.get_full_name|default:p.purchased_by.username }}</td>
+                    <td>{% if p.receipts.count %}<i class="fa-solid fa-paperclip text-[#0B6B3A]"></i> {{ p.receipts.count }}{% else %}—{% endif %}</td>
+                    <td><a href="{% url 'dashboard:store_purchase_detail' p.id %}" class="text-[#0B6B3A] text-xs font-semibold hover:underline">View</a></td>
                 </tr>
-                {% empty %}<tr><td colspan="8" class="p-8 text-center text-gray-400">No purchases logged yet.</td></tr>{% endfor %}
+                {% empty %}<tr><td colspan="9" class="p-10 text-center text-gray-400">No purchases logged yet.</td></tr>{% endfor %}
             </tbody>
         </table>
     </div>
 </div>
 
+<div id="store-toast-container" class="fixed top-20 right-6 z-50 flex flex-col gap-2 items-end"></div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    // Existing / New item toggle
     const modeInput = document.getElementById('mode-input');
     const existingBtn = document.getElementById('mode-existing-btn');
     const newBtn = document.getElementById('mode-new-btn');
@@ -128,7 +181,6 @@ document.addEventListener('DOMContentLoaded', function () {
     existingBtn.addEventListener('click', () => setMode('existing'));
     newBtn.addEventListener('click', () => setMode('new'));
 
-    // Per-unit / Total price toggle
     const pricingInput = document.getElementById('pricing-mode-input');
     const unitBtn = document.getElementById('pricing-unit-btn');
     const totalBtn = document.getElementById('pricing-total-btn');
@@ -142,7 +194,6 @@ document.addEventListener('DOMContentLoaded', function () {
     unitBtn.addEventListener('click', () => setPricingMode('unit'));
     totalBtn.addEventListener('click', () => setPricingMode('total'));
 
-    // Live-loaded stock item dropdown, fixes the empty-dropdown bug
     const deptSelect = document.getElementById('department-select');
     const stockSelect = document.getElementById('id_stock_item');
     async function loadStockItems() {
@@ -156,7 +207,6 @@ document.addEventListener('DOMContentLoaded', function () {
     deptSelect.addEventListener('change', loadStockItems);
     loadStockItems();
 
-    // Spend-by-department chart
     const colors = ['#0B6B3A', '#C9A227', '#3b82f6', '#dc2626', '#8b5cf6', '#06b6d4'];
     const datasets = {{ chart_datasets|safe }}.map((d, i) => ({
         label: d.label, data: d.data, borderColor: colors[i % colors.length],
@@ -167,6 +217,26 @@ document.addEventListener('DOMContentLoaded', function () {
         data: { labels: {{ chart_labels|safe }}, datasets },
         options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } }, scales: { y: { beginAtZero: true } } },
     });
+
+    const toastContainer = document.getElementById('store-toast-container');
+    const liveDot = document.getElementById('live-dot');
+    function connectStoreSocket() {
+        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const socket = new WebSocket(`${protocol}://${window.location.host}/ws/store/`);
+        socket.onopen = () => { liveDot.className = 'w-2 h-2 rounded-full bg-[#C9A227] inline-block'; };
+        socket.onclose = () => { liveDot.className = 'w-2 h-2 rounded-full bg-white/40 inline-block'; setTimeout(connectStoreSocket, 3000); };
+        socket.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            const toast = document.createElement('div');
+            const color = data.level === 'danger' ? 'border-red-500' : 'border-[#C9A227]';
+            toast.className = `bg-white border ${color} shadow-lg rounded-xl px-4 py-3 text-sm max-w-xs`;
+            toast.innerHTML = `<strong>${data.level === 'danger' ? 'OUT OF STOCK' : 'LOW STOCK'}:</strong> ${data.name} (${data.department}) &mdash; ${data.quantity} ${data.unit} left`;
+            toastContainer.appendChild(toast);
+            setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.4s'; }, 6000);
+            setTimeout(() => toast.remove(), 6400);
+        };
+    }
+    connectStoreSocket();
 });
 </script>
 {% endblock %}

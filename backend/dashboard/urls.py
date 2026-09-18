@@ -95,6 +95,11 @@ urlpatterns = [
     path('store/inventory/', views.store_inventory_view, name='store_inventory'),
     path('store/usage-logs/', views.store_usage_logs_view, name='store_usage_logs'),
     path('store/stock-items-json/', views.store_stock_items_json, name='store_stock_items_json'),
+    path('store/stock-item/<int:stock_item_id>/suppliers/', views.store_supplier_comparison, name='store_supplier_comparison'),
+    path('store/stocktakes/', views.stocktake_list, name='stocktake_list'),
+    path('store/stocktakes/start/', views.stocktake_start, name='stocktake_start'),
+    path('store/stocktakes/<int:stocktake_id>/', views.stocktake_detail, name='stocktake_detail'),
+    path('store/stocktakes/<int:stocktake_id>/finalize/', views.stocktake_finalize, name='stocktake_finalize'),
     
     ##receipt uRLs
     path('receipt/<int:order_id>/', views.order_receipt, name='order_receipt'),

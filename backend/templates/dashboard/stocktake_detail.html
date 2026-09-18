@@ -1,0 +1,60 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+<a href="{% url 'dashboard:stocktake_list' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; All Stock Takes</a>
+<div class="flex items-center justify-between mt-1 mb-6 flex-wrap gap-3">
+    <h1 class="text-2xl font-bold text-black">{{ stock_take.get_department_display }} Stock Take — {{ stock_take.date }}</h1>
+    <span class="text-[10px] font-bold px-3 py-1.5 rounded-full {% if stock_take.status == 'finalized' %}bg-gray-200 text-gray-600{% else %}bg-[#C9A227] text-black{% endif %}">{{ stock_take.get_status_display|upper }}</span>
+</div>
+
+{% if messages %}{% for message in messages %}
+<div class="bg-{% if message.tags == 'error' %}red-50 border-red-300 text-red-700{% else %}[#0B6B3A]/10 border-[#0B6B3A] text-[#0B6B3A]{% endif %} border text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
+{% endfor %}{% endif %}
+
+<form method="post">
+    {% csrf_token %}
+    <div class="bg-white border border-gray-200 rounded-2xl overflow-hidden mb-5">
+        <table class="w-full text-sm">
+            <thead><tr class="text-left text-xs text-gray-500 uppercase border-b border-gray-200">
+                <th class="p-3">Item</th><th class="p-3">System Qty</th><th class="p-3">Counted Qty</th><th class="p-3">Variance</th><th class="p-3">Notes</th>
+            </tr></thead>
+            <tbody>
+                {% for line in lines %}
+                <tr class="border-b border-gray-100">
+                    <td class="p-3 font-semibold">{{ line.stock_item.name }} <span class="text-gray-400">({{ line.stock_item.get_unit_display }})</span></td>
+                    <td class="p-3 text-gray-500">{{ line.system_quantity|floatformat:"-2" }}</td>
+                    <td class="p-3">
+                        {% if stock_take.status == 'draft' %}
+                        <input type="number" step="0.01" name="counted_{{ line.id }}" value="{{ line.counted_quantity|default:'' }}" class="border border-[#0B6B3A] rounded-lg px-2 py-1 text-sm w-24">
+                        {% else %}{{ line.counted_quantity|floatformat:"-2" }}{% endif %}
+                    </td>
+                    <td class="p-3">
+                        {% if line.variance != None %}
+                        <span class="font-bold {% if line.variance < 0 %}text-red-600{% elif line.variance > 0 %}text-[#0B6B3A]{% else %}text-gray-400{% endif %}">{{ line.variance|floatformat:"-2" }}</span>
+                        {% else %}<span class="text-gray-300">—</span>{% endif %}
+                    </td>
+                    <td class="p-3">
+                        {% if stock_take.status == 'draft' %}
+                        <input type="text" name="notes_{{ line.id }}" value="{{ line.notes }}" placeholder="Optional" class="border border-gray-300 rounded-lg px-2 py-1 text-xs w-32">
+                        {% else %}{{ line.notes|default:"—" }}{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if stock_take.status == 'draft' %}
+    <div class="flex gap-3">
+        <button type="submit" class="bg-[#0B6B3A] text-white font-bold px-6 py-2.5 rounded-full hover:bg-[#095430] transition">Save Counts</button>
+    </div>
+    {% endif %}
+</form>
+
+{% if stock_take.status == 'draft' %}
+<form method="post" action="{% url 'dashboard:stocktake_finalize' stock_take.id %}" onsubmit="return confirm('Finalize this stock take? System quantities will be updated to match your physical count. This cannot be undone.');" class="mt-3">
+    {% csrf_token %}
+    <button type="submit" class="bg-[#C9A227] text-black font-bold px-6 py-2.5 rounded-full hover:bg-[#b8931f] transition"><i class="fa-solid fa-lock mr-1"></i>Finalize Stock Take</button>
+</form>
+{% else %}
+<p class="text-sm text-gray-500 mt-3">Finalized by {{ stock_take.finalized_by.get_full_name|default:stock_take.finalized_by.username }} on {{ stock_take.finalized_at|date:"M d, Y H:i" }}. Stock levels were adjusted to match this count.</p>
+{% endif %}
+{% endblock %}

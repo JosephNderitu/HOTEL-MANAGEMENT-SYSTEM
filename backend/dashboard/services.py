@@ -24,6 +24,9 @@ def confirm_order_and_deduct_stock(order):
                 StockItem.objects.filter(id=stock.id).select_for_update().update(
                     quantity_on_hand=stock.quantity_on_hand - order_item.quantity
                 )
+                from store.services import notify_low_stock_if_needed
+                notify_low_stock_if_needed(stock)
+
             order_item.prep_status = 'ready' if order_item.menu_item.is_quick_serve else 'queued'
             order_item.save(update_fields=['prep_status'])
 
@@ -43,7 +46,6 @@ def confirm_order_and_deduct_stock(order):
         })
 
     return True, []
-
 
 def settle_booking_stay(booking, amount, amount_tendered, method, reference, user):
     debts = []

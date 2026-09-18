@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import StockItem, WastageLog, DailyUsageLog, DailyUsageItem, PurchaseLog, PurchaseReceipt
+from .models import *
 
 
 @admin.register(StockItem)
@@ -85,3 +85,34 @@ class DailyUsageLogAdmin(admin.ModelAdmin):
     @admin.display(description='Items Logged')
     def total_items_logged(self, obj):
         return obj.items.count()
+    
+@admin.register(Supplier)
+class SupplierAdmin(admin.ModelAdmin):
+    list_display = ('name', 'contact_person', 'phone', 'email', 'is_active')
+    list_editable = ('is_active',)
+    search_fields = ('name', 'contact_person')
+    
+class StockTakeLineInline(admin.TabularInline):
+    model = StockTakeLine
+    extra = 0
+    readonly_fields = ('stock_item', 'system_quantity', 'counted_quantity', 'variance_display', 'notes')
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    @admin.display(description='Variance')
+    def variance_display(self, obj):
+        v = obj.variance
+        if v is None:
+            return "—"
+        color = '#dc2626' if v < 0 else '#0B6B3A' if v > 0 else '#6b7280'
+        return format_html('<span style="color:{};font-weight:700;">{}</span>', color, f"{v:+.2f}")
+
+
+@admin.register(StockTake)
+class StockTakeAdmin(admin.ModelAdmin):
+    list_display = ('department', 'date', 'status', 'conducted_by', 'finalized_by', 'finalized_at')
+    list_filter = ('department', 'status')
+    date_hierarchy = 'date'
+    inlines = [StockTakeLineInline]

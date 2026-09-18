@@ -30,7 +30,7 @@ from dashboard.models import Payment
 from store.models import *
 from store.forms import *
 from django.db import transaction
-from store.services import get_purchases_in_range, summarize_by_department
+from store.services import *
 from .services import *
 
 from decimal import Decimal
@@ -45,6 +45,9 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from weasyprint import HTML
+from django.db.models import Count, Sum as DjangoSum
+
+COURSE_PRIORITY = {'starter': 0, 'main': 1, 'dessert': 2}
 
 def _parse_date_input(date_str, fallback):
     if not date_str:
@@ -247,7 +250,6 @@ def reception_new_booking(request):
         form = ManualBookingForm(initial={'status': 'confirmed'})
     return render(request, 'dashboard/reception_new_booking.html', {'form': form})
 
-
 @staff_module_required('reception')
 def reception_settle_stay(request, booking_id):
     return _settle_stay_view(request, booking_id, back_url_name='dashboard:reception')
@@ -281,7 +283,6 @@ def _settle_stay_view(request, booking_id, back_url_name):
         'form': form, 'booking': booking, 'debts': debts, 'total_due': total_due, 'back_url_name': back_url_name,
     })
     
-
 @staff_module_required('reception')
 def reception_confirm_all_orders(request, booking_id):
     if request.method != 'POST':
@@ -302,7 +303,6 @@ def reception_confirm_all_orders(request, booking_id):
     if shortfall_items:
         messages.error(request, f"Could not confirm, insufficient stock: {', '.join(set(shortfall_items))}.")
     return redirect('dashboard:reception')
-
 
 @staff_module_required('reception')
 def reception_record_payment(request, target_type, target_id):
@@ -358,7 +358,6 @@ def rooms_view(request):
         'active_bookings': active_bookings,
     })
 
-
 @staff_module_required('rooms')
 def room_detail(request, room_id):
     room = get_object_or_404(Room.objects.select_related('room_type'), id=room_id)
@@ -389,7 +388,6 @@ def room_detail(request, room_id):
         'menu_items': menu_items, 
         'categories': categories,
     })
-
 
 @staff_module_required('rooms')
 def room_quick_checkin(request, room_id):
@@ -433,7 +431,6 @@ def room_quick_checkin(request, room_id):
     messages.success(request, f"{booking.guest_name} checked in to Room {room.number}.")
     return redirect('dashboard:room_detail', room_id=room_id)
 
-
 def _room_checkout_view(request, room_id):
     room = get_object_or_404(Room, id=room_id)
     booking = get_object_or_404(Booking, assigned_room=room, status='checked_in')
@@ -448,14 +445,12 @@ def _room_checkout_view(request, room_id):
     messages.success(request, f"{booking.guest_name} checked out of Room {room.number}.")
     return redirect('dashboard:room_detail', room_id=room_id)
 
-
 @staff_module_required('rooms')
 def room_checkout(request, room_id):
     if not can_manage_bookings_from_rooms(request.user):
         messages.error(request, "You don't have permission to check out guests.")
         return redirect('dashboard:room_detail', room_id=room_id)
     return _room_checkout_view(request, room_id)
-
 
 @staff_module_required('rooms')
 def room_settle_stay(request, booking_id):
@@ -475,7 +470,6 @@ def room_settle_stay(request, booking_id):
                 booking.assigned_room.status = 'cleaning'
                 booking.assigned_room.save(update_fields=['status'])
     return response
-
 
 @staff_module_required('rooms')
 def room_add_service_order(request, room_id):
@@ -649,7 +643,6 @@ def maintenance_list(request):
         requests_qs = requests_qs.filter(status=status_filter)
     return render(request, 'dashboard/maintenance_list.html', {'requests': requests_qs, 'status_filter': status_filter})
 
-
 @staff_module_required('rooms')
 def maintenance_start(request, request_id):
     if request.method != 'POST':
@@ -659,7 +652,6 @@ def maintenance_start(request, request_id):
     req.save(update_fields=['status'])
     messages.success(request, "Marked in progress.")
     return redirect('dashboard:maintenance_list')
-
 
 @staff_module_required('rooms')
 def maintenance_resolve(request, request_id):
@@ -674,7 +666,6 @@ def maintenance_resolve(request, request_id):
     messages.success(request, f"Resolved. Room {req.room.number} moved to Cleaning before it's marked Available.")
     return redirect('dashboard:maintenance_list')
 
-
 @staff_module_required('rooms')
 def lostfound_list(request):
     status_filter = request.GET.get('status', 'unclaimed')
@@ -683,7 +674,6 @@ def lostfound_list(request):
         items = items.filter(status=status_filter)
     rooms = Room.objects.all().order_by('number')
     return render(request, 'dashboard/lostfound_list.html', {'items': items, 'status_filter': status_filter, 'rooms': rooms})
-
 
 @staff_module_required('rooms')
 def lostfound_add(request):
@@ -704,7 +694,6 @@ def lostfound_add(request):
     messages.success(request, "Item logged.")
     return redirect('dashboard:lostfound_list')
 
-
 @staff_module_required('rooms')
 def lostfound_claim(request, item_id):
     if request.method != 'POST':
@@ -720,7 +709,6 @@ def lostfound_claim(request, item_id):
     item.save(update_fields=['status', 'claimed_by_name', 'claimed_at'])
     messages.success(request, "Marked claimed.")
     return redirect('dashboard:lostfound_list')
-
 
 @staff_module_required('rooms')
 def lostfound_dispose(request, item_id):
@@ -860,12 +848,6 @@ def restaurant_new_order(request, table_id):
     
     return JsonResponse({'success': True})
 
-
-COURSE_PRIORITY = {'starter': 0, 'main': 1, 'dessert': 2}
-
-from django.db.models import Count, Sum as DjangoSum
-from store.models import DailyUsageLog, DailyUsageItem
-
 @staff_module_required('restaurant_kitchen')
 def restaurant_kitchen_display(request):
     today = timezone.localdate()
@@ -898,7 +880,6 @@ def restaurant_kitchen_display(request):
         'closed_orders': closed_orders,
         'kitchen_log': kitchen_log,
     })
-
 
 @staff_module_required('restaurant_kitchen')
 def kitchen_item_sales_pdf(request):
@@ -947,7 +928,6 @@ def kitchen_item_sales_pdf(request):
     response['Content-Disposition'] = f'attachment; filename="kitchen_item_sales_{timezone.now().date()}.pdf"'
     return response
 
-
 # ==============================================================================
 # DAILY USAGE LOGS (Generic Helpers & Views for Kitchen & Housekeeping)
 # ==============================================================================
@@ -955,7 +935,6 @@ def kitchen_item_sales_pdf(request):
 def _can_touch_usage_log(user, department):
     module = 'restaurant_kitchen' if department == 'kitchen' else 'rooms'
     return can_access(user, module) or can_access(user, 'store')
-
 
 def _usage_log_view(request, department, template_name, back_url_name):
     if not _can_touch_usage_log(request.user, department):
@@ -974,7 +953,6 @@ def _usage_log_view(request, department, template_name, back_url_name):
         'department': department,
         'back_url_name': back_url_name,
     })
-
 
 def _usage_log_add(request, department):
     if request.method != 'POST' or not _can_touch_usage_log(request.user, department):
@@ -1005,6 +983,8 @@ def _usage_log_add(request, department):
             StockItem.objects.filter(id=stock.id).select_for_update().update(
                 quantity_on_hand=stock.quantity_on_hand - quantity
             )
+            stock.quantity_on_hand -= quantity
+            notify_low_stock_if_needed(stock)
         else:
             name = request.POST.get('custom_name', '').strip()
             unit = request.POST.get('custom_unit', '')
@@ -1022,7 +1002,6 @@ def _usage_log_add(request, department):
 
     messages.success(request, "Usage logged.")
     return redirect(request.META.get('HTTP_REFERER', 'dashboard:home'))
-
 
 def _usage_log_delete(request, item_id, department):
     if request.method != 'POST' or not _can_touch_usage_log(request.user, department):
@@ -1042,7 +1021,6 @@ def _usage_log_delete(request, item_id, department):
 
     messages.success(request, "Entry removed.")
     return redirect(request.META.get('HTTP_REFERER', 'dashboard:home'))
-
 
 def _usage_log_confirm(request, department):
     if request.method != 'POST' or not _can_touch_usage_log(request.user, department):
@@ -1068,7 +1046,6 @@ def _usage_log_confirm(request, department):
 
     return redirect(request.META.get('HTTP_REFERER', 'dashboard:home'))
 
-
 # ------------------------------------------------------------------------------
 # KITCHEN USAGE LOG ENDPOINTS
 # ------------------------------------------------------------------------------
@@ -1079,16 +1056,13 @@ def kitchen_usage_log_view(request):
         request, 'kitchen', 'dashboard/kitchen_usage_log.html', 'dashboard:restaurant_kitchen_display'
     )
 
-
 @login_required
 def kitchen_usage_log_add(request):
     return _usage_log_add(request, 'kitchen')
 
-
 @login_required
 def kitchen_usage_log_delete(request, item_id):
     return _usage_log_delete(request, item_id, 'kitchen')
-
 
 @login_required
 def kitchen_usage_log_confirm(request):
@@ -1105,21 +1079,17 @@ def housekeeping_usage_log_view(request):
         request, 'housekeeping', 'dashboard/housekeeping_usage_log.html', 'dashboard:rooms'
     )
 
-
 @login_required
 def housekeeping_usage_log_add(request):
     return _usage_log_add(request, 'housekeeping')
-
 
 @login_required
 def housekeeping_usage_log_delete(request, item_id):
     return _usage_log_delete(request, item_id, 'housekeeping')
 
-
 @login_required
 def housekeeping_usage_log_confirm(request):
     return _usage_log_confirm(request, 'housekeeping')
-
 
 @staff_module_required('restaurant_kitchen')
 def restaurant_advance_item(request, item_id, new_status):
@@ -1706,7 +1676,6 @@ def bar_export_pdf(request):
     response['Content-Disposition'] = f'attachment; filename="bar_sales_{timezone.now().date()}.pdf"'
     return response
 
-
 #### end of bar views
 
 @staff_module_required('gate')
@@ -1825,7 +1794,6 @@ def gate_export_pdf(request):
     response['Content-Disposition'] = f'attachment; filename="gate_report_{timezone.now().date()}.pdf"'
     return response
 
-
 @staff_module_required('hrm')
 def hrm_view(request):
     return render(request, 'dashboard/module_placeholder.html', {'module_label': 'HRM & Management'})
@@ -1854,13 +1822,21 @@ def store_view(request):
                 stock_item = data['stock_item']
             else:
                 stock_item = StockItem.objects.create(
-                    name=data['new_item_name'], department=data['department'],
-                    unit=data['new_item_unit'], reorder_level=data.get('reorder_level') or 0,
+                    name=data['new_item_name'], 
+                    department=data['department'],
+                    unit=data['new_item_unit'], 
+                    reorder_level=data.get('reorder_level') or 0,
                 )
             purchase = PurchaseLog.objects.create(
-                department=data['department'], stock_item=stock_item, quantity=data['quantity'],
-                unit_cost=data['unit_cost'], vat_inclusive=data.get('vat_inclusive', True),
-                notes=data.get('notes', ''), purchased_by=request.user, purchased_at=data['purchased_at'],
+                department=data['department'], 
+                stock_item=stock_item, 
+                quantity=data['quantity'],
+                unit_cost=data['unit_cost'], 
+                supplier=data.get('supplier'),
+                vat_inclusive=data.get('vat_inclusive', True),
+                notes=data.get('notes', ''), 
+                purchased_by=request.user, 
+                purchased_at=data['purchased_at'],
             )
             for f in request.FILES.getlist('receipts'):
                 PurchaseReceipt.objects.create(purchase=purchase, image=f)
@@ -1890,13 +1866,16 @@ def store_view(request):
             daily_by_dept[code].append(float(total))
 
     return render(request, 'dashboard/store.html', {
-        'form': form, 'today_total': today_total, 'week_total': week_total,
-        'recent_purchases': recent_purchases, 'low_stock_items': low_stock_items,
+        'form': form, 
+        'today_total': today_total, 
+        'week_total': week_total,
+        'recent_purchases': recent_purchases, 
+        'low_stock_items': low_stock_items,
         'chart_labels': json.dumps([d.strftime('%b %d') for d in chart_days]),
         'chart_datasets': json.dumps([{'label': dept_labels[c], 'data': daily_by_dept[c]} for c in dept_codes]),
         'department_choices': StockItem.DEPARTMENT_CHOICES,
+        'suppliers': Supplier.objects.filter(is_active=True),
     })
-
 
 @staff_module_required('store')
 def store_usage_logs_view(request):
@@ -1942,7 +1921,6 @@ def store_purchase_detail(request, purchase_id):
     purchase = get_object_or_404(PurchaseLog.objects.select_related('stock_item', 'purchased_by').prefetch_related('receipts'), id=purchase_id)
     return render(request, 'dashboard/store_purchase_detail.html', {'purchase': purchase})
 
-
 @staff_module_required('store')
 def store_expenditure_report(request):
     preset = request.GET.get('preset', 'month')
@@ -1964,7 +1942,6 @@ def store_expenditure_report(request):
         'summary': summary, 'date_from': date_from, 'date_to': date_to, 'preset': preset,
         'grand_incl': grand_incl, 'grand_excl': grand_excl, 'grand_vat': grand_vat,
     })
-
 
 @staff_module_required('store')
 def store_expenditure_pdf(request):
@@ -1997,9 +1974,6 @@ def store_expenditure_pdf(request):
     response['Content-Disposition'] = f'attachment; filename="expenditure_{date_from}_to_{date_to}.pdf"'
     return response
 
-import json
-from django.shortcuts import render
-
 @staff_module_required('store')
 def store_inventory_view(request):
     department_filter = request.GET.get('department', '')
@@ -2024,6 +1998,86 @@ def store_inventory_view(request):
         'chart_reorder': json.dumps([float(i.reorder_level) for i in items]),
         'chart_colors': json.dumps(['#dc2626' if i.stock_status == 'danger' else '#C9A227' if i.stock_status == 'warning' else '#0B6B3A' for i in items]),
     })
+
+@staff_module_required('store')
+def store_supplier_comparison(request, stock_item_id):
+    stock_item = get_object_or_404(StockItem, id=stock_item_id)
+    purchases = stock_item.purchase_logs.select_related('supplier').order_by('-purchased_at')
+
+    by_supplier = {}
+    for p in purchases:
+        key = p.supplier.name if p.supplier else "No supplier recorded"
+        entry = by_supplier.setdefault(key, {'prices': [], 'last_date': p.purchased_at})
+        entry['prices'].append(p.unit_cost)
+        if p.purchased_at > entry['last_date']:
+            entry['last_date'] = p.purchased_at
+
+    rows = []
+    for name, data in by_supplier.items():
+        rows.append({
+            'name': name, 'min_price': min(data['prices']), 'avg_price': sum(data['prices']) / len(data['prices']),
+            'last_price': data['prices'][0], 'purchase_count': len(data['prices']), 'last_date': data['last_date'],
+        })
+    rows.sort(key=lambda r: r['avg_price'])
+
+    return render(request, 'dashboard/store_supplier_comparison.html', {'stock_item': stock_item, 'rows': rows})
+
+@staff_module_required('store')
+def stocktake_list(request):
+    takes = StockTake.objects.select_related('conducted_by', 'finalized_by').order_by('-date', '-created_at')
+    return render(request, 'dashboard/stocktake_list.html', {'takes': takes})
+
+@staff_module_required('store')
+def stocktake_start(request):
+    if request.method != 'POST':
+        return redirect('dashboard:stocktake_list')
+    department = request.POST.get('department')
+    stock_take = StockTake.objects.create(department=department, conducted_by=request.user)
+    for item in StockItem.objects.filter(department=department, is_active=True):
+        StockTakeLine.objects.create(stock_take=stock_take, stock_item=item, system_quantity=item.quantity_on_hand)
+    return redirect('dashboard:stocktake_detail', stocktake_id=stock_take.id)
+
+@staff_module_required('store')
+def stocktake_detail(request, stocktake_id):
+    stock_take = get_object_or_404(StockTake, id=stocktake_id)
+    lines = stock_take.lines.select_related('stock_item').order_by('stock_item__name')
+
+    if request.method == 'POST' and stock_take.status == 'draft':
+        for line in lines:
+            value = request.POST.get(f'counted_{line.id}', '').strip()
+            note = request.POST.get(f'notes_{line.id}', '').strip()
+            if value:
+                line.counted_quantity = Decimal(value)
+                line.notes = note
+                line.save(update_fields=['counted_quantity', 'notes'])
+        messages.success(request, "Counts saved. Finalize once every item is counted.")
+        return redirect('dashboard:stocktake_detail', stocktake_id=stock_take.id)
+
+    return render(request, 'dashboard/stocktake_detail.html', {'stock_take': stock_take, 'lines': lines})
+
+@staff_module_required('store')
+def stocktake_finalize(request, stocktake_id):
+    if request.method != 'POST':
+        return redirect('dashboard:stocktake_detail', stocktake_id=stocktake_id)
+    stock_take = get_object_or_404(StockTake, id=stocktake_id, status='draft')
+
+    uncounted = stock_take.lines.filter(counted_quantity__isnull=True)
+    if uncounted.exists():
+        messages.error(request, f"{uncounted.count()} item(s) still uncounted. Every item must have a count before finalizing.")
+        return redirect('dashboard:stocktake_detail', stocktake_id=stock_take.id)
+
+    with transaction.atomic():
+        for line in stock_take.lines.select_related('stock_item'):
+            line.stock_item.quantity_on_hand = line.counted_quantity
+            line.stock_item.save(update_fields=['quantity_on_hand'])
+            notify_low_stock_if_needed(line.stock_item)
+        stock_take.status = 'finalized'
+        stock_take.finalized_by = request.user
+        stock_take.finalized_at = timezone.now()
+        stock_take.save(update_fields=['status', 'finalized_by', 'finalized_at'])
+
+    messages.success(request, "Stock take finalized. System quantities now match the physical count.")
+    return redirect('dashboard:stocktake_detail', stocktake_id=stock_take.id)
 
 ### end of store views
 

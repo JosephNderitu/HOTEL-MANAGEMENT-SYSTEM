@@ -45,3 +45,25 @@ class KitchenConsumer(AsyncWebsocketConsumer):
 
     async def kitchen_notification(self, event):
         await self.send(text_data=json.dumps(event['payload']))
+        
+class StoreConsumer(AsyncWebsocketConsumer):
+    group_name = 'store_alerts'
+
+    async def connect(self):
+        user = self.scope.get('user')
+        if not user or not user.is_authenticated:
+            await self.close()
+            return
+        allowed = await database_sync_to_async(can_access)(user, 'store')
+        if not allowed:
+            await self.close()
+            return
+        await self.channel_layer.group_add(self.group_name, self.channel_name)
+        await self.accept()
+
+    async def disconnect(self, close_code):
+        await self.channel_layer.group_discard(self.group_name, self.channel_name)
+
+    async def store_alert(self, event):
+        await self.send(text_data=json.dumps(event['payload']))
+        

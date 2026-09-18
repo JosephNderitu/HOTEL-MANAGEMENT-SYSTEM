@@ -1,5 +1,8 @@
 from decimal import Decimal
 from .models import PurchaseLog
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+
 
 RANGE_PRESETS = {
     'today': 0, 'week': 7, 'month': 30, 'quarter': 90, 'half_year': 182, 'year': 365,
@@ -25,3 +28,19 @@ def summarize_by_department(purchases):
         d['total_vat'] += p.vat_amount
         d['total_incl'] += p.amount_incl_vat
     return summary
+
+def notify_low_stock_if_needed(stock_item):
+    stock_item.refresh_from_db()
+    if stock_item.stock_status == 'ok':
+        return
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)('store_alerts', {
+        'type': 'store_alert',
+        'payload': {
+            'name': stock_item.name,
+            'department': stock_item.get_department_display(),
+            'quantity': f"{stock_item.quantity_on_hand:g}",
+            'unit': stock_item.get_unit_display(),
+            'level': stock_item.stock_status,
+        },
+    })

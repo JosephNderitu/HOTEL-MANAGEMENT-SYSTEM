@@ -32,6 +32,13 @@ class StockItem(models.Model):
         related_name='stock_item',
         help_text="If guests can order this, link it to its menu listing so restocking never touches the menu."
     )
+    par_level = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Target stock level to restock up to")
+
+    @property
+    def suggested_reorder_qty(self):
+        if self.par_level <= self.quantity_on_hand:
+            return Decimal('0')
+        return self.par_level - self.quantity_on_hand
 
     @property
     def is_low_stock(self):
@@ -66,6 +73,8 @@ class WastageLog(models.Model):
         if is_new:
             self.stock_item.quantity_on_hand -= self.quantity
             self.stock_item.save(update_fields=['quantity_on_hand'])
+            from .services import notify_low_stock_if_needed
+            notify_low_stock_if_needed(self.stock_item)
 
     def __str__(self):
         return f"{self.quantity} {self.stock_item.unit} {self.stock_item.name} wasted — {self.reason}"
@@ -106,12 +115,16 @@ class DailyUsageItem(models.Model):
     def __str__(self):
         return f"{self.quantity} {self.display_unit} {self.display_name}"
 
+class Supplier(models.Model):
+    name = models.CharField(max_length=150)
+    contact_person = models.CharField(max_length=150, blank=True)
+    phone = models.CharField(max_length=20, blank=True)
+    email = models.EmailField(blank=True)
+    notes = models.TextField(blank=True, help_text="What they typically supply, payment terms, etc.")
+    is_active = models.BooleanField(default=True)
 
-# ---------------------------------------------------------------------------
-# Purchasing — the Store Manager is the sole buyer, fully accountable.
-# No request/approve/disburse cycle: they log what they bought, when, for
-# which department, with receipts attached, done.
-# ---------------------------------------------------------------------------
+    def __str__(self):
+        return self.name
 
 class PurchaseLog(models.Model):
     DEPARTMENT_CHOICES = StockItem.DEPARTMENT_CHOICES
@@ -124,6 +137,7 @@ class PurchaseLog(models.Model):
     notes = models.CharField(max_length=200, blank=True)
     purchased_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='purchases_made')
     purchased_at = models.DateTimeField(default=timezone.now, help_text="When the purchase actually happened")
+    supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True, related_name='purchases')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -158,7 +172,6 @@ class PurchaseLog(models.Model):
     def __str__(self):
         return f"{self.quantity} x {self.stock_item.name} — KSh {self.total_cost:,.0f}"
 
-
 class PurchaseReceipt(models.Model):
     purchase = models.ForeignKey(PurchaseLog, on_delete=models.CASCADE, related_name='receipts')
     image = models.ImageField(upload_to='purchase_receipts/')
@@ -168,3 +181,33 @@ class PurchaseReceipt(models.Model):
         if self.image and hasattr(self.image, 'file'):
             self.image = compress_image_if_needed(self.image)
         super().save(*args, **kwargs)
+        
+class StockTake(models.Model):
+    STATUS_CHOICES = [('draft', 'Draft'), ('finalized', 'Finalized')]
+    department = models.CharField(max_length=20, choices=StockItem.DEPARTMENT_CHOICES)
+    date = models.DateField(default=timezone.localdate)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='draft')
+    conducted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='stock_takes_conducted')
+    finalized_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name='stock_takes_finalized')
+    finalized_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.get_department_display()} stock take — {self.date}"
+
+class StockTakeLine(models.Model):
+    stock_take = models.ForeignKey(StockTake, on_delete=models.CASCADE, related_name='lines')
+    stock_item = models.ForeignKey(StockItem, on_delete=models.PROTECT, related_name='stock_take_lines')
+    system_quantity = models.DecimalField(max_digits=10, decimal_places=2, help_text="What the system showed at the start of this count")
+    counted_quantity = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    notes = models.CharField(max_length=200, blank=True)
+
+    @property
+    def variance(self):
+        if self.counted_quantity is None:
+            return None
+        return self.counted_quantity - self.system_quantity
+
+    def __str__(self):
+        return f"{self.stock_item.name}: system {self.system_quantity}, counted {self.counted_quantity}"
+    

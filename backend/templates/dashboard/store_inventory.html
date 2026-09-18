@@ -19,7 +19,7 @@
     <div class="overflow-x-auto">
         <table class="w-full text-sm">
             <thead><tr class="text-left text-xs text-gray-500 uppercase border-b border-gray-200">
-                <th class="p-3">Item</th><th class="p-3">Department</th><th class="p-3">Unit</th><th class="p-3">Quantity</th><th class="p-3">Reorder Level</th><th class="p-3">Status</th>
+                <th class="p-3">Item</th><th class="p-3">Department</th><th class="p-3">Unit</th><th class="p-3">Quantity</th><th class="p-3">Reorder Level</th><th class="p-3">Status</th><th class="p-3">Suggested Reorder</th><th class="p-3">Actions</th>
             </tr></thead>
             <tbody>
                 {% for item in items %}
@@ -34,8 +34,14 @@
                         {% elif item.stock_status == 'warning' %}<span class="text-[10px] font-bold bg-[#C9A227] text-black px-2.5 py-1 rounded-full">LOW</span>
                         {% else %}<span class="text-[10px] font-bold bg-[#0B6B3A] text-white px-2.5 py-1 rounded-full">OK</span>{% endif %}
                     </td>
+                    <td class="p-3">
+                        {% if item.suggested_reorder_qty > 0 %}
+                        <span class="text-[#C9A227] font-semibold">Buy {{ item.suggested_reorder_qty|floatformat:"-2" }} {{ item.get_unit_display }}</span>
+                        {% else %}<span class="text-gray-300">At par</span>{% endif %}
+                    </td>
+                    <td class="p-3"><a href="{% url 'dashboard:store_supplier_comparison' item.id %}" class="text-[#0B6B3A] text-xs font-semibold hover:underline">Compare Suppliers</a></td>
                 </tr>
-                {% empty %}<tr><td colspan="6" class="p-8 text-center text-gray-400">No stock items here.</td></tr>{% endfor %}
+                {% empty %}<tr><td colspan="8" class="p-8 text-center text-gray-400">No stock items here.</td></tr>{% endfor %}
             </tbody>
         </table>
     </div>
