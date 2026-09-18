@@ -1,0 +1,32 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+<a href="{% url 'dashboard:store' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; Store</a>
+<h1 class="text-2xl font-bold text-black mt-1 mb-6">Expenditure Report</h1>
+
+<form method="get" class="flex flex-wrap gap-2 mb-6">
+    <input type="date" name="date_from" value="{{ date_from }}" class="border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
+    <input type="date" name="date_to" value="{{ date_to }}" class="border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
+    <button type="submit" class="bg-[#0B6B3A] text-white text-sm font-semibold px-5 py-2 rounded-lg">View</button>
+    <a href="{% url 'dashboard:store_expenditure_pdf' %}?date_from={{ date_from }}&date_to={{ date_to }}" class="bg-[#C9A227] text-black text-sm font-semibold px-5 py-2 rounded-lg"><i class="fa-solid fa-file-pdf mr-1"></i>Download PDF</a>
+</form>
+
+<div class="grid grid-cols-3 gap-4 mb-8">
+    <div class="bg-white border border-[#eef0ee] rounded-xl p-4"><p class="text-xs text-gray-500 uppercase">Excl. VAT</p><p class="text-xl font-bold text-black">KSh {{ grand_excl|floatformat:0 }}</p></div>
+    <div class="bg-white border border-[#eef0ee] rounded-xl p-4"><p class="text-xs text-gray-500 uppercase">VAT</p><p class="text-xl font-bold text-black">KSh {{ grand_vat|floatformat:0 }}</p></div>
+    <div class="bg-white border border-[#0B6B3A] rounded-xl p-4"><p class="text-xs text-gray-500 uppercase">Total (Incl. VAT)</p><p class="text-xl font-bold text-[#0B6B3A]">KSh {{ grand_incl|floatformat:0 }}</p></div>
+</div>
+
+{% for dept, data in summary.items %}
+<div class="bg-white border border-gray-200 rounded-2xl p-5 mb-4">
+    <h2 class="font-bold text-black text-sm mb-3">{{ data.label }} — KSh {{ data.total_incl|floatformat:0 }}</h2>
+    <table class="w-full text-sm">
+        <thead><tr class="text-xs text-gray-500 uppercase text-left border-b border-gray-100"><th class="py-2">Item</th><th>Qty</th><th>Unit Cost</th><th>Total</th></tr></thead>
+        <tbody>
+        {% for p in data.items %}
+        <tr class="border-b border-gray-50"><td class="py-2">{{ p.stock_item.name }}</td><td>{{ p.quantity }}</td><td>{{ p.unit_cost|floatformat:0 }}</td><td>{{ p.total_cost|floatformat:0 }}</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% empty %}<p class="text-gray-400 text-center py-14">No purchases in this range.</p>{% endfor %}
+{% endblock %}

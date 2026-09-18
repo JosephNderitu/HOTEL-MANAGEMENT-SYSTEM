@@ -1,0 +1,69 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+<a href="{% url 'dashboard:store' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; Store</a>
+<h1 class="text-2xl font-bold text-black mt-1 mb-6">Inventory Levels</h1>
+
+<div class="flex gap-2 mb-5 flex-wrap">
+    <a href="?" class="text-xs font-semibold px-4 py-2 rounded-full {% if not department_filter %}bg-[#0B6B3A] text-white{% else %}border border-gray-300 text-gray-500{% endif %}">All</a>
+    {% for val, label in department_choices %}
+    <a href="?department={{ val }}" class="text-xs font-semibold px-4 py-2 rounded-full {% if department_filter == val %}bg-[#0B6B3A] text-white{% else %}border border-gray-300 text-gray-500{% endif %}">{{ label }}</a>
+    {% endfor %}
+</div>
+
+<div class="bg-white border border-[#eef0ee] rounded-2xl p-6 mb-6">
+    <canvas id="stockChart" height="100"></canvas>
+</div>
+
+<div class="bg-white border border-[#eef0ee] rounded-2xl overflow-hidden mb-8">
+    <div class="p-5 border-b border-gray-100"><h2 class="font-bold text-black text-sm">All Stock Items</h2></div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead><tr class="text-left text-xs text-gray-500 uppercase border-b border-gray-200">
+                <th class="p-3">Item</th><th class="p-3">Department</th><th class="p-3">Unit</th><th class="p-3">Quantity</th><th class="p-3">Reorder Level</th><th class="p-3">Status</th>
+            </tr></thead>
+            <tbody>
+                {% for item in items %}
+                <tr class="border-b border-gray-100">
+                    <td class="p-3 font-semibold">{{ item.name }}</td>
+                    <td class="p-3 text-gray-500">{{ item.get_department_display }}</td>
+                    <td class="p-3 text-gray-500">{{ item.get_unit_display }}</td>
+                    <td class="p-3 font-semibold">{{ item.quantity_on_hand|floatformat:"-2" }}</td>
+                    <td class="p-3 text-gray-500">{{ item.reorder_level|floatformat:"-2" }}</td>
+                    <td class="p-3">
+                        {% if item.stock_status == 'danger' %}<span class="text-[10px] font-bold bg-red-600 text-white px-2.5 py-1 rounded-full">OUT OF STOCK</span>
+                        {% elif item.stock_status == 'warning' %}<span class="text-[10px] font-bold bg-[#C9A227] text-black px-2.5 py-1 rounded-full">LOW</span>
+                        {% else %}<span class="text-[10px] font-bold bg-[#0B6B3A] text-white px-2.5 py-1 rounded-full">OK</span>{% endif %}
+                    </td>
+                </tr>
+                {% empty %}<tr><td colspan="6" class="p-8 text-center text-gray-400">No stock items here.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
+    {% for item in items %}
+    <div class="bg-white border rounded-xl p-4 {% if item.stock_status == 'danger' %}border-red-300{% elif item.stock_status == 'warning' %}border-[#C9A227]{% else %}border-gray-200{% endif %}">
+        <p class="font-bold text-black text-sm">{{ item.name }}</p>
+        <p class="text-xs text-gray-400 mb-2">{{ item.get_department_display }}</p>
+        <p class="text-lg font-bold {% if item.stock_status == 'danger' %}text-red-600{% elif item.stock_status == 'warning' %}text-[#C9A227]{% else %}text-[#0B6B3A]{% endif %}">{{ item.quantity_on_hand|floatformat:"-2" }} {{ item.unit }}</p>
+        <p class="text-[11px] text-gray-400">Reorder at {{ item.reorder_level|floatformat:"-2" }} {{ item.unit }}</p>
+    </div>
+    {% empty %}<p class="text-gray-400 col-span-full text-center py-14">No stock items here.</p>{% endfor %}
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+new Chart(document.getElementById('stockChart'), {
+    type: 'bar',
+    data: {
+        labels: {{ chart_labels|safe }},
+        datasets: [
+            { label: 'Current Stock', data: {{ chart_levels|safe }}, backgroundColor: {{ chart_colors|safe }} },
+            { label: 'Reorder Level', data: {{ chart_reorder|safe }}, type: 'line', borderColor: '#111', borderDash: [5, 5], fill: false, pointRadius: 0 },
+        ],
+    },
+    options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } },
+});
+</script>
+{% endblock %}

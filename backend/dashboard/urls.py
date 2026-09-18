@@ -88,11 +88,13 @@ urlpatterns = [
     path('store/', views.store_view, name='store'),
     
     # Store Management URLs
-    path('store/disbursement/<int:disbursement_id>/', views.store_disbursement_detail, name='store_disbursement_detail'),
-    path('store/disbursement/<int:disbursement_id>/approve/', views.store_disbursement_approve, name='store_disbursement_approve'),
-    path('store/disbursement/<int:disbursement_id>/reject/', views.store_disbursement_reject, name='store_disbursement_reject'),
-    path('store/disbursement/<int:disbursement_id>/disburse/', views.store_disbursement_disburse, name='store_disbursement_disburse'),
-    path('store/disbursement/<int:disbursement_id>/reconcile/', views.store_disbursement_reconcile, name='store_disbursement_reconcile'),
+    path('store/', views.store_view, name='store'),
+    path('store/purchase/<int:purchase_id>/', views.store_purchase_detail, name='store_purchase_detail'),
+    path('store/expenditure/', views.store_expenditure_report, name='store_expenditure_report'),
+    path('store/expenditure/pdf/', views.store_expenditure_pdf, name='store_expenditure_pdf'),
+    path('store/inventory/', views.store_inventory_view, name='store_inventory'),
+    path('store/usage-logs/', views.store_usage_logs_view, name='store_usage_logs'),
+    path('store/stock-items-json/', views.store_stock_items_json, name='store_stock_items_json'),
     
     ##receipt uRLs
     path('receipt/<int:order_id>/', views.order_receipt, name='order_receipt'),

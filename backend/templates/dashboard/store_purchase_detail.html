@@ -1,0 +1,23 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+<a href="{% url 'dashboard:store' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; Store</a>
+<div class="max-w-2xl mx-auto mt-4 bg-white border border-[#0B6B3A] rounded-2xl p-6">
+    <h1 class="text-xl font-bold text-black mb-1">{{ purchase.stock_item.name }}</h1>
+    <p class="text-gray-500 text-sm mb-4">{{ purchase.get_department_display }} &middot; {{ purchase.purchased_at|date:"M d, Y" }}</p>
+    <div class="grid grid-cols-2 gap-4 text-sm mb-4">
+        <p>Quantity: <strong>{{ purchase.quantity }} {{ purchase.stock_item.unit }}</strong></p>
+        <p>Unit Cost: <strong>KSh {{ purchase.unit_cost|floatformat:0 }}</strong></p>
+        <p>Excl. VAT: <strong>KSh {{ purchase.amount_excl_vat|floatformat:2 }}</strong></p>
+        <p>VAT: <strong>KSh {{ purchase.vat_amount|floatformat:2 }}</strong></p>
+        <p>Total (Incl. VAT): <strong class="text-[#0B6B3A]">KSh {{ purchase.amount_incl_vat|floatformat:2 }}</strong></p>
+        <p>Logged By: <strong>{{ purchase.purchased_by.get_full_name|default:purchase.purchased_by.username }}</strong></p>
+    </div>
+    {% if purchase.notes %}<p class="text-sm text-gray-600 mb-4">Notes: {{ purchase.notes }}</p>{% endif %}
+    <h2 class="font-bold text-black text-sm mb-2">Receipts</h2>
+    <div class="grid grid-cols-3 gap-3">
+        {% for r in purchase.receipts.all %}
+        <a href="{{ r.image.url }}" target="_blank"><img src="{{ r.image.url }}" class="w-full aspect-square object-cover rounded-lg border border-gray-200"></a>
+        {% empty %}<p class="text-gray-400 text-sm">No receipts uploaded.</p>{% endfor %}
+    </div>
+</div>
+{% endblock %}

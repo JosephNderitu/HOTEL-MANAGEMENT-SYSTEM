@@ -1,13 +1,20 @@
+from decimal import Decimal
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
+from public_site.models import compress_image_if_needed
+
+VAT_RATE = Decimal('0.16')
 
 
 class StockItem(models.Model):
     DEPARTMENT_CHOICES = [
-        ('kitchen', 'Kitchen'),
+        ('kitchen', 'Kitchen / Restaurant'),
         ('bar', 'Bar'),
-        ('housekeeping', 'Housekeeping'),
-        ('front_desk', 'Front Desk'),
+        ('housekeeping', 'Housekeeping / Rooms'),
+        ('front_desk', 'Front Desk / Reception'),
+        ('conference', 'Conference & Events'),
+        ('general', 'General / Other'),
     ]
     UNIT_CHOICES = [
         ('kg', 'Kilogram'), ('g', 'Gram'), ('l', 'Litre'), ('ml', 'Millilitre'),
@@ -28,71 +35,24 @@ class StockItem(models.Model):
 
     @property
     def is_low_stock(self):
-        return self.quantity_on_hand <= self.reorder_level
+        return 0 < self.quantity_on_hand <= self.reorder_level
+
+    @property
+    def is_out_of_stock(self):
+        return self.quantity_on_hand <= 0
+
+    @property
+    def stock_status(self):
+        if self.is_out_of_stock:
+            return 'danger'
+        if self.is_low_stock:
+            return 'warning'
+        return 'ok'
 
     def __str__(self):
         return f"{self.name} ({self.get_department_display()})"
 
 
-class Disbursement(models.Model):
-    DEPARTMENT_CHOICES = StockItem.DEPARTMENT_CHOICES
-    STATUS_CHOICES = [
-        ('requested', 'Requested'),
-        ('approved', 'Approved'),
-        ('rejected', 'Rejected'),
-        ('disbursed', 'Disbursed'),
-        ('reconciled', 'Reconciled'),
-    ]
-    department = models.CharField(max_length=20, choices=DEPARTMENT_CHOICES)
-    purpose = models.CharField(max_length=200)
-    amount = models.DecimalField(max_digits=10, decimal_places=2)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='requested')
-
-    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='disbursements_requested')
-    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name='disbursements_approved')
-    disbursed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name='disbursements_given')
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    approved_at = models.DateTimeField(null=True, blank=True)
-    disbursed_at = models.DateTimeField(null=True, blank=True)
-    reconciled_at = models.DateTimeField(null=True, blank=True)
-
-    @property
-    def total_spent(self):
-        return sum(p.total_cost for p in self.purchases.all())
-
-    @property
-    def variance(self):
-        return self.amount - self.total_spent
-
-    def __str__(self):
-        return f"{self.get_department_display()} — KSh {self.amount} ({self.get_status_display()})"
-
-
-class DisbursementPurchase(models.Model):
-    disbursement = models.ForeignKey(Disbursement, on_delete=models.PROTECT, related_name='purchases')
-    stock_item = models.ForeignKey(StockItem, on_delete=models.PROTECT, related_name='purchase_records')
-    quantity = models.DecimalField(max_digits=10, decimal_places=2)
-    unit_cost = models.DecimalField(max_digits=10, decimal_places=2)
-    receipt_reference = models.CharField(max_length=100, blank=True)
-    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='purchases_recorded')
-    recorded_at = models.DateTimeField(auto_now_add=True)
-
-    @property
-    def total_cost(self):
-        return self.quantity * self.unit_cost
-
-    def save(self, *args, **kwargs):
-        is_new = self.pk is None
-        super().save(*args, **kwargs)
-        if is_new:
-            self.stock_item.quantity_on_hand += self.quantity
-            self.stock_item.last_unit_cost = self.unit_cost
-            self.stock_item.save(update_fields=['quantity_on_hand', 'last_unit_cost'])
-
-    def __str__(self):
-        return f"{self.quantity} x {self.stock_item.name}"
-    
 class WastageLog(models.Model):
     stock_item = models.ForeignKey(StockItem, on_delete=models.PROTECT, related_name='wastage_records')
     quantity = models.DecimalField(max_digits=10, decimal_places=2)
@@ -109,7 +69,8 @@ class WastageLog(models.Model):
 
     def __str__(self):
         return f"{self.quantity} {self.stock_item.unit} {self.stock_item.name} wasted — {self.reason}"
-    
+
+
 class DailyUsageLog(models.Model):
     department = models.CharField(max_length=20, choices=StockItem.DEPARTMENT_CHOICES)
     date = models.DateField()
@@ -144,3 +105,66 @@ class DailyUsageItem(models.Model):
 
     def __str__(self):
         return f"{self.quantity} {self.display_unit} {self.display_name}"
+
+
+# ---------------------------------------------------------------------------
+# Purchasing — the Store Manager is the sole buyer, fully accountable.
+# No request/approve/disburse cycle: they log what they bought, when, for
+# which department, with receipts attached, done.
+# ---------------------------------------------------------------------------
+
+class PurchaseLog(models.Model):
+    DEPARTMENT_CHOICES = StockItem.DEPARTMENT_CHOICES
+
+    department = models.CharField(max_length=20, choices=DEPARTMENT_CHOICES)
+    stock_item = models.ForeignKey(StockItem, on_delete=models.PROTECT, related_name='purchase_logs')
+    quantity = models.DecimalField(max_digits=10, decimal_places=2)
+    unit_cost = models.DecimalField(max_digits=10, decimal_places=2, help_text="Price paid per unit")
+    vat_inclusive = models.BooleanField(default=True, help_text="Is the unit cost above already inclusive of 16% VAT?")
+    notes = models.CharField(max_length=200, blank=True)
+    purchased_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='purchases_made')
+    purchased_at = models.DateTimeField(default=timezone.now, help_text="When the purchase actually happened")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-purchased_at']
+
+    @property
+    def total_cost(self):
+        return self.quantity * self.unit_cost
+
+    @property
+    def amount_excl_vat(self):
+        if self.vat_inclusive:
+            return (self.total_cost / (1 + VAT_RATE)).quantize(Decimal('0.01'))
+        return self.total_cost
+
+    @property
+    def vat_amount(self):
+        return (self.amount_excl_vat * VAT_RATE).quantize(Decimal('0.01'))
+
+    @property
+    def amount_incl_vat(self):
+        return self.amount_excl_vat + self.vat_amount
+
+    def save(self, *args, **kwargs):
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+        if is_new:
+            self.stock_item.quantity_on_hand += self.quantity
+            self.stock_item.last_unit_cost = self.unit_cost
+            self.stock_item.save(update_fields=['quantity_on_hand', 'last_unit_cost'])
+
+    def __str__(self):
+        return f"{self.quantity} x {self.stock_item.name} — KSh {self.total_cost:,.0f}"
+
+
+class PurchaseReceipt(models.Model):
+    purchase = models.ForeignKey(PurchaseLog, on_delete=models.CASCADE, related_name='receipts')
+    image = models.ImageField(upload_to='purchase_receipts/')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if self.image and hasattr(self.image, 'file'):
+            self.image = compress_image_if_needed(self.image)
+        super().save(*args, **kwargs)

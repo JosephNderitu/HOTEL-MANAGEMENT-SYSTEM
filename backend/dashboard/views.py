@@ -28,14 +28,38 @@ from dashboard.models import Payment
 
 #store imports
 from store.models import *
-from store.forms import DisbursementRequestForm, DisbursementRequestForm, QuickPurchaseForm
+from store.forms import *
 from django.db import transaction
+from store.services import get_purchases_in_range, summarize_by_department
 from .services import *
 
 from decimal import Decimal
 from django.urls import reverse
 from datetime import datetime
 from .permissions import can_manage_bookings_from_rooms
+
+from datetime import datetime
+from decimal import Decimal
+from django.http import HttpResponse
+from django.template.loader import render_to_string
+from django.utils import timezone
+from django.utils.dateparse import parse_date
+from weasyprint import HTML
+
+def _parse_date_input(date_str, fallback):
+    if not date_str:
+        return fallback
+    # 1. Try standard YYYY-MM-DD
+    d = parse_date(date_str)
+    if d:
+        return d
+    # 2. Try human-readable formats sent from UI/URL params
+    for fmt in ('%b. %d, %Y', '%b %d, %Y', '%B %d, %Y', '%d/%m/%Y'):
+        try:
+            return datetime.strptime(date_str.strip(), fmt).date()
+        except ValueError:
+            continue
+    return fallback
 
 @login_required
 def dashboard_home(request):
@@ -1806,159 +1830,203 @@ def gate_export_pdf(request):
 def hrm_view(request):
     return render(request, 'dashboard/module_placeholder.html', {'module_label': 'HRM & Management'})
 
+################################
+### store Views start
+################################
+
+@staff_module_required('store')
+def store_stock_items_json(request):
+    department = request.GET.get('department', '')
+    items = StockItem.objects.filter(department=department, is_active=True).order_by('name')
+    data = [{'id': i.id, 'label': f"{i.name} ({i.quantity_on_hand:g} {i.get_unit_display()} in stock)"} for i in items]
+    return JsonResponse({'items': data})
 
 @staff_module_required('store')
 def store_view(request):
-    department_filter = request.GET.get('department', '')
-    status_filter = request.GET.get('status', '')
-
-    disbursements_qs = Disbursement.objects.select_related('requested_by', 'approved_by', 'disbursed_by').order_by('-created_at')
-    if department_filter:
-        disbursements_qs = disbursements_qs.filter(department=department_filter)
-    if status_filter:
-        disbursements_qs = disbursements_qs.filter(status=status_filter)
-    disbursement_page_obj = Paginator(disbursements_qs, 10).get_page(request.GET.get('d_page'))
-
-    low_stock_items = [item for item in StockItem.objects.filter(is_active=True) if item.is_low_stock]
+    today = timezone.localdate()
+    week_ago = today - timezone.timedelta(days=6)
 
     if request.method == 'POST':
-        form = DisbursementRequestForm(request.POST)
-        if form.is_valid():
-            Disbursement.objects.create(
-                department=form.cleaned_data['department'],
-                purpose=form.cleaned_data['purpose'],
-                amount=form.cleaned_data['amount'],
-                requested_by=request.user,
-            )
-            messages.success(request, "Disbursement request submitted.")
-            return redirect('dashboard:store')
-    else:
-        form = DisbursementRequestForm()
-
-    return render(request, 'dashboard/store.html', {
-        'form': form,
-        'disbursement_page_obj': disbursement_page_obj,
-        'department_filter': department_filter,
-        'status_filter': status_filter,
-        'low_stock_items': low_stock_items,
-        'can_approve': has_full_access(request.user),
-    })
-
-
-@staff_module_required('store')
-def store_disbursement_approve(request, disbursement_id):
-    if request.method != 'POST' or not has_full_access(request.user):
-        messages.error(request, "Only managers can approve disbursement requests.")
-        return redirect('dashboard:store')
-    d = get_object_or_404(Disbursement, id=disbursement_id, status='requested')
-    d.status = 'approved'
-    d.approved_by = request.user
-    d.approved_at = timezone.now()
-    d.save()
-    messages.success(request, f"Disbursement for {d.get_department_display()} approved.")
-    return redirect('dashboard:store')
-
-
-@staff_module_required('store')
-def store_disbursement_reject(request, disbursement_id):
-    if request.method != 'POST' or not has_full_access(request.user):
-        messages.error(request, "Only managers can reject disbursement requests.")
-        return redirect('dashboard:store')
-    d = get_object_or_404(Disbursement, id=disbursement_id, status='requested')
-    d.status = 'rejected'
-    d.approved_by = request.user
-    d.approved_at = timezone.now()
-    d.save()
-    messages.success(request, "Disbursement request rejected.")
-    return redirect('dashboard:store')
-
-
-@staff_module_required('store')
-def store_disbursement_disburse(request, disbursement_id):
-    if request.method != 'POST':
-        return redirect('dashboard:store')
-    d = get_object_or_404(Disbursement, id=disbursement_id, status='approved')
-    d.status = 'disbursed'
-    d.disbursed_by = request.user
-    d.disbursed_at = timezone.now()
-    d.save()
-    messages.success(request, f"KSh {d.amount:,.0f} marked as disbursed to {d.get_department_display()}.")
-    return redirect('dashboard:store')
-
-
-@staff_module_required('store')
-def store_disbursement_detail(request, disbursement_id):
-    d = get_object_or_404(Disbursement, id=disbursement_id)
-
-    if request.method == 'POST':
-        if d.status != 'disbursed':
-            messages.error(request, "Purchases can only be recorded against a disbursed fund.")
-            return redirect('dashboard:store_disbursement_detail', disbursement_id=d.id)
-
-        form = QuickPurchaseForm(request.POST, department=d.department)
+        form = PurchaseLogForm(request.POST, department=request.POST.get('department'))
         if form.is_valid():
             data = form.cleaned_data
-
             if data['mode'] == 'existing':
                 stock_item = data['stock_item']
             else:
-                menu_item = None
-                if data['add_to_menu']:
-                    menu_item = MenuItem.objects.create(
-                        name=data['new_item_name'],
-                        item_type='drink' if d.department == 'bar' else 'food',
-                        serving_point='bar' if d.department == 'bar' else 'kitchen',
-                        category=data.get('menu_category', ''),
-                        regular_price=data['menu_regular_price'],
-                        vip_price=data.get('menu_vip_price') or None,
-                        description=data.get('menu_description', ''),
-                        is_available=False,
-                    )
                 stock_item = StockItem.objects.create(
-                    name=data['new_item_name'],
-                    department=d.department,
-                    unit=data['new_item_unit'],
-                    reorder_level=data.get('reorder_level') or 0,
-                    linked_menu_item=menu_item,
+                    name=data['new_item_name'], department=data['department'],
+                    unit=data['new_item_unit'], reorder_level=data.get('reorder_level') or 0,
                 )
-
-            DisbursementPurchase.objects.create(
-                disbursement=d,
-                stock_item=stock_item,
-                quantity=data['quantity'],
-                unit_cost=data['unit_cost'],
-                receipt_reference=data.get('receipt_reference', ''),
-                recorded_by=request.user,
+            purchase = PurchaseLog.objects.create(
+                department=data['department'], stock_item=stock_item, quantity=data['quantity'],
+                unit_cost=data['unit_cost'], vat_inclusive=data.get('vat_inclusive', True),
+                notes=data.get('notes', ''), purchased_by=request.user, purchased_at=data['purchased_at'],
             )
-
-            msg = "Purchase recorded and stock updated."
-            if data['mode'] == 'new' and data.get('add_to_menu'):
-                msg += " New menu item saved as a draft, add photos and publish it from the admin panel."
-            messages.success(request, msg)
-            return redirect('dashboard:store_disbursement_detail', disbursement_id=d.id)
+            for f in request.FILES.getlist('receipts'):
+                PurchaseReceipt.objects.create(purchase=purchase, image=f)
+            messages.success(request, f"Purchase logged: {stock_item.name} — KSh {purchase.total_cost:,.0f}")
+            return redirect('dashboard:store')
+        else:
+            messages.error(request, "Please fix the errors below.")
     else:
-        form = QuickPurchaseForm(department=d.department)
+        form = PurchaseLogForm(initial={'purchased_at': today, 'vat_inclusive': True, 'department': 'kitchen'})
 
-    return render(request, 'dashboard/store_disbursement_detail.html', {
-        'disbursement': d,
-        'form': form,
-        'purchases': d.purchases.select_related('stock_item', 'recorded_by'),
-        'is_menu_department': d.department in ('kitchen', 'bar'),
+    today_purchases = PurchaseLog.objects.filter(purchased_at__date=today)
+    today_total = sum((p.total_cost for p in today_purchases), Decimal('0'))
+    week_purchases = PurchaseLog.objects.filter(purchased_at__date__gte=week_ago)
+    week_total = sum((p.total_cost for p in week_purchases), Decimal('0'))
+
+    recent_purchases = PurchaseLog.objects.select_related('stock_item', 'purchased_by').prefetch_related('receipts')[:15]
+    low_stock_items = [i for i in StockItem.objects.filter(is_active=True) if i.stock_status != 'ok']
+
+    chart_days = [(today - timezone.timedelta(days=i)) for i in range(13, -1, -1)]
+    dept_codes = [c for c, _ in StockItem.DEPARTMENT_CHOICES]
+    dept_labels = dict(StockItem.DEPARTMENT_CHOICES)
+    daily_by_dept = {code: [] for code in dept_codes}
+    for day in chart_days:
+        day_purchases = PurchaseLog.objects.filter(purchased_at__date=day)
+        for code in dept_codes:
+            total = sum((p.total_cost for p in day_purchases if p.department == code), Decimal('0'))
+            daily_by_dept[code].append(float(total))
+
+    return render(request, 'dashboard/store.html', {
+        'form': form, 'today_total': today_total, 'week_total': week_total,
+        'recent_purchases': recent_purchases, 'low_stock_items': low_stock_items,
+        'chart_labels': json.dumps([d.strftime('%b %d') for d in chart_days]),
+        'chart_datasets': json.dumps([{'label': dept_labels[c], 'data': daily_by_dept[c]} for c in dept_codes]),
+        'department_choices': StockItem.DEPARTMENT_CHOICES,
     })
 
 
 @staff_module_required('store')
-def store_disbursement_reconcile(request, disbursement_id):
-    if request.method != 'POST':
-        return redirect('dashboard:store')
-    d = get_object_or_404(Disbursement, id=disbursement_id, status='disbursed')
-    d.status = 'reconciled'
-    d.reconciled_at = timezone.now()
-    d.save()
-    messages.success(request, f"Reconciled. Variance: KSh {d.variance:,.0f}.")
-    return redirect('dashboard:store_disbursement_detail', disbursement_id=d.id)
+def store_usage_logs_view(request):
+    dept = request.GET.get('department', 'kitchen')
+    preset = request.GET.get('preset', 'week')
+    today = timezone.localdate()
+    days = {'today': 0, 'week': 7, 'month': 30, 'quarter': 90, 'year': 365}.get(preset, 7)
+    date_from = today - timezone.timedelta(days=days)
 
-#### end of store views
+    usage_items = DailyUsageItem.objects.filter(
+        log__department=dept, log__date__gte=date_from, log__date__lte=today
+    ).select_related('stock_item', 'added_by', 'log').order_by('-log__date', '-added_at')
+
+    wastage_items = WastageLog.objects.filter(
+        stock_item__department='bar', logged_at__date__gte=date_from, logged_at__date__lte=today
+    ).select_related('stock_item', 'logged_by').order_by('-logged_at')
+
+    # Value-based trend, not raw quantity, this is what makes units comparable.
+    chart_days = [(date_from + timezone.timedelta(days=i)) for i in range((today - date_from).days + 1)]
+    daily_values = []
+    for day in chart_days:
+        day_value = sum(
+            (float(i.quantity) * float(i.stock_item.last_unit_cost) if i.stock_item else 0)
+            for i in usage_items if i.log.date == day
+        )
+        daily_values.append(round(day_value, 2))
+
+    today_log, _ = DailyUsageLog.objects.get_or_create(department=dept, date=today)
+    today_items = today_log.items.select_related('stock_item', 'added_by').order_by('-added_at')
+    stock_items = StockItem.objects.filter(department=dept, is_active=True)
+
+    return render(request, 'dashboard/store_usage_logs.html', {
+        'usage_items': usage_items, 'wastage_items': wastage_items,
+        'department': dept, 'preset': preset, 'date_from': date_from, 'date_to': today,
+        'chart_labels': json.dumps([d.strftime('%b %d') for d in chart_days]),
+        'chart_data': json.dumps(daily_values),
+        'today_items': today_items, 'stock_items': stock_items,
+        'unlocked_count': today_items.filter(is_locked=False).count(),
+    })
+
+@staff_module_required('store')
+def store_purchase_detail(request, purchase_id):
+    purchase = get_object_or_404(PurchaseLog.objects.select_related('stock_item', 'purchased_by').prefetch_related('receipts'), id=purchase_id)
+    return render(request, 'dashboard/store_purchase_detail.html', {'purchase': purchase})
+
+
+@staff_module_required('store')
+def store_expenditure_report(request):
+    preset = request.GET.get('preset', 'month')
+    today = timezone.localdate()
+    if request.GET.get('date_from') and request.GET.get('date_to'):
+        date_from = datetime.strptime(request.GET['date_from'], '%Y-%m-%d').date()
+        date_to = datetime.strptime(request.GET['date_to'], '%Y-%m-%d').date()
+    else:
+        days = {'today': 0, 'week': 7, 'month': 30, 'quarter': 90, 'half_year': 182, 'year': 365}.get(preset, 30)
+        date_from, date_to = today - timezone.timedelta(days=days), today
+
+    purchases = get_purchases_in_range(date_from, date_to)
+    summary = summarize_by_department(purchases)
+    grand_incl = sum((d['total_incl'] for d in summary.values()), Decimal('0'))
+    grand_excl = sum((d['total_excl'] for d in summary.values()), Decimal('0'))
+    grand_vat = sum((d['total_vat'] for d in summary.values()), Decimal('0'))
+
+    return render(request, 'dashboard/store_expenditure.html', {
+        'summary': summary, 'date_from': date_from, 'date_to': date_to, 'preset': preset,
+        'grand_incl': grand_incl, 'grand_excl': grand_excl, 'grand_vat': grand_vat,
+    })
+
+
+@staff_module_required('store')
+def store_expenditure_pdf(request):
+    today = timezone.localdate()
+    default_from = today.replace(day=1)
+
+    date_from = _parse_date_input(request.GET.get('date_from'), default_from)
+    date_to = _parse_date_input(request.GET.get('date_to'), today)
+
+    purchases = get_purchases_in_range(date_from, date_to)
+    summary = summarize_by_department(purchases)
+    
+    grand_incl = sum((d['total_incl'] for d in summary.values()), Decimal('0'))
+    grand_excl = sum((d['total_excl'] for d in summary.values()), Decimal('0'))
+    grand_vat = sum((d['total_vat'] for d in summary.values()), Decimal('0'))
+
+    html_string = render_to_string('dashboard/store_expenditure_pdf.html', {
+        'summary': summary, 
+        'date_from': date_from, 
+        'date_to': date_to,
+        'generated_at': timezone.now(), 
+        'generated_by': request.user.get_full_name() or request.user.username,
+        'grand_incl': grand_incl, 
+        'grand_excl': grand_excl, 
+        'grand_vat': grand_vat,
+    })
+    
+    pdf_file = HTML(string=html_string, base_url=request.build_absolute_uri('/')).write_pdf()
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="expenditure_{date_from}_to_{date_to}.pdf"'
+    return response
+
+import json
+from django.shortcuts import render
+
+@staff_module_required('store')
+def store_inventory_view(request):
+    department_filter = request.GET.get('department', '')
+    items = StockItem.objects.filter(is_active=True)
+    if department_filter:
+        items = items.filter(department=department_filter)
+    items = list(items.order_by('department', 'name'))
+
+    chart_labels = [i.name for i in items]
+    chart_levels = [float(i.quantity_on_hand) for i in items]
+    chart_reorder = [float(i.reorder_level) for i in items]
+    chart_colors = [
+        '#dc2626' if i.stock_status == 'danger' else '#C9A227' if i.stock_status == 'warning' else '#0B6B3A'
+        for i in items
+    ]
+    
+    return render(request, 'dashboard/store_inventory.html', {
+        'items': items, 'department_filter': department_filter,
+        'department_choices': StockItem.DEPARTMENT_CHOICES,
+        'chart_labels': json.dumps([i.name for i in items]),
+        'chart_levels': json.dumps([float(i.quantity_on_hand) for i in items]),
+        'chart_reorder': json.dumps([float(i.reorder_level) for i in items]),
+        'chart_colors': json.dumps(['#dc2626' if i.stock_status == 'danger' else '#C9A227' if i.stock_status == 'warning' else '#0B6B3A' for i in items]),
+    })
+
+### end of store views
+
 #### start of receipt views
 
 @login_required

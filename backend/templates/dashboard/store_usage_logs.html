@@ -1,0 +1,133 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+<style>
+    .st-mode-btn { flex: 1; font-size: 12px; font-weight: 700; padding: 8px; border-radius: 9999px; border: 1.5px solid #0B6B3A; cursor: pointer; text-align: center; }
+    .st-mode-btn.active { background: #0B6B3A; color: #fff; }
+    .st-mode-btn:not(.active) { color: #0B6B3A; }
+</style>
+<a href="{% url 'dashboard:store' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; Store</a>
+<h1 class="text-2xl font-bold text-black mt-1 mb-6">Usage &amp; Wastage Logs</h1>
+
+{% if messages %}{% for message in messages %}
+<div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
+{% endfor %}{% endif %}
+
+<div class="flex gap-2 mb-3 flex-wrap">
+    <a href="?department=kitchen&preset={{ preset }}" class="text-xs font-semibold px-4 py-2 rounded-full {% if department == 'kitchen' %}bg-[#0B6B3A] text-white{% else %}border border-gray-300 text-gray-500{% endif %}">Kitchen</a>
+    <a href="?department=housekeeping&preset={{ preset }}" class="text-xs font-semibold px-4 py-2 rounded-full {% if department == 'housekeeping' %}bg-[#0B6B3A] text-white{% else %}border border-gray-300 text-gray-500{% endif %}">Housekeeping</a>
+</div>
+<div class="flex gap-2 mb-6 flex-wrap">
+    <a href="?department={{ department }}&preset=week" class="text-xs px-3 py-1.5 rounded-full {% if preset == 'week' %}bg-[#C9A227] text-black{% else %}border border-gray-300 text-gray-500{% endif %}">7 Days</a>
+    <a href="?department={{ department }}&preset=month" class="text-xs px-3 py-1.5 rounded-full {% if preset == 'month' %}bg-[#C9A227] text-black{% else %}border border-gray-300 text-gray-500{% endif %}">30 Days</a>
+    <a href="?department={{ department }}&preset=quarter" class="text-xs px-3 py-1.5 rounded-full {% if preset == 'quarter' %}bg-[#C9A227] text-black{% else %}border border-gray-300 text-gray-500{% endif %}">90 Days</a>
+    <a href="?department={{ department }}&preset=year" class="text-xs px-3 py-1.5 rounded-full {% if preset == 'year' %}bg-[#C9A227] text-black{% else %}border border-gray-300 text-gray-500{% endif %}">1 Year</a>
+</div>
+
+<div class="bg-white border border-[#eef0ee] rounded-2xl p-6 mb-8">
+    <h2 class="font-bold text-black text-sm mb-3">Usage Value Trend (KSh) — smooths out unit differences like grams vs kilograms</h2>
+    <canvas id="usageChart" height="90"></canvas>
+</div>
+
+<!-- Store manager logs usage on the department's behalf -->
+<div class="grid lg:grid-cols-2 gap-6 mb-8">
+    <div class="bg-white border border-[#0B6B3A] rounded-2xl p-6">
+        <h2 class="font-bold text-black text-sm mb-4"><i class="fa-solid fa-hand-holding text-[#C9A227] mr-1"></i>Log Usage for {{ department|title }} Today</h2>
+        <div class="flex gap-2 mb-3">
+            <div id="log-mode-stock-btn" class="st-mode-btn active">From Stock</div>
+            <div id="log-mode-custom-btn" class="st-mode-btn">Not In Stock</div>
+        </div>
+        <form method="post" action="{% if department == 'kitchen' %}{% url 'dashboard:kitchen_usage_log_add' %}{% else %}{% url 'dashboard:housekeeping_usage_log_add' %}{% endif %}" class="space-y-3">
+            {% csrf_token %}
+            <input type="hidden" name="mode" id="log-mode-input" value="stock">
+            <div id="log-stock-fields">
+                <select name="stock_item" class="w-full border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
+                    {% for s in stock_items %}<option value="{{ s.id }}">{{ s.name }} ({{ s.quantity_on_hand }} {{ s.unit }} in stock)</option>{% endfor %}
+                </select>
+            </div>
+            <div id="log-custom-fields" class="hidden space-y-2">
+                <input type="text" name="custom_name" placeholder="Item name" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <select name="custom_unit" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    <option value="kg">Kilogram</option><option value="g">Gram</option><option value="l">Litre</option>
+                    <option value="ml">Millilitre</option><option value="piece">Piece</option><option value="pack">Pack</option>
+                    <option value="box">Box</option><option value="bottle">Bottle</option>
+                </select>
+            </div>
+            <input type="number" step="0.01" name="quantity" placeholder="Quantity given" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            <button type="submit" class="w-full bg-[#0B6B3A] text-white font-bold py-2.5 rounded-full hover:bg-[#095430] transition">Log It</button>
+        </form>
+    </div>
+
+    <div class="bg-white border border-gray-200 rounded-2xl p-6">
+        <h2 class="font-bold text-black text-sm mb-4">Today's Entries ({{ today_items|length }})</h2>
+        <div class="space-y-2 max-h-64 overflow-y-auto mb-4">
+            {% for item in today_items %}
+            <div class="border border-gray-100 rounded-lg p-3 flex justify-between text-sm">
+                <div>
+                    <p class="font-semibold">{{ item.quantity }} {{ item.display_unit }} {{ item.display_name }}</p>
+                    <p class="text-[11px] text-gray-400">by {{ item.added_by.get_full_name|default:item.added_by.username }}{% if item.is_locked %} &middot; <i class="fa-solid fa-lock"></i> locked{% endif %}</p>
+                </div>
+            </div>
+            {% empty %}<p class="text-gray-400 text-sm text-center py-6">Nothing logged yet today.</p>{% endfor %}
+        </div>
+        {% if unlocked_count > 0 %}
+        <form method="post" action="{% if department == 'kitchen' %}{% url 'dashboard:kitchen_usage_log_confirm' %}{% else %}{% url 'dashboard:housekeeping_usage_log_confirm' %}{% endif %}" onsubmit="return confirm('Confirm and lock {{ unlocked_count }} entr{{ unlocked_count|pluralize:'y,ies' }}?');">
+            {% csrf_token %}
+            <button type="submit" class="w-full bg-[#C9A227] text-black font-bold py-2.5 rounded-full hover:bg-[#b8931f] transition"><i class="fa-solid fa-lock mr-1"></i>Confirm {{ unlocked_count }} Entr{{ unlocked_count|pluralize:"y,ies" }}</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+<div class="grid lg:grid-cols-2 gap-6">
+    <div class="bg-white border border-gray-200 rounded-2xl p-5">
+        <h2 class="font-bold text-black text-sm mb-3">{{ department|title }} Usage History</h2>
+        <div class="space-y-2 max-h-96 overflow-y-auto">
+            {% for i in usage_items %}
+            <div class="border border-gray-100 rounded-lg p-3 flex justify-between text-sm">
+                <span>{{ i.quantity }} {{ i.display_unit }} {{ i.display_name }}</span>
+                <span class="text-xs text-gray-400">{{ i.log.date }}</span>
+            </div>
+            {% empty %}<p class="text-gray-400 text-sm text-center py-8">No entries in this range.</p>{% endfor %}
+        </div>
+    </div>
+    <div class="bg-white border border-gray-200 rounded-2xl p-5">
+        <h2 class="font-bold text-black text-sm mb-3">Bar Wastage</h2>
+        <div class="space-y-2 max-h-96 overflow-y-auto">
+            {% for w in wastage_items %}
+            <div class="border border-gray-100 rounded-lg p-3 flex justify-between text-sm">
+                <span>{{ w.quantity }} {{ w.stock_item.unit }} {{ w.stock_item.name }} — {{ w.reason }}</span>
+                <span class="text-xs text-gray-400">{{ w.logged_at|date:"M d" }}</span>
+            </div>
+            {% empty %}<p class="text-gray-400 text-sm text-center py-8">No wastage in this range.</p>{% endfor %}
+        </div>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    new Chart(document.getElementById('usageChart'), {
+        type: 'line',
+        data: { labels: {{ chart_labels|safe }}, datasets: [{
+            label: 'Value Used (KSh)', data: {{ chart_data|safe }},
+            borderColor: '#0B6B3A', backgroundColor: 'rgba(11,107,58,0.08)',
+            tension: 0.4, fill: true, pointRadius: 3, pointBackgroundColor: '#C9A227',
+        }] },
+        options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } },
+    });
+
+    const logModeInput = document.getElementById('log-mode-input');
+    const stockBtn = document.getElementById('log-mode-stock-btn');
+    const customBtn = document.getElementById('log-mode-custom-btn');
+    function setLogMode(mode) {
+        logModeInput.value = mode;
+        document.getElementById('log-stock-fields').classList.toggle('hidden', mode !== 'stock');
+        document.getElementById('log-custom-fields').classList.toggle('hidden', mode !== 'custom');
+        stockBtn.classList.toggle('active', mode === 'stock');
+        customBtn.classList.toggle('active', mode === 'custom');
+    }
+    stockBtn.addEventListener('click', () => setLogMode('stock'));
+    customBtn.addEventListener('click', () => setLogMode('custom'));
+});
+</script>
+{% endblock %}
