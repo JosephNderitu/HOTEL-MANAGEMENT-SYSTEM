@@ -11,11 +11,6 @@
     .ul-panel h2 { font-size: 14px; font-weight: 700; color: #111; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
     .ul-panel h2 i { color: #C9A227; }
 
-    .ul-mode-toggle { display: flex; gap: 8px; margin-bottom: 16px; }
-    .ul-mode-btn { flex: 1; font-size: 12.5px; font-weight: 700; padding: 9px; border-radius: 9999px; border: 1.5px solid #0B6B3A; cursor: pointer; text-align: center; transition: all 0.15s; }
-    .ul-mode-btn.active { background: #0B6B3A; color: #fff; }
-    .ul-mode-btn:not(.active) { color: #0B6B3A; background: #fff; }
-
     .ul-input, .ul-select { width: 100%; border: 1px solid #e2e5e2; border-radius: 10px; padding: 10px 13px; font-size: 13px; background: #fafbfa; transition: border-color 0.15s, box-shadow 0.15s; }
     .ul-input:focus, .ul-select:focus { outline: none; border-color: #0B6B3A; box-shadow: 0 0 0 3px rgba(11,107,58,0.1); background: #fff; }
 
@@ -49,32 +44,18 @@
 <div class="grid lg:grid-cols-2 gap-6">
     <div class="ul-panel">
         <h2><i class="fa-solid fa-plus-circle"></i>Log Usage</h2>
-        <div class="ul-mode-toggle">
-            <div id="mode-stock-btn" class="ul-mode-btn active">From Stock</div>
-            <div id="mode-custom-btn" class="ul-mode-btn">Not In Stock</div>
-        </div>
         <form method="post" action="{% url 'dashboard:kitchen_usage_log_add' %}" class="space-y-3">
             {% csrf_token %}
-            <input type="hidden" name="mode" id="mode-input" value="stock">
-            <div id="stock-fields">
-                <select name="stock_item" class="ul-select">
-                    {% for s in stock_items %}<option value="{{ s.id }}">{{ s.name }} ({{ s.quantity_on_hand }} {{ s.unit }} in stock)</option>{% endfor %}
-                </select>
-            </div>
-            <div id="custom-fields" class="hidden space-y-3">
-                <input type="text" name="custom_name" placeholder="Item name, e.g. Tomatoes" class="ul-input">
-                <select name="custom_unit" class="ul-select">
-                    <option value="kg">Kilogram</option><option value="g">Gram</option><option value="l">Litre</option>
-                    <option value="ml">Millilitre</option><option value="piece">Piece</option><option value="pack">Pack</option>
-                    <option value="box">Box</option><option value="bottle">Bottle</option>
-                </select>
-                <input type="number" step="0.01" name="custom_unit_cost" placeholder="Cost per unit (optional, powers the value chart)" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-            </div>
-            <input type="number" step="0.01" name="quantity" placeholder="Quantity used" required class="ul-input">
-            <button type="submit" class="w-full bg-[#0B6B3A] text-white font-bold py-2.5 rounded-full hover:bg-[#095430] transition">
-                <i class="fa-solid fa-plus mr-1"></i>Add Entry
-            </button>
+            <select name="stock_item" class="w-full border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
+                {% for s in stock_items %}<option value="{{ s.id }}">{{ s.name }} ({{ s.quantity_on_hand }} {{ s.unit }} in stock)</option>{% endfor %}
+            </select>
+            <input type="number" step="0.01" name="quantity" placeholder="Quantity used" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            <button type="submit" class="w-full bg-[#0B6B3A] text-white font-bold py-2.5 rounded-full hover:bg-[#095430] transition">Add Entry</button>
         </form>
+        <p class="text-xs text-gray-400 mt-3">
+            <i class="fa-solid fa-circle-info mr-1"></i>
+            Don't see an item? <a href="{% url 'dashboard:store' %}" class="text-[#0B6B3A] font-semibold hover:underline">Log it as a purchase in Store</a> first, then it'll appear here.
+        </p>
     </div>
 
     <div class="ul-panel">
@@ -117,24 +98,4 @@
         {% endif %}
     </div>
 </div>
-
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    const modeInput = document.getElementById('mode-input');
-    const stockBtn = document.getElementById('mode-stock-btn');
-    const customBtn = document.getElementById('mode-custom-btn');
-    const stockFields = document.getElementById('stock-fields');
-    const customFields = document.getElementById('custom-fields');
-    if (!stockBtn) return;
-    function setMode(mode) {
-        modeInput.value = mode;
-        stockFields.classList.toggle('hidden', mode !== 'stock');
-        customFields.classList.toggle('hidden', mode !== 'custom');
-        stockBtn.classList.toggle('active', mode === 'stock');
-        customBtn.classList.toggle('active', mode === 'custom');
-    }
-    stockBtn.addEventListener('click', () => setMode('stock'));
-    customBtn.addEventListener('click', () => setMode('custom'));
-});
-</script>
 {% endblock %}

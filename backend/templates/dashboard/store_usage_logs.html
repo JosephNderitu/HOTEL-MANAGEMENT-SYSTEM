@@ -20,6 +20,8 @@
     <a href="?department={{ department }}&preset=year" class="text-xs px-3 py-1.5 rounded-full {% if preset == 'year' %}bg-[#C9A227] text-black{% else %}border border-gray-300 text-gray-500{% endif %}">1 Year</a>
 </div>
 
+<div class="st-stat mb-4"><p class="num">KSh {{ total_value_issued|floatformat:0 }}</p><p class="lbl">Value of Stock Issued to {{ department|title }} This Range</p></div>
+
 <div class="bg-white border border-[#eef0ee] rounded-2xl p-6 mb-8">
     <h2 class="font-bold text-black text-sm mb-3">Usage Value Trend (KSh) — smooths out unit differences like grams vs kilograms</h2>
     <div class="st-chart-box">
@@ -31,30 +33,18 @@
 <div class="grid lg:grid-cols-2 gap-6 mb-8">
     <div class="bg-white border border-[#0B6B3A] rounded-2xl p-6">
         <h2 class="font-bold text-black text-sm mb-4"><i class="fa-solid fa-hand-holding text-[#C9A227] mr-1"></i>Log Usage for {{ department|title }} Today</h2>
-        <div class="flex gap-2 mb-3">
-            <div id="log-mode-stock-btn" class="st-mode-btn active">From Stock</div>
-            <div id="log-mode-custom-btn" class="st-mode-btn">Not In Stock</div>
-        </div>
         <form method="post" action="{% if department == 'kitchen' %}{% url 'dashboard:kitchen_usage_log_add' %}{% else %}{% url 'dashboard:housekeeping_usage_log_add' %}{% endif %}" class="space-y-3">
             {% csrf_token %}
-            <input type="hidden" name="mode" id="log-mode-input" value="stock">
-            <div id="log-stock-fields">
-                <select name="stock_item" class="w-full border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
-                    {% for s in stock_items %}<option value="{{ s.id }}">{{ s.name }} ({{ s.quantity_on_hand }} {{ s.unit }} in stock)</option>{% endfor %}
-                </select>
-            </div>
-            <div id="log-custom-fields" class="hidden space-y-2">
-                <input type="text" name="custom_name" placeholder="Item name" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                <select name="custom_unit" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                    <option value="kg">Kilogram</option><option value="g">Gram</option><option value="l">Litre</option>
-                    <option value="ml">Millilitre</option><option value="piece">Piece</option><option value="pack">Pack</option>
-                    <option value="box">Box</option><option value="bottle">Bottle</option>
-                </select>
-                <input type="number" step="0.01" name="custom_unit_cost" placeholder="Cost per unit (optional, powers the value chart)" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-            </div>
+            <select name="stock_item" class="w-full border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
+                {% for s in stock_items %}<option value="{{ s.id }}">{{ s.name }} ({{ s.quantity_on_hand }} {{ s.unit }} in stock)</option>{% endfor %}
+            </select>
             <input type="number" step="0.01" name="quantity" placeholder="Quantity given" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-            <button type="submit" class="w-full bg-[#0B6B3A] text-white font-bold py-2.5 rounded-full hover:bg-[#095430] transition">Log It</button>
+            <button type="submit" class="w-full bg-[#0B6B3A] text-white font-bold py-2.5 rounded-full hover:bg-[#095430] transition">Add Entry</button>
         </form>
+        <p class="text-xs text-gray-400 mt-3">
+            <i class="fa-solid fa-circle-info mr-1"></i>
+            Don't see an item? <a href="{% url 'dashboard:store' %}" class="text-[#0B6B3A] font-semibold hover:underline">Log it as a purchase in Store</a> first, then it'll appear here.
+        </p>
     </div>
 
     <div class="bg-white border border-gray-200 rounded-2xl p-6">
@@ -115,19 +105,6 @@ document.addEventListener('DOMContentLoaded', function () {
         }] },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } },
     });
-
-    const logModeInput = document.getElementById('log-mode-input');
-    const stockBtn = document.getElementById('log-mode-stock-btn');
-    const customBtn = document.getElementById('log-mode-custom-btn');
-    function setLogMode(mode) {
-        logModeInput.value = mode;
-        document.getElementById('log-stock-fields').classList.toggle('hidden', mode !== 'stock');
-        document.getElementById('log-custom-fields').classList.toggle('hidden', mode !== 'custom');
-        stockBtn.classList.toggle('active', mode === 'stock');
-        customBtn.classList.toggle('active', mode === 'custom');
-    }
-    stockBtn.addEventListener('click', () => setLogMode('stock'));
-    customBtn.addEventListener('click', () => setLogMode('custom'));
 });
 </script>
 {% endblock %}

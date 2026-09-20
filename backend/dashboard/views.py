@@ -960,47 +960,28 @@ def _usage_log_add(request, department):
 
     today = timezone.localdate()
     log, _ = DailyUsageLog.objects.get_or_create(department=department, date=today)
-    mode = request.POST.get('mode')
-    quantity = Decimal(request.POST.get('quantity') or '0')
 
+    stock_item_id = request.POST.get('stock_item')
+    if not stock_item_id:
+        messages.error(request, "Select an item from stock. If it's not listed yet, it needs to be logged as a purchase first.")
+        return redirect(request.META.get('HTTP_REFERER', 'dashboard:home'))
+
+    try:
+        quantity = Decimal(request.POST.get('quantity') or '0')
+    except Exception:
+        quantity = Decimal('0')
     if quantity <= 0:
         messages.error(request, "Enter a quantity greater than zero.")
         return redirect(request.META.get('HTTP_REFERER', 'dashboard:home'))
 
     with transaction.atomic():
-        if mode == 'stock':
-            stock = get_object_or_404(StockItem, id=request.POST.get('stock_item'), department=department)
-            if quantity > stock.quantity_on_hand:
-                messages.error(request, f"Can't log more than what's in stock ({stock.quantity_on_hand} {stock.unit}).")
-                return redirect(request.META.get('HTTP_REFERER', 'dashboard:home'))
-            
-            DailyUsageItem.objects.create(
-                log=log,
-                stock_item=stock,
-                quantity=quantity,
-                added_by=request.user
-            )
-            StockItem.objects.filter(id=stock.id).select_for_update().update(
-                quantity_on_hand=stock.quantity_on_hand - quantity
-            )
-            stock.quantity_on_hand -= quantity
-            notify_low_stock_if_needed(stock)
-        else:
-            name = request.POST.get('custom_name', '').strip()
-            unit = request.POST.get('custom_unit', '')
-            cost = request.POST.get('custom_unit_cost') or None
-            if not name:
-                messages.error(request, "Enter a name for the item.")
-                return redirect(request.META.get('HTTP_REFERER', 'dashboard:home'))
-
-            DailyUsageItem.objects.create(
-                log=log,
-                custom_name=name,
-                custom_unit=unit,
-                custom_unit_cost=cost,
-                quantity=quantity,
-                added_by=request.user
-            )
+        stock = get_object_or_404(StockItem, id=stock_item_id, department=department)
+        if quantity > stock.quantity_on_hand:
+            messages.error(request, f"Can't log more than what's in stock ({stock.quantity_on_hand} {stock.unit}).")
+            return redirect(request.META.get('HTTP_REFERER', 'dashboard:home'))
+        DailyUsageItem.objects.create(log=log, stock_item=stock, quantity=quantity, added_by=request.user)
+        StockItem.objects.filter(id=stock.id).select_for_update().update(quantity_on_hand=stock.quantity_on_hand - quantity)
+        notify_low_stock_if_needed(stock)
 
     messages.success(request, "Usage logged.")
     return redirect(request.META.get('HTTP_REFERER', 'dashboard:home'))
@@ -1907,6 +1888,11 @@ def store_usage_logs_view(request):
             day_value += float(i.quantity) * unit_cost
         daily_values.append(round(day_value, 2))
 
+    total_value_issued = sum(
+        (float(i.quantity) * (float(i.stock_item.last_unit_cost) if i.stock_item else float(i.custom_unit_cost or 0)))
+        for i in usage_items
+    )
+
     today_log, _ = DailyUsageLog.objects.get_or_create(department=dept, date=today)
     today_items = today_log.items.select_related('stock_item', 'added_by').order_by('-added_at')
     stock_items = StockItem.objects.filter(department=dept, is_active=True)
@@ -1916,6 +1902,7 @@ def store_usage_logs_view(request):
         'department': dept, 'preset': preset, 'date_from': date_from, 'date_to': today,
         'chart_labels': json.dumps([d.strftime('%b %d') for d in chart_days]),
         'chart_data': json.dumps(daily_values),
+        'total_value_issued': round(total_value_issued, 2),
         'today_items': today_items, 'stock_items': stock_items,
         'unlocked_count': today_items.filter(is_locked=False).count(),
     })
