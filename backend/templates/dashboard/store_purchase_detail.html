@@ -1,5 +1,7 @@
 {% extends "dashboard/base_dashboard.html" %}
 {% block dashboard_content %}
+{% include "dashboard/_store_styles.html" %}
+
 <a href="{% url 'dashboard:store' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; Store</a>
 <div class="max-w-2xl mx-auto mt-4 bg-white border border-[#0B6B3A] rounded-2xl p-6">
     <h1 class="text-xl font-bold text-black mb-1">{{ purchase.stock_item.name }}</h1>

@@ -1,54 +1,6 @@
 {% extends "dashboard/base_dashboard.html" %}
 {% block dashboard_content %}
-<style>
-    .st-hero {
-        background: linear-gradient(135deg, #0B6B3A 0%, #095430 60%, #073d24 100%);
-        border-radius: 20px; padding: 26px 30px; color: #fff; position: relative; overflow: hidden;
-        display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 26px;
-    }
-    .st-hero::after {
-        content: ''; position: absolute; top: -60%; right: -10%; width: 280px; height: 280px;
-        background: radial-gradient(circle, rgba(201,162,39,0.18), transparent 70%); border-radius: 50%;
-    }
-    .st-hero h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.01em; }
-    .st-hero .sub { color: rgba(255,255,255,0.65); font-size: 12px; margin-top: 3px; display: flex; align-items: center; gap: 6px; }
-    .st-hero-btn { background: rgba(255,255,255,0.95); color: #0B6B3A; font-weight: 700; font-size: 12.5px; padding: 10px 18px; border-radius: 9999px; transition: all 0.2s; white-space: nowrap; }
-    .st-hero-btn:hover { background: #C9A227; color: #000; transform: translateY(-1px); }
-    .st-hero-btn.primary { background: #C9A227; color: #000; }
-    .st-hero-btn.primary:hover { background: #fff; color: #0B6B3A; }
-
-    .st-stat {
-        background: #fff; border: 1px solid #eef0ee; border-radius: 18px; padding: 20px 22px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.03); position: relative;
-    }
-    .st-stat::before { content: ''; position: absolute; top: 0; left: 22px; right: 22px; height: 3px; border-radius: 0 0 3px 3px; background: linear-gradient(90deg, #0B6B3A, #C9A227); }
-    .st-stat .num { font-size: 28px; font-weight: 800; color: #0B6B3A; letter-spacing: -0.01em; }
-    .st-stat .lbl { font-size: 10.5px; color: #9a9f9a; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
-
-    .st-card { background: #fff; border: 1px solid #eef0ee; border-radius: 18px; padding: 22px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); }
-    .st-card h2 { font-size: 13.5px; font-weight: 800; color: #14171c; display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
-    .st-card h2 .icon-badge { width: 26px; height: 26px; border-radius: 8px; background: #FEF9EC; color: #C9A227; display: flex; align-items: center; justify-content: center; font-size: 11px; }
-
-    .st-mode-btn { flex: 1; font-size: 11.5px; font-weight: 700; padding: 9px; border-radius: 9999px; border: 1.5px solid #0B6B3A; cursor: pointer; text-align: center; transition: all 0.15s; }
-    .st-mode-btn.active { background: #0B6B3A; color: #fff; box-shadow: 0 2px 8px rgba(11,107,58,0.25); }
-    .st-mode-btn:not(.active) { color: #0B6B3A; background: #fff; }
-
-    .st-field { width: 100%; border: 1px solid #e2e5e2; border-radius: 10px; padding: 10px 13px; font-size: 13px; background: #fafbfa; transition: border-color 0.15s, box-shadow 0.15s; }
-    .st-field:focus { outline: none; border-color: #0B6B3A; box-shadow: 0 0 0 3px rgba(11,107,58,0.1); background: #fff; }
-
-    .receipt-drop { border: 2px dashed #d8e6dc; border-radius: 12px; padding: 18px; text-align: center; font-size: 12px; color: #8a8f8a; background: #FAFCFB; transition: border-color 0.15s; }
-    .receipt-drop:hover { border-color: #C9A227; }
-
-    .st-table-wrap { border-radius: 14px; overflow: hidden; border: 1px solid #f0f1f0; }
-    .st-table-wrap table thead tr { background: #FAFBFA; }
-    .st-table-wrap table th { font-size: 10px; font-weight: 800; letter-spacing: 0.05em; color: #9a9f9a; text-transform: uppercase; padding: 12px 16px; text-align: left; }
-    .st-table-wrap table td { padding: 13px 16px; border-top: 1px solid #f5f6f5; }
-    .st-table-wrap table tbody tr { transition: background 0.15s; }
-    .st-table-wrap table tbody tr:hover { background: #FAFCFB; }
-
-    .submit-btn { width: 100%; background: linear-gradient(135deg, #0B6B3A, #095430); color: #fff; font-weight: 800; padding: 13px; border-radius: 9999px; font-size: 13.5px; transition: transform 0.15s, box-shadow 0.15s; }
-    .submit-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(11,107,58,0.3); }
-</style>
+{% include "dashboard/_store_styles.html" %}
 
 <div class="st-hero">
     <div>
@@ -59,7 +11,7 @@
         <a href="{% url 'dashboard:store_inventory' %}" class="st-hero-btn"><i class="fa-solid fa-chart-simple mr-1"></i>Inventory</a>
         <a href="{% url 'dashboard:store_usage_logs' %}" class="st-hero-btn"><i class="fa-solid fa-list-check mr-1"></i>Usage Logs</a>
         <a href="{% url 'dashboard:stocktake_list' %}" class="st-hero-btn"><i class="fa-solid fa-clipboard-check mr-1"></i>Stock Takes</a>
-        <a href="{% url 'dashboard:store_expenditure_report' %}" class="st-hero-btn primary"><i class="fa-solid fa-file-pdf mr-1"></i>Expenditure Report</a>
+        <a href="{% url 'dashboard:store_expenditure_report' %}" class="st-hero-btn "><i class="fa-solid fa-file-pdf mr-1"></i>Expenditure Report</a>
     </div>
 </div>
 
@@ -133,29 +85,31 @@
     <div class="st-card">
         <h2><span class="icon-badge"><i class="fa-solid fa-chart-line"></i></span>Spend by Department</h2>
         <p class="text-[11px] text-gray-400 mb-3">Last 14 days</p>
-        <canvas id="spendChart" height="220"></canvas>
+        <div class="st-chart-box">
+            <canvas id="spendChart" height="220"></canvas>
+        </div>
     </div>
 </div>
 
 <div class="st-card">
     <h2><span class="icon-badge"><i class="fa-solid fa-clock-rotate-left"></i></span>Recent Purchases</h2>
     <div class="st-table-wrap overflow-x-auto">
-        <table class="w-full text-sm">
+        <table class="st-table w-full text-sm">
             <thead><tr>
                 <th>Date</th><th>Department</th><th>Item</th><th>Supplier</th><th>Qty</th><th>Total</th><th>By</th><th>Receipts</th><th></th>
             </tr></thead>
             <tbody>
                 {% for p in recent_purchases %}
                 <tr>
-                    <td class="text-gray-500">{{ p.purchased_at|date:"M d" }}</td>
-                    <td>{{ p.get_department_display }}</td>
-                    <td class="font-semibold">{{ p.stock_item.name }}</td>
-                    <td class="text-gray-500">{{ p.supplier.name|default:"—" }}</td>
-                    <td>{{ p.quantity }} {{ p.stock_item.unit }}</td>
-                    <td class="font-semibold">KSh {{ p.total_cost|floatformat:0 }}</td>
-                    <td class="text-gray-500">{{ p.purchased_by.get_full_name|default:p.purchased_by.username }}</td>
-                    <td>{% if p.receipts.count %}<i class="fa-solid fa-paperclip text-[#0B6B3A]"></i> {{ p.receipts.count }}{% else %}—{% endif %}</td>
-                    <td><a href="{% url 'dashboard:store_purchase_detail' p.id %}" class="text-[#0B6B3A] text-xs font-semibold hover:underline">View</a></td>
+                    <td data-label="Date" class="text-gray-500">{{ p.purchased_at|date:"M d" }}</td>
+                    <td data-label="Department">{{ p.get_department_display }}</td>
+                    <td data-label="Item" class="font-semibold">{{ p.stock_item.name }}</td>
+                    <td data-label="Supplier" class="text-gray-500">{{ p.supplier.name|default:"—" }}</td>
+                    <td data-label="Qty">{{ p.quantity }} {{ p.stock_item.unit }}</td>
+                    <td data-label="Total" class="font-semibold">KSh {{ p.total_cost|floatformat:0 }}</td>
+                    <td data-label="By" class="text-gray-500">{{ p.purchased_by.get_full_name|default:p.purchased_by.username }}</td>
+                    <td data-label="Receipts">{% if p.receipts.count %}<i class="fa-solid fa-paperclip text-[#0B6B3A]"></i> {{ p.receipts.count }}{% else %}—{% endif %}</td>
+                    <td data-label="Actions"><a href="{% url 'dashboard:store_purchase_detail' p.id %}" class="text-[#0B6B3A] text-xs font-semibold hover:underline">View</a></td>
                 </tr>
                 {% empty %}<tr><td colspan="9" class="p-10 text-center text-gray-400">No purchases logged yet.</td></tr>{% endfor %}
             </tbody>
@@ -215,7 +169,7 @@ document.addEventListener('DOMContentLoaded', function () {
     new Chart(document.getElementById('spendChart'), {
         type: 'line',
         data: { labels: {{ chart_labels|safe }}, datasets },
-        options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } }, scales: { y: { beginAtZero: true } } },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } }, scales: { y: { beginAtZero: true } } },
     });
 
     const toastContainer = document.getElementById('store-toast-container');

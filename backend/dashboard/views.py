@@ -988,14 +988,16 @@ def _usage_log_add(request, department):
         else:
             name = request.POST.get('custom_name', '').strip()
             unit = request.POST.get('custom_unit', '')
+            cost = request.POST.get('custom_unit_cost') or None
             if not name:
                 messages.error(request, "Enter a name for the item.")
                 return redirect(request.META.get('HTTP_REFERER', 'dashboard:home'))
-            
+
             DailyUsageItem.objects.create(
                 log=log,
                 custom_name=name,
                 custom_unit=unit,
+                custom_unit_cost=cost,
                 quantity=quantity,
                 added_by=request.user
             )
@@ -1897,10 +1899,12 @@ def store_usage_logs_view(request):
     chart_days = [(date_from + timezone.timedelta(days=i)) for i in range((today - date_from).days + 1)]
     daily_values = []
     for day in chart_days:
-        day_value = sum(
-            (float(i.quantity) * float(i.stock_item.last_unit_cost) if i.stock_item else 0)
-            for i in usage_items if i.log.date == day
-        )
+        day_value = 0
+        for i in usage_items:
+            if i.log.date != day:
+                continue
+            unit_cost = float(i.stock_item.last_unit_cost) if i.stock_item else float(i.custom_unit_cost or 0)
+            day_value += float(i.quantity) * unit_cost
         daily_values.append(round(day_value, 2))
 
     today_log, _ = DailyUsageLog.objects.get_or_create(department=dept, date=today)

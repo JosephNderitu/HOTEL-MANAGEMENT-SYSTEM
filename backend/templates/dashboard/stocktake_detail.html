@@ -1,5 +1,7 @@
 {% extends "dashboard/base_dashboard.html" %}
 {% block dashboard_content %}
+{% include "dashboard/_store_styles.html" %}
+
 <a href="{% url 'dashboard:stocktake_list' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; All Stock Takes</a>
 <div class="flex items-center justify-between mt-1 mb-6 flex-wrap gap-3">
     <h1 class="text-2xl font-bold text-black">{{ stock_take.get_department_display }} Stock Take — {{ stock_take.date }}</h1>
@@ -13,34 +15,36 @@
 <form method="post">
     {% csrf_token %}
     <div class="bg-white border border-gray-200 rounded-2xl overflow-hidden mb-5">
-        <table class="w-full text-sm">
-            <thead><tr class="text-left text-xs text-gray-500 uppercase border-b border-gray-200">
-                <th class="p-3">Item</th><th class="p-3">System Qty</th><th class="p-3">Counted Qty</th><th class="p-3">Variance</th><th class="p-3">Notes</th>
-            </tr></thead>
-            <tbody>
-                {% for line in lines %}
-                <tr class="border-b border-gray-100">
-                    <td class="p-3 font-semibold">{{ line.stock_item.name }} <span class="text-gray-400">({{ line.stock_item.get_unit_display }})</span></td>
-                    <td class="p-3 text-gray-500">{{ line.system_quantity|floatformat:"-2" }}</td>
-                    <td class="p-3">
-                        {% if stock_take.status == 'draft' %}
-                        <input type="number" step="0.01" name="counted_{{ line.id }}" value="{{ line.counted_quantity|default:'' }}" class="border border-[#0B6B3A] rounded-lg px-2 py-1 text-sm w-24">
-                        {% else %}{{ line.counted_quantity|floatformat:"-2" }}{% endif %}
-                    </td>
-                    <td class="p-3">
-                        {% if line.variance != None %}
-                        <span class="font-bold {% if line.variance < 0 %}text-red-600{% elif line.variance > 0 %}text-[#0B6B3A]{% else %}text-gray-400{% endif %}">{{ line.variance|floatformat:"-2" }}</span>
-                        {% else %}<span class="text-gray-300">—</span>{% endif %}
-                    </td>
-                    <td class="p-3">
-                        {% if stock_take.status == 'draft' %}
-                        <input type="text" name="notes_{{ line.id }}" value="{{ line.notes }}" placeholder="Optional" class="border border-gray-300 rounded-lg px-2 py-1 text-xs w-32">
-                        {% else %}{{ line.notes|default:"—" }}{% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <div class="overflow-x-auto">
+            <table class="st-table w-full text-sm">
+                <thead><tr class="text-left text-xs text-gray-500 uppercase border-b border-gray-200">
+                    <th class="p-3">Item</th><th class="p-3">System Qty</th><th class="p-3">Counted Qty</th><th class="p-3">Variance</th><th class="p-3">Notes</th>
+                </tr></thead>
+                <tbody>
+                    {% for line in lines %}
+                    <tr class="border-b border-gray-100">
+                        <td data-label="Item" class="p-3 font-semibold">{{ line.stock_item.name }} <span class="text-gray-400">({{ line.stock_item.get_unit_display }})</span></td>
+                        <td data-label="System Qty" class="p-3 text-gray-500">{{ line.system_quantity|floatformat:"-2" }}</td>
+                        <td data-label="Counted Qty" class="p-3">
+                            {% if stock_take.status == 'draft' %}
+                            <input type="number" step="0.01" name="counted_{{ line.id }}" value="{{ line.counted_quantity|default:'' }}" class="border border-[#0B6B3A] rounded-lg px-2 py-1 text-sm w-24">
+                            {% else %}{{ line.counted_quantity|floatformat:"-2" }}{% endif %}
+                        </td>
+                        <td data-label="Variance" class="p-3">
+                            {% if line.variance != None %}
+                            <span class="font-bold {% if line.variance < 0 %}text-red-600{% elif line.variance > 0 %}text-[#0B6B3A]{% else %}text-gray-400{% endif %}">{{ line.variance|floatformat:"-2" }}</span>
+                            {% else %}<span class="text-gray-300">—</span>{% endif %}
+                        </td>
+                        <td data-label="Notes" class="p-3">
+                            {% if stock_take.status == 'draft' %}
+                            <input type="text" name="notes_{{ line.id }}" value="{{ line.notes }}" placeholder="Optional" class="border border-gray-300 rounded-lg px-2 py-1 text-xs w-32">
+                            {% else %}{{ line.notes|default:"—" }}{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
     {% if stock_take.status == 'draft' %}
     <div class="flex gap-3">

@@ -102,6 +102,7 @@ class DailyUsageItem(models.Model):
     added_at = models.DateTimeField(auto_now_add=True)
     is_locked = models.BooleanField(default=False)
     confirmed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name='usage_items_confirmed')
+    custom_unit_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="Cost per unit for items not in the stock catalog")
     confirmed_at = models.DateTimeField(null=True, blank=True)
 
     @property

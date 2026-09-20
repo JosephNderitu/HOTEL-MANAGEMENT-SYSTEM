@@ -1,5 +1,7 @@
 {% extends "dashboard/base_dashboard.html" %}
 {% block dashboard_content %}
+{% include "dashboard/_store_styles.html" %}
+
 <a href="{% url 'dashboard:store' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; Store</a>
 <h1 class="text-2xl font-bold text-black mt-1 mb-6">Expenditure Report</h1>
 
@@ -19,14 +21,21 @@
 {% for dept, data in summary.items %}
 <div class="bg-white border border-gray-200 rounded-2xl p-5 mb-4">
     <h2 class="font-bold text-black text-sm mb-3">{{ data.label }} — KSh {{ data.total_incl|floatformat:0 }}</h2>
-    <table class="w-full text-sm">
-        <thead><tr class="text-xs text-gray-500 uppercase text-left border-b border-gray-100"><th class="py-2">Item</th><th>Qty</th><th>Unit Cost</th><th>Total</th></tr></thead>
-        <tbody>
-        {% for p in data.items %}
-        <tr class="border-b border-gray-50"><td class="py-2">{{ p.stock_item.name }}</td><td>{{ p.quantity }}</td><td>{{ p.unit_cost|floatformat:0 }}</td><td>{{ p.total_cost|floatformat:0 }}</td></tr>
-        {% endfor %}
-        </tbody>
-    </table>
+    <div class="overflow-x-auto">
+        <table class="st-table w-full text-sm">
+            <thead><tr class="text-xs text-gray-500 uppercase text-left border-b border-gray-100"><th class="py-2">Item</th><th>Qty</th><th>Unit Cost</th><th>Total</th></tr></thead>
+            <tbody>
+            {% for p in data.items %}
+            <tr class="border-b border-gray-50">
+                <td data-label="Item" class="py-2">{{ p.stock_item.name }}</td>
+                <td data-label="Qty">{{ p.quantity }}</td>
+                <td data-label="Unit Cost">{{ p.unit_cost|floatformat:0 }}</td>
+                <td data-label="Total">{{ p.total_cost|floatformat:0 }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 {% empty %}<p class="text-gray-400 text-center py-14">No purchases in this range.</p>{% endfor %}
 {% endblock %}

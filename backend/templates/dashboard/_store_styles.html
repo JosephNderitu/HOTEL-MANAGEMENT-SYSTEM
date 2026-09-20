@@ -1,0 +1,41 @@
+<style>
+    .st-hero { background: linear-gradient(135deg, #0B6B3A 0%, #095430 60%, #073d24 100%); border-radius: 20px; padding: 22px 24px; color: #fff; position: relative; overflow: hidden; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; margin-bottom: 22px; }
+    .st-hero h1 { font-size: 19px; font-weight: 800; }
+    .st-hero .sub { color: rgba(255,255,255,0.65); font-size: 11.5px; margin-top: 3px; display: flex; align-items: center; gap: 6px; }
+    .st-hero-btn { background: rgba(255,255,255,0.95); color: #0B6B3A; font-weight: 700; font-size: 12px; padding: 9px 16px; border-radius: 9999px; transition: all 0.2s; white-space: nowrap; }
+    .st-hero-btn:hover { background: #C9A227; color: #000; }
+    .st-hero-btn.primary { background: #C9A227; color: #000; }
+
+    .st-stat { background: #fff; border: 1px solid #eef0ee; border-radius: 16px; padding: 16px 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); position: relative; }
+    .st-stat::before { content: ''; position: absolute; top: 0; left: 18px; right: 18px; height: 3px; border-radius: 0 0 3px 3px; background: linear-gradient(90deg, #0B6B3A, #C9A227); }
+    .st-stat .num { font-size: 22px; font-weight: 800; color: #0B6B3A; }
+    .st-stat .lbl { font-size: 10px; color: #9a9f9a; text-transform: uppercase; letter-spacing: 0.04em; }
+
+    .st-card { background: #fff; border: 1px solid #eef0ee; border-radius: 18px; padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.03); }
+    .st-card h2 { font-size: 13px; font-weight: 800; display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+    .st-card h2 .icon-badge { width: 24px; height: 24px; border-radius: 8px; background: #FEF9EC; color: #C9A227; display: flex; align-items: center; justify-content: center; font-size: 10px; flex-shrink: 0; }
+
+    .st-mode-btn { flex: 1; font-size: 11px; font-weight: 700; padding: 8px; border-radius: 9999px; border: 1.5px solid #0B6B3A; cursor: pointer; text-align: center; }
+    .st-mode-btn.active { background: #0B6B3A; color: #fff; }
+    .st-mode-btn:not(.active) { color: #0B6B3A; background: #fff; }
+
+    .st-field { width: 100%; border: 1px solid #e2e5e2; border-radius: 10px; padding: 9px 12px; font-size: 12.5px; background: #fafbfa; }
+    .st-field:focus { outline: none; border-color: #0B6B3A; box-shadow: 0 0 0 3px rgba(11,107,58,0.1); background: #fff; }
+
+    .submit-btn { width: 100%; background: linear-gradient(135deg, #0B6B3A, #095430); color: #fff; font-weight: 800; padding: 12px; border-radius: 9999px; font-size: 13px; }
+
+    /* Chart containers: fixed, controlled height so Chart.js never fights the layout on small screens */
+    .st-chart-box { position: relative; width: 100%; height: 220px; }
+    @media (min-width: 768px) { .st-chart-box { height: 280px; } }
+    .st-chart-box canvas { max-width: 100% !important; }
+
+    /* Responsive table -> stacked cards below 780px, reused from Reception's pattern */
+    .st-table thead { display: table-header-group; }
+    @media (max-width: 780px) {
+        .st-table thead { display: none; }
+        .st-table, .st-table tbody, .st-table tr, .st-table td { display: block; width: 100%; }
+        .st-table tr { border: 1px solid #f0f1f0; border-radius: 12px; margin-bottom: 10px; padding: 4px 0; }
+        .st-table td { border-top: none !important; display: flex; justify-content: space-between; gap: 10px; text-align: right; padding: 8px 14px; }
+        .st-table td::before { content: attr(data-label); font-weight: 700; color: #9a9f9a; font-size: 10px; text-transform: uppercase; text-align: left; }
+    }
+</style>
