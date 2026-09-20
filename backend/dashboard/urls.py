@@ -78,6 +78,9 @@ urlpatterns = [
     path('bar/order/<int:order_id>/payment/', views.bar_record_payment, name='bar_record_payment'),
     path('bar/wastage/', views.bar_wastage_log, name='bar_wastage'),
     path('bar/export-pdf/', views.bar_export_pdf, name='bar_export_pdf'),
+    
+    path('restaurant/revenue-trend/', views.restaurant_revenue_trend, name='restaurant_revenue_trend'),
+    path('bar/revenue-trend/', views.bar_revenue_trend, name='bar_revenue_trend'),
         
     path('gate/', views.gate_view, name='gate'),
     path('gate/exit/<int:log_id>/', views.gate_log_exit, name='gate_log_exit'),

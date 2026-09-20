@@ -2,61 +2,203 @@
 <!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <style>
-    @page { size: A4 landscape; margin: 20mm 15mm; @bottom-right { content: "Page " counter(page) " of " counter(pages); font-family: 'Liberation Serif', serif; font-size: 10px; color: #666; } }
+    @page { size: A4 landscape; margin: 18mm 14mm;
+        @bottom-right { content: "Page " counter(page) " of " counter(pages); font-family: 'Liberation Serif', serif; font-size: 9.5px; color: #666; }
+        @bottom-left  { content: "Queens Garden Hotel — Bar"; font-family: 'Liberation Serif', serif; font-size: 9.5px; color: #999; }
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Liberation Serif', 'Times New Roman', serif; font-size: 12px; color: #111; }
-    .header { display: flex; align-items: center; gap: 14px; border-bottom: 2px solid #0B6B3A; padding-bottom: 12px; margin-bottom: 10px; }
-    .header img { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; }
+    body { font-family: 'Liberation Serif', 'Times New Roman', serif; font-size: 11.5px; color: #111; }
+
+    .header { display: flex; align-items: center; gap: 14px; border-bottom: 2px solid #0B6B3A; padding-bottom: 10px; margin-bottom: 8px; }
+    .header img { width: 46px; height: 46px; border-radius: 50%; object-fit: cover; }
     .header h1 { font-size: 16px; font-weight: bold; color: #0B6B3A; }
-    .meta { font-size: 10.5px; color: #555; margin-bottom: 14px; display: flex; justify-content: space-between; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
-    th { background: #0B6B3A; color: white; font-size: 12px; text-align: left; padding: 8px 10px; }
-    td { font-size: 11.5px; padding: 6px 10px; border-bottom: 1px solid #ddd; }
-    tr:nth-child(even) td { background: #f7f7f5; }
-    .summary { width: 320px; margin-left: auto; }
-    .summary td { padding: 5px 10px; }
-    .summary .total-row td { font-weight: bold; border-top: 2px solid #0B6B3A; font-size: 14px; }
+    .header .sub { font-size: 10px; color: #666; margin-top: 2px; }
+
+    .meta { font-size: 10px; color: #555; margin-bottom: 12px; display: flex; justify-content: space-between; }
+    .basis { background: #f3f7f4; border-left: 3px solid #0B6B3A; padding: 7px 10px; font-size: 10px; color: #334; margin-bottom: 14px; }
+
+    .day { break-inside: avoid; margin-bottom: 14px; }
+    .day-head { background: #0B6B3A; color: #fff; padding: 6px 10px; font-size: 12px; font-weight: bold;
+                display: flex; justify-content: space-between; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #eef2ef; color: #0B6B3A; font-size: 10px; text-align: left; padding: 5px 8px; border-bottom: 1px solid #cfd8d2; }
+    td { font-size: 10.5px; padding: 5px 8px; border-bottom: 1px solid #e8e8e6; vertical-align: top; }
+    tbody tr:nth-child(even) td { background: #fafaf9; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .items { color: #444; font-size: 9.5px; }
+    .late { color: #a15c00; font-size: 9.5px; }
+    .subtotal td { font-weight: bold; border-top: 1px solid #0B6B3A; background: #fff !important; }
+
+    h2.section { font-size: 12.5px; color: #0B6B3A; margin: 18px 0 6px; border-bottom: 1px solid #cfd8d2; padding-bottom: 3px; }
+
+    .totals-wrap { display: flex; gap: 16px; margin-top: 18px; break-inside: avoid; }
+    .totals { flex: 1; }
+    .totals td { padding: 4px 8px; }
+    .totals .total-row td { font-weight: bold; border-top: 2px solid #0B6B3A; font-size: 13px; }
+
+    .money-grid { width:100%; border-collapse:collapse; margin-top:18px; }
+    .money-grid > tbody > tr > td { vertical-align:top; padding:0; width:50%; }
+    .money-panel { border:1px solid #cfd8d2; border-radius:8px; padding:14px 16px; }
+    .money-panel h3 { font-size:11.5px; color:#0B6B3A; margin-bottom:10px; font-weight:bold; }
+    .money-panel .row { display:flex; justify-content:space-between; font-size:10.5px; padding:5px 0;
+                        border-bottom:1px dashed #e3e3e1; }
+    .money-panel .row:last-of-type { border-bottom:none; }
+    .money-panel .row .lbl { color:#333; }
+    .money-panel .row .val { font-variant-numeric:tabular-nums; font-weight:bold; }
+    .money-final { border-top:2px solid #0B6B3A; margin-top:6px; padding-top:8px;
+                   display:flex; justify-content:space-between; align-items:baseline; }
+    .money-final .lbl { font-size:11.5px; font-weight:bold; color:#111; }
+    .money-final .amt { font-size:19px; font-weight:bold; }
+    .money-final .amt.pos { color:#0B6B3A; }
+    .money-final .amt.neg { color:#b91c1c; }
+    .money-note { font-size:9px; color:#888; margin-top:9px; line-height:1.45; }
+    .warn-box { background:#fff7ed; border:1px solid #fdba74; border-left:3px solid #ea580c;
+               border-radius:6px; padding:8px 10px; font-size:9.5px; color:#7c2d12; margin-top:10px; line-height:1.45; }
+
+    .foot { font-size: 9.5px; color: #888; border-top: 1px solid #ddd; padding-top: 7px; margin-top: 16px; }
 </style></head>
 <body>
-    <div class="header">
-        <img src="{% static 'img/queens_Garden_Logo.jpg' %}">
-        <div><h1>Queens Garden Hotel — Bar Sales Report</h1></div>
-    </div>
-    <div class="meta">
-        <span>Generated by {{ generated_by }} on {{ generated_at|date:"F j, Y, H:i" }}{% if date_from %} · From: {{ date_from }}{% endif %}{% if date_to %} · To: {{ date_to }}{% endif %}</span>
-        <span>{{ orders|length }} order(s)</span>
-    </div>
-        <table>
-            <thead><tr>
-                <th>Order</th><th>Tab</th><th>Served By</th><th>Items</th><th>Date</th>
-                <th>Cost</th><th>Total (KSh)</th><th>Profit</th><th>Paid</th><th>Method</th>
-            </tr></thead>
-            <tbody>
-                {% for order in orders %}
-                <tr>
-                    <td>#{{ order.id }}</td>
-                    <td>{{ order.bar_tab.customer_name|default:"—" }}</td>
-                    <td>{% with p=order.payments.first %}{{ p.received_by.get_full_name|default:p.received_by.username|default:"—" }}{% endwith %}</td>
-                    <td>{% for item in order.items.all %}{% if not item.is_cancelled %}{{ item.quantity }}x {{ item.menu_item.name }}{% if not forloop.last %}, {% endif %}{% endif %}{% endfor %}</td>
-                    <td>{{ order.created_at|date:"M d, H:i" }}</td>
-                    <td>{{ order.total_cost|default_if_none:"—"|floatformat:0 }}</td>
-                    <td>{{ order.total_amount|floatformat:0 }}</td>
-                    <td>{{ order.total_profit|default_if_none:"—"|floatformat:0 }}</td>
-                    <td>{{ order.amount_paid|floatformat:0 }}</td>
-                    <td>{% with p=order.payments.first %}{{ p.get_method_display|default:"Unpaid" }}{% endwith %}</td>
-                </tr>
-                {% empty %}<tr><td colspan="10" style="text-align:center;color:#888;">No orders in this range.</td></tr>{% endfor %}
-            </tbody>
-        </table>
 
-        <table class="summary">
-            <tr><td>Subtotal (excl. VAT)</td><td>KSh {{ subtotal_excl_vat|floatformat:2 }}</td></tr>
-            <tr><td>VAT (16%)</td><td>KSh {{ vat_amount|floatformat:2 }}</td></tr>
-            <tr class="total-row"><td>Total Sales (incl. VAT)</td><td>KSh {{ grand_total|floatformat:2 }}</td></tr>
-            <tr><td>Cost of Goods Sold</td><td>KSh {{ total_cost|floatformat:2 }}</td></tr>
-            <tr class="total-row"><td>Gross Profit</td><td>KSh {{ total_profit|floatformat:2 }} ({{ margin_pct|floatformat:1 }}%)</td></tr>
-            <tr><td>Amount Collected</td><td>KSh {{ total_paid|floatformat:2 }}</td></tr>
-            <tr><td>Outstanding</td><td>KSh {{ total_outstanding|floatformat:2 }}</td></tr>
-        </table>
-    <p style="font-size:10px;color:#888;border-top:1px solid #ddd;padding-top:8px;">Confidential — for internal use by Queens Garden Hotel management only.</p>
+<div class="header">
+    <img src="{% static 'img/queens_Garden_Logo.jpg' %}">
+    <div>
+        <h1>Queens Garden Hotel — Bar Sales Report</h1>
+        <p class="sub">Bar tabs only. Restaurant, kitchen and room accounts are reported separately.</p>
+    </div>
+</div>
+
+<div class="meta">
+    <span>Generated by {{ generated_by }} on {{ generated_at|date:"F j, Y, H:i" }}</span>
+    <span>{{ date_from|date:"D, j M Y" }} &ndash; {{ date_to|date:"D, j M Y" }} · {{ payment_count }} payment{{ payment_count|pluralize }} over {{ days|length }} day{{ days|length|pluralize }}</span>
+</div>
+
+<div class="basis">
+    Figures below are <strong>money received</strong>, grouped by the day it was collected. A tab opened earlier but
+    settled inside this range appears on its settlement day and is marked accordingly, so this report reconciles with
+    the daily earnings shown on the bar dashboard.
+</div>
+
+{% for day in days %}
+<div class="day">
+    <div class="day-head">
+        <span>{{ day.date|date:"l, j F Y" }}</span>
+        <span>KSh {{ day.total|floatformat:0 }} collected · {{ day.payments|length }} payment{{ day.payments|length|pluralize }}</span>
+    </div>
+    <table>
+        <thead><tr>
+            <th style="width:6%">Order</th>
+            <th style="width:14%">Tab</th>
+            <th style="width:28%">Drinks</th>
+            <th style="width:11%">Order placed</th>
+            <th style="width:8%">Received at</th>
+            <th style="width:11%">Method</th>
+            <th style="width:12%">Received by</th>
+            <th style="width:10%" class="num">Amount (KSh)</th>
+        </tr></thead>
+        <tbody>
+            {% for p in day.payments %}
+            <tr>
+                <td>#{{ p.order.id }}</td>
+                <td>{{ p.order.bar_tab.customer_name|default:"—" }}</td>
+                <td class="items">{% for item in p.order.items.all %}{% if not item.is_cancelled %}{{ item.quantity }}x {{ item.menu_item.name }}{% if not forloop.last %}, {% endif %}{% endif %}{% endfor %}</td>
+                <td>
+                    {{ p.order.created_at|date:"M j, H:i" }}
+                    {% if p.order.created_at|date:"Y-m-d" != p.created_at|date:"Y-m-d" %}<br><span class="late">settled late</span>{% endif %}
+                </td>
+                <td>{{ p.created_at|date:"H:i" }}</td>
+                <td>{{ p.get_method_display }}{% if p.reference %}<br><span class="items">{{ p.reference }}</span>{% endif %}</td>
+                <td>{{ p.received_by.get_full_name|default:p.received_by.username }}</td>
+                <td class="num">{{ p.amount|floatformat:0 }}</td>
+            </tr>
+            {% endfor %}
+            <tr class="subtotal">
+                <td colspan="7">Collected on {{ day.date|date:"D, j M" }}</td>
+                <td class="num">{{ day.total|floatformat:0 }}</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+{% empty %}
+<p style="text-align:center;color:#888;padding:28px 0;">No payments were collected in this range.</p>
+{% endfor %}
+
+{% if unpaid_orders %}
+<h2 class="section">Still outstanding — bar orders placed in this range that aren't fully paid</h2>
+<table>
+    <thead><tr>
+        <th style="width:8%">Order</th><th style="width:24%">Tab</th><th style="width:18%">Placed</th>
+        <th style="width:16%" class="num">Total (KSh)</th><th style="width:16%" class="num">Paid</th><th style="width:18%" class="num">Balance</th>
+    </tr></thead>
+    <tbody>
+        {% for o in unpaid_orders %}
+        <tr>
+            <td>#{{ o.id }}</td>
+            <td>{{ o.bar_tab.customer_name|default:"—" }}</td>
+            <td>{{ o.created_at|date:"D, j M H:i" }}</td>
+            <td class="num">{{ o.total_amount|floatformat:0 }}</td>
+            <td class="num">{{ o.amount_paid|floatformat:0 }}</td>
+            <td class="num" style="color:#b91c1c;font-weight:bold;">{{ o.balance_due|floatformat:0 }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="subtotal">
+            <td colspan="5">Total outstanding</td>
+            <td class="num">{{ total_outstanding|floatformat:0 }}</td>
+        </tr>
+    </tbody>
+</table>
+{% endif %}
+
+<table class="money-grid"><tr>
+
+<td style="padding-right:14px;">
+    <div class="money-panel">
+        <h3>Money collected, by payment type</h3>
+        {% for method, amount in method_totals.items %}
+        <div class="row"><span class="lbl">{{ method }}</span><span class="val">KSh {{ amount|floatformat:2 }}</span></div>
+        {% empty %}
+        <p style="color:#888;font-size:10px;">Nothing was collected in this range.</p>
+        {% endfor %}
+        <div class="row"><span class="lbl">Change handed back to customers</span><span class="val">KSh {{ total_change|floatformat:2 }}</span></div>
+        <div class="row"><span class="lbl">Average collected per day</span><span class="val">KSh {{ daily_average|floatformat:2 }}</span></div>
+        <div class="money-final">
+            <span class="lbl">Total collected</span>
+            <span class="amt pos">KSh {{ grand_total|floatformat:2 }}</span>
+        </div>
+        <p class="money-note">
+            This total already has the 16% sales tax built in. Of every KSh {{ grand_total|floatformat:0 }} collected,
+            KSh {{ vat_amount|floatformat:2 }} is tax owed to the government and
+            KSh {{ subtotal_excl_vat|floatformat:2 }} is the hotel's own sale price.
+        </p>
+    </div>
+</td>
+
+<td style="padding-left:14px;">
+    <div class="money-panel">
+        <h3>What the bar made (gross profit)</h3>
+        <div class="row"><span class="lbl">Drinks sold and fully paid for</span><span class="val">KSh {{ settled_order_value|floatformat:2 }}</span></div>
+        <div class="row"><span class="lbl">− What those drinks cost to buy in</span><span class="val">KSh {{ total_cost|floatformat:2 }}</span></div>
+        <div class="money-final">
+            <span class="lbl">= Gross profit</span>
+            <span class="amt {% if total_profit < 0 %}neg{% else %}pos{% endif %}">
+                KSh {{ total_profit|floatformat:2 }} ({{ margin_pct|floatformat:1 }}%)
+            </span>
+        </div>
+        {% if total_cost > settled_order_value %}
+        <div class="warn-box">
+            <strong>Why this number looks small or negative:</strong> at least one tab counted in this range was
+            only part-paid. The full cost of its drinks is counted here even though the hotel hasn't collected
+            all the money for it yet. Profit for these same orders will look correct once every tab is fully settled.
+        </div>
+        {% endif %}
+        <p class="money-note">
+            Gross profit is what's left after paying for the drinks themselves. It does not yet subtract staff
+            wages, rent, or other running costs.
+        </p>
+    </div>
+</td>
+
+</tr></table>
+
+<p class="foot">Confidential — for internal use by Queens Garden Hotel management only. Menu prices are VAT-inclusive at 16%.</p>
 </body></html>

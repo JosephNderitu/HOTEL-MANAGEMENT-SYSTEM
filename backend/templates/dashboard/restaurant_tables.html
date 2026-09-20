@@ -27,12 +27,53 @@
     </div>
 </div>
 
+{# NEW #}
 {% if messages %}
 {% for message in messages %}
-<div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-5">
-    {{ message }}
-</div>
+    {% if 'swal' not in message.extra_tags %}
+    <div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-5">
+        {{ message }}
+    </div>
+    {% endif %}
 {% endfor %}
+{% endif %}
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+{# NEW #}
+{% if messages %}
+<script>
+(function () {
+    const alerts = [
+        {% for message in messages %}
+        {% if 'swal-error' in message.extra_tags %}
+        { icon: 'error', title: "Not this department's order", text: "{{ message|escapejs }}" },
+        {% elif 'swal-warning' in message.extra_tags %}
+        { icon: 'warning', title: 'Order not ready', text: "{{ message|escapejs }}" },
+        {% endif %}
+        {% endfor %}
+    ];
+    if (!alerts.length) return;
+
+    const loader = window.ensureLib || function (g, src) {
+        return new Promise(function (resolve, reject) {
+            if (window[g]) return resolve();
+            const s = document.createElement("script");
+            s.src = src; s.async = true; s.onload = resolve; s.onerror = reject;
+            document.head.appendChild(s);
+        });
+    };
+
+    loader("Swal", "https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js")
+        .then(function () {
+            alerts.forEach(function (a, i) {
+                setTimeout(function () {
+                    Swal.fire(Object.assign({ confirmButtonColor: '#0B6B3A' }, a));
+                }, i * 300);
+            });
+        })
+        .catch(function () { alerts.forEach(function (a) { alert(a.title + "\n\n" + a.text); }); });
+})();
+</script>
 {% endif %}
 
 <!-- Earnings -->
@@ -55,7 +96,7 @@
     </div>
     <div class="rst-stat">
         <p class="text-[11px] text-gray-500 uppercase mb-1">Bank</p>
-        <p class="text-lg font-bold text-black">KSh {{ revenue_by_method.bank_equity|add:revenue_by_method.bank_family|add:revenue_by_method.bank_coop|floatformat:0 }}</p>
+        <p class="text-lg font-bold text-black">KSh {{ bank_total|floatformat:0 }}</p>
     </div>
     <div class="rst-stat flex flex-col justify-center">
         <form method="get" action="{% url 'dashboard:restaurant_export_pdf' %}" class="flex flex-col gap-1">
@@ -65,6 +106,8 @@
         </form>
     </div>
 </div>
+
+{% include "dashboard/_revenue_trend.html" with trend_url=trend_url trend_label="Restaurant earnings trend" trend_id="rstTrend" %}
 
 <!-- Tables -->
 <h2 class="font-bold text-black mb-3 mt-8">Tables</h2>
@@ -85,7 +128,7 @@
         <form method="post" action="{% url 'dashboard:restaurant_set_table_status' table.id 'needs_cleaning' %}" class="mt-1">
             {% csrf_token %}
             <button type="submit" class="w-full text-[10px] text-gray-400 hover:text-blue-500 py-1">Mark Needs Cleaning</button>
-        </form>
+        </a>
         {% else %}
         <form method="post" action="{% url 'dashboard:restaurant_set_table_status' table.id 'available' %}" class="mt-1">
             {% csrf_token %}

@@ -58,7 +58,6 @@ class GateLog(models.Model):
     def __str__(self):
         return f"{self.guest_name} — {self.plate_number} ({self.get_status_display()})"
 
-
 class Payment(models.Model):
     METHOD_CHOICES = [
         ('cash', 'Cash'),

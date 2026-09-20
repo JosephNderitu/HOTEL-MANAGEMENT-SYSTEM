@@ -35,7 +35,7 @@ from .services import *
 
 from decimal import Decimal
 from django.urls import reverse
-from datetime import datetime
+from datetime import datetime, time
 from .permissions import can_manage_bookings_from_rooms
 
 from datetime import datetime
@@ -189,13 +189,13 @@ def reception_booking_action(request, booking_id, action):
         available_room.save(update_fields=['status'])
         booking.assigned_room = available_room
 
-        if action == 'check-out':
-            if booking.total_balance_due > 0:
-                messages.error(request, f"Cannot check out {booking.guest_name}, outstanding balance of KSh {booking.total_balance_due:,.0f} (including room service) must be paid first.")
-                return redirect('dashboard:reception')
-            if booking.assigned_room:
-                booking.assigned_room.status = 'cleaning'
-                booking.assigned_room.save(update_fields=['status'])
+    if action == 'check-out':
+        if booking.total_balance_due > 0:
+            messages.error(request, f"Cannot check out {booking.guest_name}, outstanding balance of KSh {booking.total_balance_due:,.0f} (including room service) must be paid first.")
+            return redirect('dashboard:reception')
+        if booking.assigned_room:
+            booking.assigned_room.status = 'cleaning'
+            booking.assigned_room.save(update_fields=['status'])
 
     booking.status = new_status
     booking.save()
@@ -554,14 +554,21 @@ def room_report_issue(request, room_id):
         messages.error(request, "Describe the issue before submitting.")
         return redirect('dashboard:rooms')
 
-    MaintenanceRequest.objects.create(
-        room=room,
-        issue=issue,
-        description=request.POST.get('description', '').strip(),
-        priority=request.POST.get('priority', 'medium'),
-        reported_by=request.user,
-    )
-    messages.success(request, f"Issue reported for Room {room.number}. Room marked under Maintenance.")
+    # NEW
+    with transaction.atomic():
+        MaintenanceRequest.objects.create(
+            room=room,
+            issue=issue,
+            description=request.POST.get('description', '').strip(),
+            priority=request.POST.get('priority', 'medium'),
+            reported_by=request.user,
+        )
+        if room.status == 'occupied':
+            messages.warning(request, f"Room {room.number} has a guest in it, so it stays Occupied. It will need attention at checkout.")
+        else:
+            room.status = 'maintenance'
+            room.save(update_fields=['status'])
+            messages.success(request, f"Issue reported. Room {room.number} is now under Maintenance.")
     return redirect('dashboard:rooms')
 
 @staff_module_required('rooms')
@@ -661,9 +668,18 @@ def maintenance_resolve(request, request_id):
     req.status = 'resolved'
     req.resolved_by = request.user
     req.resolved_at = timezone.now()
+    # NEW
     req.save(update_fields=['status', 'resolved_by', 'resolved_at'])
 
-    messages.success(request, f"Resolved. Room {req.room.number} moved to Cleaning before it's marked Available.")
+    still_open = req.room.maintenance_requests.filter(status__in=['open', 'in_progress']).exists()
+    if not still_open and req.room.status == 'maintenance':
+        req.room.status = 'cleaning'
+        req.room.save(update_fields=['status'])
+        messages.success(request, f"Resolved. Room {req.room.number} moved to Cleaning before it can go Available.")
+    elif still_open:
+        messages.success(request, f"Resolved. Room {req.room.number} still has other open issues, so it stays under Maintenance.")
+    else:
+        messages.success(request, "Resolved.")
     return redirect('dashboard:maintenance_list')
 
 @staff_module_required('rooms')
@@ -727,14 +743,20 @@ def restaurant_tables_view(request):
     tables = Table.objects.all().order_by('number')
     today = timezone.localdate()
 
-    restaurant_payments = Payment.objects.filter(order__room_booking__isnull=True, created_at__date=today)
+    # NEW
+    restaurant_payments = Payment.objects.filter(
+        order__room_booking__isnull=True, order__bar_tab__isnull=True, created_at__date=today
+    )
     today_revenue = restaurant_payments.aggregate(total=Sum('amount'))['total'] or 0
     revenue_by_method = {
         code: restaurant_payments.filter(method=code).aggregate(total=Sum('amount'))['total'] or 0
         for code, _ in Payment.METHOD_CHOICES
     }
 
-    offsite_qs = Order.objects.filter(room_booking__isnull=True, table__isnull=True, status='confirmed').prefetch_related('items__menu_item').order_by('-created_at')
+    # NEW
+    offsite_qs = Order.objects.filter(
+        room_booking__isnull=True, table__isnull=True, bar_tab__isnull=True, status='confirmed'
+    ).prefetch_related('items__menu_item').order_by('-created_at')
     offsite_open_orders = [o for o in offsite_qs if o.balance_due > 0]
     waiting_count = WaitlistEntry.objects.filter(status='waiting').count()
 
@@ -744,6 +766,10 @@ def restaurant_tables_view(request):
         'revenue_by_method': revenue_by_method,
         'offsite_open_orders': offsite_open_orders,
         'waiting_count': waiting_count,
+        'bank_total': (revenue_by_method.get('bank_equity', 0)
+                       + revenue_by_method.get('bank_family', 0)
+                       + revenue_by_method.get('bank_coop', 0)),
+        'trend_url': reverse('dashboard:restaurant_revenue_trend')
     })
 
 @staff_module_required('restaurant_kitchen')
@@ -1090,12 +1116,21 @@ def restaurant_advance_item(request, item_id, new_status):
 VAT_RATE = Decimal('0.16')  # menu prices are treated as VAT-inclusive
 
 
+# NEW
 @staff_module_required('restaurant_kitchen')
 def restaurant_record_payment(request, order_id):
-    order = get_object_or_404(Order, id=order_id, room_booking__isnull=True)
+    order = get_object_or_404(Order, id=order_id)
+
+    if order.room_booking_id or order.bar_tab_id:
+        messages.error(
+            request,
+            "This order belongs to another department and can't be settled from Restaurant & Kitchen.",
+            extra_tags='swal-error',
+        )
+        return redirect('dashboard:restaurant_kitchen')
 
     if not order.is_fully_served:
-        messages.error(request, "This order can't be paid yet, every item must be marked Served first.")
+        messages.error(request, _order_not_served_message(order), extra_tags='swal-warning')
         return redirect('dashboard:restaurant_kitchen')
     
     if request.method == 'POST':
@@ -1115,7 +1150,6 @@ def restaurant_record_payment(request, order_id):
 
     return render(request, 'dashboard/restaurant_payment.html', {'form': form, 'order': order})
 
-
 @staff_module_required('restaurant_kitchen')
 def restaurant_new_offsite_order(request):
     food_items = MenuItem.objects.filter(item_type='food', is_available=True).select_related('stock_item').prefetch_related('images')
@@ -1123,7 +1157,6 @@ def restaurant_new_offsite_order(request):
     menu_items = [i for i in list(food_items) + list(kitchen_drinks) if i.is_in_stock]
     categories = sorted(set(i.category for i in menu_items if i.category))
     return render(request, 'dashboard/restaurant_offsite_order.html', {'menu_items': menu_items, 'categories': categories})
-
 
 @staff_module_required('restaurant_kitchen')
 def restaurant_create_offsite_order(request):
@@ -1256,6 +1289,16 @@ def restaurant_split_order(request, order_id):
     order = get_object_or_404(Order, id=order_id)
     active_items = order.items.filter(is_cancelled=False)
 
+    # NEW
+    if order.payments.exists():
+        messages.error(
+            request,
+            f"Order #{order.id} already has a payment against it and can't be split. "
+            "Cancel and re-enter the items if the bill needs to be divided.",
+            extra_tags='swal-error',
+        )
+        return redirect('dashboard:restaurant_kitchen')
+
     if request.method == 'POST':
         selected_ids = request.POST.getlist('item_ids')
         if not selected_ids:
@@ -1292,7 +1335,6 @@ def restaurant_waitlist_view(request):
     waiting = WaitlistEntry.objects.filter(status='waiting').order_by('created_at')
     return render(request, 'dashboard/restaurant_waitlist.html', {'waiting': waiting})
 
-
 @staff_module_required('restaurant_kitchen')
 def restaurant_waitlist_seat(request, entry_id):
     if request.method != 'POST':
@@ -1304,7 +1346,6 @@ def restaurant_waitlist_seat(request, entry_id):
     messages.success(request, f"{entry.guest_name} seated. Open their table to start the order.")
     return redirect('dashboard:restaurant_waitlist')
 
-
 @staff_module_required('restaurant_kitchen')
 def restaurant_waitlist_cancel(request, entry_id):
     if request.method != 'POST':
@@ -1314,40 +1355,110 @@ def restaurant_waitlist_cancel(request, entry_id):
     entry.save(update_fields=['status'])
     return redirect('dashboard:restaurant_waitlist')
 
+def _group_payments_by_day(payments):
+    """Cash basis: bucket payments by the local date the money was received."""
+    days = {}
+    for p in payments:
+        d = timezone.localtime(p.created_at).date()
+        bucket = days.setdefault(d, {'date': d, 'payments': [], 'total': Decimal('0'), 'by_method': {}})
+        bucket['payments'].append(p)
+        bucket['total'] += p.amount
+        label = p.get_method_display()
+        bucket['by_method'][label] = bucket['by_method'].get(label, Decimal('0')) + p.amount
+    return [days[d] for d in sorted(days)]
+
+def _report_range(request, default_days=0):
+    today = timezone.localdate()
+    date_to = _parse_date_input(request.GET.get('date_to'), today)
+    date_from = _parse_date_input(request.GET.get('date_from'), date_to - timezone.timedelta(days=default_days))
+    if date_from > date_to:
+        date_from, date_to = date_to, date_from
+        
+    if (date_to - date_from).days > 366:
+        date_from = date_to - timezone.timedelta(days=366)
+    return date_from, date_to
 
 @staff_module_required('restaurant_kitchen')
 def restaurant_export_pdf(request):
-    date_from = request.GET.get('date_from', '').strip()
-    date_to = request.GET.get('date_to', '').strip()
+    date_from, date_to = _report_range(request)
 
-    orders_qs = Order.objects.filter(room_booking__isnull=True, status='confirmed').prefetch_related('items__menu_item').order_by('created_at')
-    if date_from:
-        orders_qs = orders_qs.filter(created_at__date__gte=date_from)
-    if date_to:
-        orders_qs = orders_qs.filter(created_at__date__lte=date_to)
+    payments = Payment.objects.filter(
+        order__isnull=False,
+        order__room_booking__isnull=True,
+        order__bar_tab__isnull=True,
+        created_at__date__gte=date_from,
+        created_at__date__lte=date_to,
+    ).select_related('order', 'order__table', 'received_by').prefetch_related('order__items__menu_item').order_by('created_at')
 
-    grand_total = Decimal('0')
-    for order in orders_qs:
-        grand_total += order.total_amount
+    payments = list(payments)
+    days = _group_payments_by_day(payments)
 
-    subtotal_excl_vat = grand_total / (1 + VAT_RATE)
-    vat_amount = grand_total - subtotal_excl_vat
+    grand_total = sum((p.amount for p in payments), Decimal('0'))
+    total_change = sum((p.change_given for p in payments), Decimal('0'))
+    subtotal_excl_vat = grand_total / (1 + VAT_RATE) if grand_total else Decimal('0')
 
+    method_totals = {}
+    for d in days:
+        for m, v in d['by_method'].items():
+            method_totals[m] = method_totals.get(m, Decimal('0')) + v
+
+    unpaid_orders = [o for o in Order.objects.filter(
+        room_booking__isnull=True, bar_tab__isnull=True, status='confirmed',
+        created_at__date__gte=date_from, created_at__date__lte=date_to,
+    ).select_related('table').prefetch_related('items__menu_item', 'payments') if o.balance_due > 0]
+
+    range_start = timezone.make_aware(datetime.combine(date_from, time.min))
+    range_end = timezone.make_aware(datetime.combine(date_to + timedelta(days=1), time.min))
+
+    # --- Accrual side: what was SOLD in the range ---
+    sales_orders = list(Order.objects.filter(
+        room_booking__isnull=True, bar_tab__isnull=True, status='confirmed',
+        created_at__gte=range_start, created_at__lt=range_end,
+    ).select_related('table').prefetch_related('items__menu_item', 'payments').order_by('created_at'))
+
+    sales_days = {}
+    for o in sales_orders:
+        d = timezone.localtime(o.created_at).date()
+        bucket = sales_days.setdefault(d, {'date': d, 'orders': [], 'total': Decimal('0')})
+        bucket['orders'].append(o)
+        bucket['total'] += o.total_amount
+    sales_days = [sales_days[d] for d in sorted(sales_days)]
+    total_sales = sum((o.total_amount for o in sales_orders), Decimal('0'))
+
+    # --- Reconciliation ---
+    prior_orders = Order.objects.filter(
+        room_booking__isnull=True, bar_tab__isnull=True, status='confirmed',
+        created_at__lt=range_start,
+    ).prefetch_related('items__menu_item', 'payments')
+    opening_outstanding = sum((o.balance_due for o in prior_orders if o.balance_due > 0), Decimal('0'))
+
+    span = (date_to - date_from).days + 1
     html_string = render_to_string('dashboard/restaurant_report_pdf.html', {
-        'orders': orders_qs,
-        'date_from': date_from,
-        'date_to': date_to,
+        'days': days, 'date_from': date_from, 'date_to': date_to,
+        'payment_count': len(payments),
         'generated_at': timezone.now(),
         'generated_by': request.user.get_full_name() or request.user.username,
         'grand_total': grand_total,
         'subtotal_excl_vat': subtotal_excl_vat,
-        'vat_amount': vat_amount,
+        'vat_amount': grand_total - subtotal_excl_vat,
+        'total_change': total_change,
+        'method_totals': method_totals,
+        'daily_average': grand_total / span if span else Decimal('0'),
+        'unpaid_orders': unpaid_orders,
+        'total_outstanding': sum((o.balance_due for o in unpaid_orders), Decimal('0')),
+        'total_sales': total_sales,
+        'sales_days': sales_days,
+        'opening_outstanding': opening_outstanding,
+        'closing_outstanding': opening_outstanding + total_sales - grand_total,
+        'collected_from_prior': sum(
+            (p.amount for p in payments if timezone.localtime(p.order.created_at).date() < date_from),
+            Decimal('0')
+        ),
     })
     pdf_file = HTML(string=html_string, base_url=request.build_absolute_uri('/')).write_pdf()
     response = HttpResponse(pdf_file, content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="restaurant_sales_{timezone.now().date()}.pdf"'
+    response['Content-Disposition'] = f'attachment; filename="restaurant_sales_{date_from}_to_{date_to}.pdf"'
     return response
-
 ### end of restaurant views
 
 ### start of bar views
@@ -1378,14 +1489,32 @@ def bar_tabs_view(request):
     }
     active_hh = get_active_happy_hour()
 
+    tab_cards = []
+    total_outstanding = Decimal('0')
+    for tab in open_tabs:
+        orders = tab.open_orders
+        outstanding = sum((o.balance_due for o in orders), Decimal('0'))
+        unserved = sum(
+            1 for o in orders for i in o.items.all()
+            if not i.is_cancelled and i.prep_status != 'served'
+        )
+        total_outstanding += outstanding
+        tab_cards.append({'tab': tab, 'order_count': len(orders),
+                          'outstanding': outstanding, 'unserved_count': unserved})
+
     return render(request, 'dashboard/bar_tabs.html', {
-        'open_tabs': open_tabs,
+        'tab_cards': tab_cards,
+        'total_outstanding': total_outstanding,
         'today_revenue': today_revenue,
         'today_profit': today_profit,
         'low_stock_items': low_stock_items,
         'out_of_stock_items': out_of_stock_items,
         'revenue_by_method': revenue_by_method,
+        'bank_total': (revenue_by_method.get('bank_equity', 0)
+                       + revenue_by_method.get('bank_family', 0)
+                       + revenue_by_method.get('bank_coop', 0)),
         'active_hh': active_hh,
+        'trend_url': reverse('dashboard:bar_revenue_trend'),
     })
 
 @staff_module_required('bar')
@@ -1410,11 +1539,13 @@ def bar_tab_pos(request, tab_id):
     categories = sorted(set(d.category for d in drinks if d.category))
     active_hh = get_active_happy_hour()
 
+    # NEW
     return render(request, 'dashboard/bar_tab_pos.html', {
         'tab': tab,
         'open_orders': open_orders,
         'selected_order': selected_order,
         'drinks': drinks,
+        'low_stock_drinks': low_stock_drinks,
         'categories': categories,
         'active_hh': active_hh,
     })
@@ -1559,12 +1690,21 @@ def bar_cancel_order(request, order_id):
 
     return redirect('dashboard:bar_tab_pos', tab_id=tab.id)
 
+# NEW
 @staff_module_required('bar')
 def bar_record_payment(request, order_id):
-    order = get_object_or_404(Order, id=order_id, bar_tab__isnull=False)
+    order = get_object_or_404(Order, id=order_id)
+
+    if not order.bar_tab_id:
+        messages.error(
+            request,
+            "This order belongs to another department and can't be settled from the Bar.",
+            extra_tags='swal-error',
+        )
+        return redirect('dashboard:bar')
 
     if not order.is_fully_served:
-        messages.error(request, "This order can't be paid yet, every drink must be marked Served first.")
+        messages.error(request, _order_not_served_message(order), extra_tags='swal-warning')
         return redirect('dashboard:bar_tab_pos', tab_id=order.bar_tab_id)
 
     if request.method == 'POST':
@@ -1618,47 +1758,91 @@ def bar_wastage_log(request):
 
 @staff_module_required('bar')
 def bar_export_pdf(request):
-    date_from = request.GET.get('date_from', '').strip()
-    date_to = request.GET.get('date_to', '').strip()
+    date_from, date_to = _report_range(request)
 
-    orders_qs = Order.objects.filter(
-        bar_tab__isnull=False, status='confirmed'
-    ).prefetch_related('items__menu_item', 'payments').order_by('created_at')
-    if date_from:
-        orders_qs = orders_qs.filter(created_at__date__gte=date_from)
-    if date_to:
-        orders_qs = orders_qs.filter(created_at__date__lte=date_to)
+    payments = list(Payment.objects.filter(
+        order__bar_tab__isnull=False,
+        created_at__date__gte=date_from,
+        created_at__date__lte=date_to,
+    ).select_related('order', 'order__bar_tab', 'received_by').prefetch_related('order__items__menu_item').order_by('created_at'))
 
-    orders = list(orders_qs)
-
-    grand_total = sum((o.total_amount for o in orders), Decimal('0'))
-    total_cost = sum((o.total_cost or Decimal('0')) for o in orders)
-    total_profit = grand_total - total_cost
-    total_paid = sum((o.amount_paid for o in orders), Decimal('0'))
+    days = _group_payments_by_day(payments)
+    grand_total = sum((p.amount for p in payments), Decimal('0'))
+    total_change = sum((p.change_given for p in payments), Decimal('0'))
     subtotal_excl_vat = grand_total / (1 + VAT_RATE) if grand_total else Decimal('0')
-    vat_amount = grand_total - subtotal_excl_vat
-    margin_pct = (total_profit / grand_total * 100) if grand_total else Decimal('0')
 
+    method_totals = {}
+    for d in days:
+        for m, v in d['by_method'].items():
+            method_totals[m] = method_totals.get(m, Decimal('0')) + v
+
+    # Margin on the distinct orders settled in this range
+    settled = {p.order_id: p.order for p in payments}.values()
+    settled_order_value = sum((o.total_amount for o in settled), Decimal('0'))
+    total_cost = sum((o.total_cost or Decimal('0')) for o in settled)
+    total_profit = settled_order_value - total_cost
+
+    unpaid_orders = [o for o in Order.objects.filter(
+        bar_tab__isnull=False, status='confirmed',
+        created_at__date__gte=date_from, created_at__date__lte=date_to,
+    ).select_related('bar_tab').prefetch_related('items__menu_item', 'payments') if o.balance_due > 0]
+
+    span = (date_to - date_from).days + 1
     html_string = render_to_string('dashboard/bar_report_pdf.html', {
-        'orders': orders,
-        'date_from': date_from,
-        'date_to': date_to,
+        'days': days, 'date_from': date_from, 'date_to': date_to,
+        'payment_count': len(payments),
         'generated_at': timezone.now(),
         'generated_by': request.user.get_full_name() or request.user.username,
         'grand_total': grand_total,
         'subtotal_excl_vat': subtotal_excl_vat,
-        'vat_amount': vat_amount,
+        'vat_amount': grand_total - subtotal_excl_vat,
+        'total_change': total_change,
+        'method_totals': method_totals,
+        'daily_average': grand_total / span if span else Decimal('0'),
+        'settled_order_value': settled_order_value,
         'total_cost': total_cost,
         'total_profit': total_profit,
-        'total_paid': total_paid,
-        'total_outstanding': grand_total - total_paid,
-        'margin_pct': margin_pct,
+        'margin_pct': (total_profit / settled_order_value * 100) if settled_order_value else Decimal('0'),
+        'unpaid_orders': unpaid_orders,
+        'total_outstanding': sum((o.balance_due for o in unpaid_orders), Decimal('0')),
     })
     pdf_file = HTML(string=html_string, base_url=request.build_absolute_uri('/')).write_pdf()
     response = HttpResponse(pdf_file, content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="bar_sales_{timezone.now().date()}.pdf"'
+    response['Content-Disposition'] = f'attachment; filename="bar_sales_{date_from}_to_{date_to}.pdf"'
     return response
 
+###used by bar and restaurant
+def _order_not_served_message(order):
+    counts = {'queued': 0, 'preparing': 0, 'ready': 0}
+    for item in order.items.filter(is_cancelled=False):
+        if item.prep_status in counts:
+            counts[item.prep_status] += 1
+    parts = [f"{v} {k}" for k, v in counts.items() if v]
+    detail = ", ".join(parts) if parts else "not yet fully served"
+    return f"Order #{order.id} can't be paid yet — {detail}. Every item must be marked Served first."
+
+def _trend_payload(payment_qs, date_from, date_to):
+    totals = {
+        row['created_at__date']: float(row['total'])
+        for row in payment_qs.filter(created_at__date__gte=date_from, created_at__date__lte=date_to)
+                             .values('created_at__date').annotate(total=Sum('amount'))
+    }
+    days = [date_from + timezone.timedelta(days=i) for i in range((date_to - date_from).days + 1)]
+    return JsonResponse({
+        'labels': [d.strftime('%b %d') for d in days],
+        'data': [totals.get(d, 0) for d in days],
+    })
+
+@staff_module_required('restaurant_kitchen')
+def restaurant_revenue_trend(request):
+    date_from, date_to = _report_range(request, default_days=6)
+    qs = Payment.objects.filter(order__isnull=False, order__room_booking__isnull=True, order__bar_tab__isnull=True)
+    return _trend_payload(qs, date_from, date_to)
+
+@staff_module_required('bar')
+def bar_revenue_trend(request):
+    date_from, date_to = _report_range(request, default_days=6)
+    return _trend_payload(Payment.objects.filter(order__bar_tab__isnull=False), date_from, date_to)
 #### end of bar views
 
 @staff_module_required('gate')

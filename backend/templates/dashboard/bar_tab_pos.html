@@ -22,11 +22,10 @@
 </div>
 
 {% if low_stock_drinks %}
-<div class="bg-red-50 border border-red-300 text-red-700 text-xs rounded-lg px-4 py-2.5 mb-4">
+<p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
     <i class="fa-solid fa-triangle-exclamation mr-1"></i>
-    <strong>Low stock:</strong>
-    {% for d in low_stock_drinks %}{{ d.name }} ({{ d.stock_level|floatformat:"-2" }} left){% if not forloop.last %}, {% endif %}{% endfor %}
-</div>
+    Running low: {% for d in low_stock_drinks %}{{ d.name }}{% if not forloop.last %}, {% endif %}{% endfor %}
+</p>
 {% endif %}
 
 {% if messages %}{% for message in messages %}

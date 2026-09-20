@@ -1,0 +1,202 @@
+{% comment %}
+Reusable earnings-trend panel.
+
+Usage (Chart.js must already be loaded by base_dashboard.html):
+    {% include "dashboard/_revenue_trend.html" with trend_url=trend_url trend_label="Bar earnings" trend_id="barTrend" %}
+
+Expects a JSON endpoint at trend_url returning:
+    {"labels": ["Mar 24", ...], "data": [12400.0, ...], "total": 84200.0, "best_day": "Mar 27"}
+{% endcomment %}
+
+<div class="bg-white border border-gray-200 rounded-2xl p-5 mb-8">
+    <div class="flex items-end justify-between flex-wrap gap-4 mb-4">
+        <div>
+            <h2 class="font-bold text-black">{{ trend_label|default:"Earnings trend" }}</h2>
+            <p class="text-xs text-gray-500 mt-0.5">
+                Money actually collected, by the day it was received.
+                <span id="{{ trend_id }}Range" class="text-gray-400"></span>
+            </p>
+        </div>
+        <div class="flex items-end gap-2 flex-wrap">
+            <div class="flex bg-gray-100 rounded-full p-1" id="{{ trend_id }}Presets">
+                <button type="button" data-days="6" class="px-3 py-1 text-xs font-semibold rounded-full transition">7 days</button>
+                <button type="button" data-days="29" class="px-3 py-1 text-xs font-semibold rounded-full transition">30 days</button>
+                <button type="button" data-days="89" class="px-3 py-1 text-xs font-semibold rounded-full transition">90 days</button>
+            </div>
+            <div class="flex items-center gap-1">
+                <input type="date" id="{{ trend_id }}From" class="border border-gray-300 rounded-lg text-xs px-2 py-1.5">
+                <span class="text-gray-400 text-xs">to</span>
+                <input type="date" id="{{ trend_id }}To" class="border border-gray-300 rounded-lg text-xs px-2 py-1.5">
+                <button type="button" id="{{ trend_id }}Apply" class="bg-[#0B6B3A] text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-[#095430] transition">Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="flex flex-wrap gap-6 mb-4 border-b border-gray-100 pb-4">
+        <div>
+            <p class="text-xs text-gray-500">Collected in range</p>
+            <p class="text-xl font-bold text-[#0B6B3A]" id="{{ trend_id }}Total">—</p>
+        </div>
+        <div>
+            <p class="text-xs text-gray-500">Daily average</p>
+            <p class="text-xl font-bold text-black" id="{{ trend_id }}Avg">—</p>
+        </div>
+        <div>
+            <p class="text-xs text-gray-500">Best day</p>
+            <p class="text-xl font-bold text-black" id="{{ trend_id }}Best">—</p>
+        </div>
+    </div>
+
+    <div class="relative h-56 sm:h-64">
+        <canvas id="{{ trend_id }}Canvas"></canvas>
+        <p id="{{ trend_id }}Empty" class="hidden absolute inset-0 flex items-center justify-center text-sm text-gray-400">
+            Nothing was collected in this range yet.
+        </p>
+    </div>
+</div>
+
+<script>
+// NEW
+window.ensureLib = window.ensureLib || function (globalName, src) {
+    if (window[globalName]) return Promise.resolve();
+    window.__libPromises = window.__libPromises || {};
+    if (!window.__libPromises[src]) {
+        window.__libPromises[src] = new Promise(function (resolve, reject) {
+            const s = document.createElement("script");
+            s.src = src;
+            s.async = true;
+            s.onload = resolve;
+            s.onerror = function () { reject(new Error("Could not load " + src)); };
+            document.head.appendChild(s);
+        });
+    }
+    return window.__libPromises[src];
+};
+
+window.ensureLib("Chart", "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js").then(function () {
+    const id      = "{{ trend_id }}";
+    const url     = "{{ trend_url }}";
+    const canvas  = document.getElementById(id + "Canvas");
+    if (!canvas) return;
+
+    const elFrom  = document.getElementById(id + "From");
+    const elTo    = document.getElementById(id + "To");
+    const elTotal = document.getElementById(id + "Total");
+    const elAvg   = document.getElementById(id + "Avg");
+    const elBest  = document.getElementById(id + "Best");
+    const elEmpty = document.getElementById(id + "Empty");
+    const elRange = document.getElementById(id + "Range");
+    const presets = document.getElementById(id + "Presets");
+
+    const money = n => "KSh " + Math.round(n).toLocaleString();
+    const iso   = d => d.toISOString().slice(0, 10);
+
+    const gradient = canvas.getContext("2d").createLinearGradient(0, 0, 0, 240);
+    gradient.addColorStop(0, "rgba(11,107,58,0.22)");
+    gradient.addColorStop(1, "rgba(11,107,58,0.00)");
+
+    const chart = new Chart(canvas, {
+        type: "line",
+        data: { labels: [], datasets: [{
+            data: [],
+            borderColor: "#0B6B3A",
+            backgroundColor: gradient,
+            borderWidth: 2.5,
+            tension: 0.4,
+            fill: true,
+            pointRadius: 0,
+            pointHoverRadius: 5,
+            pointHoverBackgroundColor: "#C9A227",
+            pointHoverBorderColor: "#0B6B3A",
+        }]},
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: "index", intersect: false },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: "#0B6B3A",
+                    padding: 10,
+                    displayColors: false,
+                    callbacks: { label: c => money(c.parsed.y) },
+                },
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    border: { display: false },
+                    grid: { color: "#f0f0ef" },
+                    ticks: { callback: v => v >= 1000 ? (v / 1000) + "k" : v, font: { size: 11 }, color: "#9ca3af" },
+                },
+                x: {
+                    border: { display: false },
+                    grid: { display: false },
+                    ticks: { maxRotation: 0, autoSkipPadding: 18, font: { size: 11 }, color: "#9ca3af" },
+                },
+            },
+        },
+    });
+
+    function markPreset(days) {
+        presets.querySelectorAll("button").forEach(b => {
+            const on = String(days) === b.dataset.days;
+            b.className = "px-3 py-1 text-xs font-semibold rounded-full transition " +
+                (on ? "bg-white text-[#0B6B3A] shadow-sm" : "text-gray-500 hover:text-black");
+        });
+    }
+
+    async function load(from, to) {
+        elFrom.value = from;
+        elTo.value = to;
+        try {
+            const res  = await fetch(`${url}?date_from=${from}&date_to=${to}`, { headers: { "X-Requested-With": "XMLHttpRequest" } });
+            const data = await res.json();
+
+            chart.data.labels = data.labels;
+            chart.data.datasets[0].data = data.data;
+            chart.update();
+
+            const total = data.data.reduce((a, b) => a + b, 0);
+            elTotal.textContent = money(total);
+            elAvg.textContent   = money(data.data.length ? total / data.data.length : 0);
+            const peak = data.data.indexOf(Math.max(...data.data));
+            elBest.textContent  = total > 0 ? data.labels[peak] : "—";
+            elRange.textContent = `· ${data.labels[0] || ""} – ${data.labels[data.labels.length - 1] || ""}`;
+            elEmpty.classList.toggle("hidden", total > 0);
+        } catch (e) {
+            elEmpty.textContent = "Couldn't load the trend. Refresh the page to try again.";
+            elEmpty.classList.remove("hidden");
+        }
+    }
+
+    function loadDays(days) {
+        markPreset(days);
+        const to = new Date();
+        const from = new Date();
+        from.setDate(to.getDate() - days);
+        load(iso(from), iso(to));
+    }
+
+    presets.addEventListener("click", e => {
+        const btn = e.target.closest("button[data-days]");
+        if (btn) loadDays(parseInt(btn.dataset.days, 10));
+    });
+
+    document.getElementById(id + "Apply").addEventListener("click", () => {
+        if (!elFrom.value || !elTo.value) return;
+        if (elFrom.value > elTo.value) { elFrom.value = elTo.value; }
+        markPreset(-1);
+        load(elFrom.value, elTo.value);
+    });
+
+    // NEW
+    loadDays(6);   // default: last 7 days
+}).catch(function () {
+    const empty = document.getElementById("{{ trend_id }}Empty");
+    if (empty) {
+        empty.textContent = "The chart library couldn't load. Check the internet connection on this machine.";
+        empty.classList.remove("hidden");
+    }
+});
+</script>
