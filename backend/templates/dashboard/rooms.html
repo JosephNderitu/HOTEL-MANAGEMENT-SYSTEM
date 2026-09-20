@@ -2,26 +2,33 @@
 {% load dashboard_extras %}
 {% block dashboard_content %}
 <style>
-    .rm-hero { background: linear-gradient(135deg, #0B6B3A, #095430); border-radius: 18px; padding: 20px 26px; color: #fff; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; margin-bottom: 22px; }
+    .rm-hero { background: linear-gradient(135deg, #0B6B3A, #095430); border-radius: 18px; padding: 22px 26px; color: #fff; margin-bottom: 22px; }
+    .rm-hero-top { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
     .rm-hero h1 { font-size: 20px; font-weight: 800; }
+    .rm-hero-cell { border-left: 1px solid rgba(255,255,255,.18); padding-left: 18px; }
+    @media (max-width: 640px) { .rm-hero-cell { border-left: 0; border-top: 1px solid rgba(255,255,255,.18); padding-left: 0; padding-top: 12px; } }
+    .rm-money { font-variant-numeric: tabular-nums; }
+
     .rm-stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 22px; }
     @media (min-width: 768px) { .rm-stat-grid { grid-template-columns: repeat(4, 1fr); } }
-    .rm-stat { border: 1px solid #eef0ee; border-radius: 14px; padding: 14px 16px; background: #fff; cursor: pointer; transition: box-shadow 0.15s; }
+    .rm-stat { border: 1px solid #eef0ee; border-radius: 14px; padding: 14px 16px; background: #fff; cursor: pointer; transition: box-shadow 0.15s, border-color 0.15s; display: block; text-decoration: none; }
     .rm-stat:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.06); }
+    .rm-stat:focus-visible { outline: 2px solid #C9A227; outline-offset: 2px; }
     .rm-stat.active { border-color: #0B6B3A; box-shadow: 0 0 0 2px rgba(11,107,58,0.15); }
-    .rm-stat .num { font-size: 24px; font-weight: 800; }
-    .rm-stat .lbl { font-size: 11px; color: #8a8f8a; text-transform: uppercase; }
+    .rm-stat .num { font-size: 26px; font-weight: 800; line-height: 1.1; }
+    .rm-stat .lbl { font-size: 11px; color: #8a8f8a; margin-top: 2px; }
     .rm-stat.available .num { color: #0B6B3A; }
     .rm-stat.occupied .num { color: #C9A227; }
     .rm-stat.cleaning .num { color: #3b82f6; }
     .rm-stat.maintenance .num { color: #dc2626; }
 
-    .room-card { border: 1px solid #eef0ee; border-radius: 14px; padding: 16px; background: #fff; }
+    .room-card { border: 1px solid #eef0ee; border-radius: 14px; padding: 16px; background: #fff; transition: box-shadow .15s; }
+    .room-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.05); }
     .room-card.available { border-color: #cfe9d9; background: #F7FCF9; }
     .room-card.occupied { border-color: #f0e6c8; background: #FFFCF3; }
     .room-card.cleaning { border-color: #cfe0fb; background: #F5F9FF; }
     .room-card.maintenance { border-color: #f6cbcb; background: #FFF7F7; }
-    .rm-badge { font-size: 9.5px; font-weight: 800; padding: 3px 10px; border-radius: 9999px; text-transform: uppercase; }
+    .rm-badge { font-size: 9.5px; font-weight: 800; padding: 3px 10px; border-radius: 9999px; }
     .rm-badge.available { background: #0B6B3A; color: #fff; }
     .rm-badge.occupied { background: #C9A227; color: #000; }
     .rm-badge.cleaning { background: #3b82f6; color: #fff; }
@@ -31,23 +38,56 @@
     .rm-modal-backdrop.open { display: flex; }
 </style>
 
+<!-- Revenue hero -->
 <div class="rm-hero">
-    <div>
-        <h1><i class="fa-solid fa-bed mr-2"></i>Rooms</h1>
-        <p class="text-white/70 text-xs mt-1">Housekeeping status &amp; maintenance</p>
+    <div class="rm-hero-top">
+        <div>
+            <h1><i class="fa-solid fa-bed mr-2"></i>Rooms</h1>
+            <p class="text-white/70 text-xs mt-1">Housekeeping, maintenance, and accommodation earnings</p>
+        </div>
+        <div class="flex gap-2 flex-wrap">
+            <a href="{% url 'dashboard:maintenance_list' %}" class="relative bg-white text-red-600 font-bold text-sm px-5 py-2.5 rounded-full hover:bg-red-50 transition">
+                <i class="fa-solid fa-screwdriver-wrench mr-1"></i> Maintenance
+                {% if open_maintenance_count > 0 %}<span class="ml-1 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">{{ open_maintenance_count }}</span>{% endif %}
+            </a>
+            <a href="{% url 'dashboard:lostfound_list' %}" class="relative bg-white text-[#0B6B3A] font-bold text-sm px-5 py-2.5 rounded-full hover:bg-[#C9A227] hover:text-black transition">
+                <i class="fa-solid fa-magnifying-glass mr-1"></i> Lost &amp; Found
+                {% if unclaimed_lost_count > 0 %}<span class="ml-1 bg-[#C9A227] text-black text-[10px] font-bold px-2 py-0.5 rounded-full">{{ unclaimed_lost_count }}</span>{% endif %}
+            </a>
+            <a href="{% url 'dashboard:housekeeping_usage_log' %}" class="bg-white text-[#0B6B3A] font-bold text-sm px-5 py-2.5 rounded-full hover:bg-[#C9A227] hover:text-black transition">
+                <i class="fa-solid fa-clipboard-list mr-1"></i> Usage Log
+            </a>
+
+            <div class="relative">
+                <button type="button" id="reportBtn" aria-expanded="false"
+                        class="bg-[#C9A227] text-black font-bold text-sm px-5 py-2.5 rounded-full hover:bg-[#b8931f] transition">
+                    <i class="fa-solid fa-file-pdf mr-1"></i> Revenue report
+                    <i class="fa-solid fa-chevron-down text-[10px] ml-1"></i>
+                </button>
+                <form method="get" action="{% url 'dashboard:rooms_export_pdf' %}" id="reportPanel"
+                      class="hidden absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-xl shadow-lg p-4 z-30 text-black">
+                    <p class="text-xs font-semibold text-black mb-2">Rooms revenue for</p>
+                    <label class="block text-[11px] text-gray-500 mb-1">From</label>
+                    <input type="date" name="date_from" id="reportFrom" class="w-full border border-gray-300 rounded-lg text-xs px-2 py-1.5 mb-2">
+                    <label class="block text-[11px] text-gray-500 mb-1">To</label>
+                    <input type="date" name="date_to" id="reportTo" class="w-full border border-gray-300 rounded-lg text-xs px-2 py-1.5 mb-3">
+                    <button type="submit" class="w-full bg-[#0B6B3A] text-white text-xs font-bold py-2 rounded-full hover:bg-[#095430] transition">
+                        Download PDF
+                    </button>
+                    <p class="text-[10px] text-gray-400 mt-2 leading-snug">Leave both blank for today only.</p>
+                </form>
+            </div>
+        </div>
     </div>
-    <div class="flex gap-3 flex-wrap">
-        <a href="{% url 'dashboard:maintenance_list' %}" class="relative bg-white text-red-600 font-bold text-sm px-5 py-2.5 rounded-full hover:bg-red-50 transition">
-            <i class="fa-solid fa-screwdriver-wrench mr-1"></i> Maintenance
-            {% if open_maintenance_count > 0 %}<span class="ml-1 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">{{ open_maintenance_count }}</span>{% endif %}
-        </a>
-        <a href="{% url 'dashboard:lostfound_list' %}" class="relative bg-white text-[#0B6B3A] font-bold text-sm px-5 py-2.5 rounded-full hover:bg-[#C9A227] hover:text-black transition">
-            <i class="fa-solid fa-magnifying-glass mr-1"></i> Lost &amp; Found
-            {% if unclaimed_lost_count > 0 %}<span class="ml-1 bg-[#C9A227] text-black text-[10px] font-bold px-2 py-0.5 rounded-full">{{ unclaimed_lost_count }}</span>{% endif %}
-        </a>
-        <a href="{% url 'dashboard:housekeeping_usage_log' %}" class="bg-white text-[#0B6B3A] font-bold text-sm px-5 py-2.5 rounded-full hover:bg-[#C9A227] hover:text-black transition">
-            <i class="fa-solid fa-clipboard-list mr-1"></i> Daily Usage Log
-        </a>
+
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 pt-5 border-t border-white/15">
+        <div>
+            <p class="text-[11px] uppercase tracking-wide text-white/60">Collected today</p>
+            <p class="text-2xl font-bold rm-money mt-1">KSh {{ today_revenue|floatformat:0 }}</p>
+        </div>
+        <div class="rm-hero-cell"><p class="text-[11px] text-white/60">Cash</p><p class="font-bold rm-money">KSh {{ revenue_by_method.cash|floatformat:0 }}</p></div>
+        <div class="rm-hero-cell"><p class="text-[11px] text-white/60">M-Pesa</p><p class="font-bold rm-money">KSh {{ revenue_by_method.mpesa|floatformat:0 }}</p></div>
+        <div class="rm-hero-cell"><p class="text-[11px] text-white/60">Bank + Swipe</p><p class="font-bold rm-money">KSh {{ bank_total|add:revenue_by_method.swipe|floatformat:0 }}</p></div>
     </div>
 </div>
 
@@ -55,42 +95,66 @@
 <div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
 {% endfor %}{% endif %}
 
+<!-- Earnings trend -->
+{% include "dashboard/_revenue_trend.html" with trend_url=trend_url trend_label="Room revenue trend" trend_id="roomsTrend" %}
+
+<!-- Status filter -->
 <div class="rm-stat-grid">
     <a href="?status=available" class="rm-stat available {% if status_filter == 'available' %}active{% endif %}"><p class="num">{{ counts.available }}</p><p class="lbl">Available</p></a>
     <a href="?status=occupied" class="rm-stat occupied {% if status_filter == 'occupied' %}active{% endif %}"><p class="num">{{ counts.occupied }}</p><p class="lbl">Occupied</p></a>
     <a href="?status=cleaning" class="rm-stat cleaning {% if status_filter == 'cleaning' %}active{% endif %}"><p class="num">{{ counts.cleaning }}</p><p class="lbl">Cleaning</p></a>
     <a href="?status=maintenance" class="rm-stat maintenance {% if status_filter == 'maintenance' %}active{% endif %}"><p class="num">{{ counts.maintenance }}</p><p class="lbl">Maintenance</p></a>
 </div>
-{% if status_filter %}<a href="{% url 'dashboard:rooms' %}" class="text-xs text-[#0B6B3A] font-semibold hover:underline mb-4 inline-block">Clear filter &times;</a>{% endif %}
 
-<!-- Redesigned Room Cards Grid -->
-<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4">
+<div class="flex items-center justify-between gap-3 mb-3 flex-wrap">
+    <div>
+        <h2 class="font-bold text-black">Rooms</h2>
+        {% if status_filter %}<a href="{% url 'dashboard:rooms' %}" class="text-xs text-[#0B6B3A] font-semibold hover:underline">Clear filter &times;</a>{% endif %}
+    </div>
+    <div class="relative">
+        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+        <input type="search" id="roomSearch" placeholder="Room number or guest name"
+               class="border border-gray-300 rounded-full pl-8 pr-3 py-1.5 text-sm w-56 focus:border-[#0B6B3A] focus:outline-none">
+    </div>
+</div>
+
+<!-- Room cards -->
+<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4" id="roomGrid">
     {% for room in rooms %}
-    <div class="room-card {{ room.status }}">
+    {% with b=active_bookings|get_item:room.id %}
+    <div class="room-card {{ room.status }}" data-search="{{ room.number|lower }} {{ b.guest_name|default:''|lower }}">
         <a href="{% url 'dashboard:room_detail' room.id %}" class="block mb-2">
             <div class="flex items-center justify-between mb-1">
                 <p class="font-bold text-black">Room {{ room.number }}</p>
                 <span class="rm-badge {{ room.status }}">{{ room.get_status_display }}</span>
             </div>
             <p class="text-xs text-gray-500">{{ room.room_type.name }}</p>
-            {% with b=active_bookings|get_item:room.id %}
             {% if b %}<p class="text-xs text-gray-600 mt-2"><i class="fa-solid fa-user mr-1"></i>{{ b.guest_name }} &middot; until {{ b.check_out|date:"M d" }}</p>{% endif %}
-            {% endwith %}
         </a>
-        <a href="{% url 'dashboard:room_detail' room.id %}" class="block text-center text-xs font-bold bg-[#0B6B3A] text-white py-2 rounded-full hover:bg-[#095430] transition">
-            Open Room <i class="fa-solid fa-arrow-right ml-1"></i>
-        </a>
+        <div class="flex gap-1.5">
+            <a href="{% url 'dashboard:room_detail' room.id %}" class="flex-1 text-center text-xs font-bold bg-[#0B6B3A] text-white py-2 rounded-full hover:bg-[#095430] transition">
+                Open <i class="fa-solid fa-arrow-right ml-1"></i>
+            </a>
+            {% if room.status != 'maintenance' %}
+            <button type="button" onclick="openIssueModal({{ room.id }}, '{{ room.number }}')"
+                    class="text-xs font-bold border border-red-300 text-red-600 px-3 py-2 rounded-full hover:bg-red-50 transition" title="Report an issue">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </button>
+            {% endif %}
+        </div>
     </div>
+    {% endwith %}
     {% empty %}
     <p class="text-gray-400 col-span-full text-center py-14">No rooms match this filter.</p>
     {% endfor %}
 </div>
+<p id="roomNoMatch" class="hidden text-gray-400 text-sm text-center py-8">No room matches that search.</p>
 
 <!-- Maintenance Report Modal -->
 <div id="issue-modal" class="rm-modal-backdrop fixed inset-0 bg-black/60 z-50 items-center justify-center px-4">
     <div class="bg-white rounded-2xl max-w-sm w-full p-6">
-        <h3 class="font-bold text-black mb-1">Report Issue — Room <span id="issue-room-number"></span></h3>
-        <p class="text-xs text-gray-500 mb-4">This will mark the room under Maintenance immediately.</p>
+        <h3 class="font-bold text-black mb-1">Report issue — Room <span id="issue-room-number"></span></h3>
+        <p class="text-xs text-gray-500 mb-4">A room with a guest checked in stays Occupied; otherwise it moves to Maintenance immediately.</p>
         <form id="issue-form" method="post">
             {% csrf_token %}
             <input type="text" name="issue" required placeholder="e.g. AC not cooling" class="w-full border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm mb-2">
@@ -115,5 +179,34 @@ function openIssueModal(roomId, roomNumber) {
     document.getElementById('issue-room-number').textContent = roomNumber;
     document.getElementById('issue-modal').classList.add('open');
 }
+
+(function () {
+    const reportBtn   = document.getElementById("reportBtn");
+    const reportPanel = document.getElementById("reportPanel");
+    reportBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        reportPanel.classList.toggle("hidden");
+        reportBtn.setAttribute("aria-expanded", String(!reportPanel.classList.contains("hidden")));
+    });
+    document.addEventListener("click", (e) => {
+        if (!reportPanel.contains(e.target) && e.target !== reportBtn) {
+            reportPanel.classList.add("hidden");
+        }
+    });
+
+    const search   = document.getElementById("roomSearch");
+    const cards    = Array.from(document.querySelectorAll("#roomGrid .room-card"));
+    const noMatch  = document.getElementById("roomNoMatch");
+    search.addEventListener("input", () => {
+        const q = search.value.trim().toLowerCase();
+        let shown = 0;
+        cards.forEach(c => {
+            const hit = c.dataset.search.includes(q);
+            c.classList.toggle("hidden", !hit);
+            if (hit) shown++;
+        });
+        noMatch.classList.toggle("hidden", shown > 0);
+    });
+})();
 </script>
 {% endblock %}

@@ -133,4 +133,17 @@ document.addEventListener('DOMContentLoaded', function () {
     if (overlay) overlay.addEventListener('click', closeDrawer);
 });
 </script>
+<script>
+document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (form.dataset.noDisable) return;
+    setTimeout(function () {
+        form.querySelectorAll('button[type=submit], input[type=submit]').forEach(function (btn) {
+            btn.disabled = true;
+            btn.dataset.originalText = btn.dataset.originalText || btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Please wait…';
+        });
+    }, 0);
+});
+</script>
 {% endblock %}

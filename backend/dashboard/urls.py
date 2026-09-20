@@ -38,6 +38,8 @@ urlpatterns = [
     path('rooms/lost-found/<int:item_id>/dispose/', views.lostfound_dispose, name='lostfound_dispose'),
     path('rooms/room/<int:room_id>/transfer/', views.room_transfer, name='room_transfer'),
     path('rooms/room/<int:room_id>/extend-stay/', views.room_extend_stay, name='room_extend_stay'),
+    path('rooms/export-pdf/', views.rooms_export_pdf, name='rooms_export_pdf'),
+    path('rooms/revenue-trend/', views.rooms_revenue_trend, name='rooms_revenue_trend'),
    
     path('restaurant-kitchen/', views.restaurant_tables_view, name='restaurant_kitchen'),
     path('restaurant-kitchen/table/<int:table_id>/new-order/', views.restaurant_new_order, name='restaurant_new_order'),
@@ -78,6 +80,11 @@ urlpatterns = [
     path('bar/order/<int:order_id>/payment/', views.bar_record_payment, name='bar_record_payment'),
     path('bar/wastage/', views.bar_wastage_log, name='bar_wastage'),
     path('bar/export-pdf/', views.bar_export_pdf, name='bar_export_pdf'),
+    
+    path('bar/usage-log/', views.bar_usage_log_view, name='bar_usage_log'),
+    path('bar/usage-log/add/', views.bar_usage_log_add, name='bar_usage_log_add'),
+    path('bar/usage-log/<int:item_id>/delete/', views.bar_usage_log_delete, name='bar_usage_log_delete'),
+    path('bar/usage-log/confirm/', views.bar_usage_log_confirm, name='bar_usage_log_confirm'),
     
     path('restaurant/revenue-trend/', views.restaurant_revenue_trend, name='restaurant_revenue_trend'),
     path('bar/revenue-trend/', views.bar_revenue_trend, name='bar_revenue_trend'),

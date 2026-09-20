@@ -1,0 +1,101 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+<style>
+    .ul-hero { background: linear-gradient(135deg, #0B6B3A, #095430); border-radius: 18px; padding: 20px 26px; color: #fff; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 22px; }
+    .ul-hero h1 { font-size: 20px; font-weight: 800; }
+    .ul-status { font-size: 11px; font-weight: 800; padding: 6px 14px; border-radius: 9999px; letter-spacing: 0.03em; }
+    .ul-status.draft { background: #C9A227; color: #000; }
+    .ul-status.locked { background: rgba(255,255,255,0.15); color: #fff; }
+
+    .ul-panel { background: #fff; border-radius: 18px; border: 1px solid #eef0ee; box-shadow: 0 1px 3px rgba(0,0,0,0.03); padding: 22px; }
+    .ul-panel h2 { font-size: 14px; font-weight: 700; color: #111; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+    .ul-panel h2 i { color: #C9A227; }
+
+    .ul-input, .ul-select { width: 100%; border: 1px solid #e2e5e2; border-radius: 10px; padding: 10px 13px; font-size: 13px; background: #fafbfa; transition: border-color 0.15s, box-shadow 0.15s; }
+    .ul-input:focus, .ul-select:focus { outline: none; border-color: #0B6B3A; box-shadow: 0 0 0 3px rgba(11,107,58,0.1); background: #fff; }
+
+    .locked-banner { background: #F7F5EE; border: 1px solid #e2decb; border-radius: 16px; padding: 28px; text-align: center; }
+    .locked-banner .icon { width: 56px; height: 56px; border-radius: 50%; background: #fff; display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; color: #C9A227; font-size: 22px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+
+    .ul-entry { border: 1px solid #eef0ee; border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; background: #fafbfa; }
+    .ul-entry .qty-chip { width: 38px; height: 38px; border-radius: 10px; background: #0B6B3A; color: #fff; font-size: 10px; font-weight: 800; display: flex; align-items: center; justify-content: center; text-align: center; flex-shrink: 0; margin-right: 10px; line-height: 1.1; }
+    .custom-tag { font-size: 9px; font-weight: 700; color: #92722a; background: #FEF9EC; padding: 1px 7px; border-radius: 9999px; margin-left: 6px; }
+
+    .confirm-btn { width: 100%; background: linear-gradient(135deg, #C9A227, #b8931f); color: #000; font-weight: 800; padding: 14px; border-radius: 9999px; font-size: 14px; transition: transform 0.15s; }
+    .confirm-btn:hover { transform: translateY(-1px); }
+</style>
+
+<a href="{% url 'dashboard:bar' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline"><i class="fa-solid fa-arrow-left mr-1 text-xs"></i>Bar</a>
+
+<div class="ul-hero mt-3">
+    <div>
+        <h1><i class="fa-solid fa-clipboard-list mr-2"></i>Today's Bar Usage</h1>
+        <p class="text-white/70 text-xs mt-1">{{ log.date }} &middot; mixers, garnishes, ice, and anything else used outside a priced order</p>
+    </div>
+    <span class="ul-status {% if unlocked_count == 0 and items %}locked{% else %}draft{% endif %}">
+        {% if unlocked_count == 0 and items %}<i class="fa-solid fa-lock mr-1"></i>All Confirmed{% else %}<i class="fa-solid fa-pen mr-1"></i>Active Logging{% endif %}
+    </span>
+</div>
+
+{% if messages %}{% for message in messages %}
+<div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
+{% endfor %}{% endif %}
+
+<div class="grid lg:grid-cols-2 gap-6">
+    <div class="ul-panel">
+        <h2><i class="fa-solid fa-plus-circle"></i>Log Usage</h2>
+        <form method="post" action="{% url 'dashboard:bar_usage_log_add' %}" class="space-y-3">
+            {% csrf_token %}
+            <select name="stock_item" class="w-full border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
+                {% for s in stock_items %}<option value="{{ s.id }}">{{ s.name }} ({{ s.quantity_on_hand }} {{ s.unit }} in stock)</option>{% endfor %}
+            </select>
+            <input type="number" step="0.01" name="quantity" placeholder="Quantity used" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            <button type="submit" class="w-full bg-[#0B6B3A] text-white font-bold py-2.5 rounded-full hover:bg-[#095430] transition">Add Entry</button>
+        </form>
+        <p class="text-xs text-gray-400 mt-3">
+            <i class="fa-solid fa-circle-info mr-1"></i>
+            Don't see an item? <a href="{% url 'dashboard:store' %}" class="text-[#0B6B3A] font-semibold hover:underline">Log it as a purchase in Store</a> first, then it'll appear here.
+        </p>
+    </div>
+
+    <div class="ul-panel">
+        <h2><i class="fa-solid fa-list-check"></i>Logged So Far <span class="text-gray-400 font-normal">({{ items|length }})</span></h2>
+        <div class="mb-4">
+            {% for item in items %}
+            <div class="ul-entry">
+                <div class="qty-chip">{{ item.quantity|floatformat:"-2" }}<br>{{ item.display_unit }}</div>
+                <div class="flex-1 min-w-0">
+                    <p class="font-semibold text-sm truncate">
+                        {{ item.display_name }}
+                        {% if not item.stock_item %}<span class="custom-tag">not in stock</span>{% endif %}
+                        {% if item.is_locked %}<span class="text-[9px] text-gray-400 ml-1"><i class="fa-solid fa-lock"></i> locked</span>{% endif %}
+                    </p>
+                    <p class="text-[11px] text-gray-400">{{ item.added_by.get_full_name|default:item.added_by.username }} &middot; {{ item.added_at|date:"H:i" }}</p>
+                </div>
+                {% if not item.is_locked %}
+                <form method="post" action="{% url 'dashboard:bar_usage_log_delete' item.id %}" onsubmit="return confirm('Remove this entry?');">
+                    {% csrf_token %}
+                    <button class="text-red-400 hover:text-red-600 ml-2"><i class="fa-solid fa-trash text-xs"></i></button>
+                </form>
+                {% else %}
+                <span class="text-[10px] text-gray-300"><i class="fa-solid fa-lock"></i></span>
+                {% endif %}
+            </div>
+            {% empty %}
+            <div class="text-center py-10">
+                <i class="fa-regular fa-clipboard text-3xl text-gray-200 mb-2"></i>
+                <p class="text-gray-400 text-sm">Nothing logged yet today.</p>
+            </div>
+            {% endfor %}
+        </div>
+        {% if unlocked_count > 0 %}
+        <form method="post" action="{% url 'dashboard:bar_usage_log_confirm' %}" onsubmit="return confirm('Confirm and lock {{ unlocked_count }} new entr{{ unlocked_count|pluralize:"y,ies" }}? You can still add more after.');">
+            {% csrf_token %}
+            <button type="submit" class="confirm-btn"><i class="fa-solid fa-lock mr-1"></i>Confirm {{ unlocked_count }} New Entr{{ unlocked_count|pluralize:"y,ies" }}</button>
+        </form>
+        {% else %}
+        <p class="text-xs text-gray-400 text-center py-3">Everything logged so far is confirmed. Add more anytime.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

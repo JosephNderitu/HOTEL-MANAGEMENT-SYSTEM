@@ -10,8 +10,9 @@
 {% endfor %}{% endif %}
 
 <div class="flex gap-2 mb-3 flex-wrap">
-    <a href="?department=kitchen&preset={{ preset }}" class="text-xs font-semibold px-4 py-2 rounded-full {% if department == 'kitchen' %}bg-[#0B6B3A] text-white{% else %}border border-gray-300 text-gray-500{% endif %}">Kitchen</a>
-    <a href="?department=housekeeping&preset={{ preset }}" class="text-xs font-semibold px-4 py-2 rounded-full {% if department == 'housekeeping' %}bg-[#0B6B3A] text-white{% else %}border border-gray-300 text-gray-500{% endif %}">Housekeeping</a>
+    {% for dept_code, dept_label in departments %}
+    <a href="?department={{ dept_code }}&preset={{ preset }}" class="text-xs font-semibold px-4 py-2 rounded-full {% if department == dept_code %}bg-[#0B6B3A] text-white{% else %}border border-gray-300 text-gray-500{% endif %}">{{ dept_label }}</a>
+    {% endfor %}
 </div>
 <div class="flex gap-2 mb-6 flex-wrap">
     <a href="?department={{ department }}&preset=week" class="text-xs px-3 py-1.5 rounded-full {% if preset == 'week' %}bg-[#C9A227] text-black{% else %}border border-gray-300 text-gray-500{% endif %}">7 Days</a>
@@ -33,7 +34,7 @@
 <div class="grid lg:grid-cols-2 gap-6 mb-8">
     <div class="bg-white border border-[#0B6B3A] rounded-2xl p-6">
         <h2 class="font-bold text-black text-sm mb-4"><i class="fa-solid fa-hand-holding text-[#C9A227] mr-1"></i>Log Usage for {{ department|title }} Today</h2>
-        <form method="post" action="{% if department == 'kitchen' %}{% url 'dashboard:kitchen_usage_log_add' %}{% else %}{% url 'dashboard:housekeeping_usage_log_add' %}{% endif %}" class="space-y-3">
+        <form method="post" action="{% url add_url_name %}" class="space-y-3">
             {% csrf_token %}
             <select name="stock_item" class="w-full border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
                 {% for s in stock_items %}<option value="{{ s.id }}">{{ s.name }} ({{ s.quantity_on_hand }} {{ s.unit }} in stock)</option>{% endfor %}
@@ -60,7 +61,7 @@
             {% empty %}<p class="text-gray-400 text-sm text-center py-6">Nothing logged yet today.</p>{% endfor %}
         </div>
         {% if unlocked_count > 0 %}
-        <form method="post" action="{% if department == 'kitchen' %}{% url 'dashboard:kitchen_usage_log_confirm' %}{% else %}{% url 'dashboard:housekeeping_usage_log_confirm' %}{% endif %}" onsubmit="return confirm('Confirm and lock {{ unlocked_count }} entr{{ unlocked_count|pluralize:'y,ies' }}?');">
+        <form method="post" action="{% url confirm_url_name %}" onsubmit="return confirm('Confirm and lock {{ unlocked_count }} entr{{ unlocked_count|pluralize:'y,ies' }}?');">
             {% csrf_token %}
             <button type="submit" class="w-full bg-[#C9A227] text-black font-bold py-2.5 rounded-full hover:bg-[#b8931f] transition"><i class="fa-solid fa-lock mr-1"></i>Confirm {{ unlocked_count }} Entr{{ unlocked_count|pluralize:"y,ies" }}</button>
         </form>
@@ -80,6 +81,7 @@
             {% empty %}<p class="text-gray-400 text-sm text-center py-8">No entries in this range.</p>{% endfor %}
         </div>
     </div>
+    {% if department == 'bar' %}
     <div class="bg-white border border-gray-200 rounded-2xl p-5">
         <h2 class="font-bold text-black text-sm mb-3">Bar Wastage</h2>
         <div class="space-y-2 max-h-96 overflow-y-auto">
@@ -91,6 +93,11 @@
             {% empty %}<p class="text-gray-400 text-sm text-center py-8">No wastage in this range.</p>{% endfor %}
         </div>
     </div>
+    {% else %}
+    <div class="bg-white border border-gray-200 rounded-2xl p-5 flex items-center justify-center text-center min-h-[120px]">
+        <p class="text-gray-400 text-sm">{{ department|title }} doesn't have a wastage log yet.</p>
+    </div>
+    {% endif %}
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>

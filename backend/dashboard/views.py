@@ -64,6 +64,18 @@ def _parse_date_input(date_str, fallback):
             continue
     return fallback
 
+from datetime import datetime, time
+
+def _local_day_bounds(date_from, date_to):
+    """Half-open [start, end) covering whole local days, in the project timezone."""
+    start = datetime.combine(date_from, time.min)
+    end = datetime.combine(date_to + timezone.timedelta(days=1), time.min)
+    if settings.USE_TZ:
+        tz = timezone.get_current_timezone()
+        start = timezone.make_aware(start, tz)
+        end = timezone.make_aware(end, tz)
+    return start, end
+
 @login_required
 def dashboard_home(request):
     context = {
@@ -310,20 +322,28 @@ def reception_record_payment(request, target_type, target_id):
         messages.error(request, "Invalid payment target.")
         return redirect('dashboard:reception')
 
-    target = get_object_or_404(Booking if target_type == 'booking' else Order, id=target_id)
+    model = Booking if target_type == 'booking' else Order
+    target = get_object_or_404(model, id=target_id)
 
     if request.method == 'POST':
-        instance = Payment(booking=target) if target_type == 'booking' else Payment(order=target)
-        form = PaymentForm(request.POST, instance=instance)
-        if form.is_valid():
-            payment = form.save(commit=False)
-            payment.received_by = request.user
-            payment.save()
-            if payment.change_given > 0:
-                messages.success(request, f"Payment recorded. CHANGE DUE: KSh {payment.change_given:,.0f}")
-            else:
-                messages.success(request, f"Payment of KSh {payment.amount:,.0f} recorded.")
-            return redirect('dashboard:reception')
+        with transaction.atomic():
+            locked_target = model.objects.select_for_update().get(id=target.id)
+            remaining = locked_target.total_balance_due if target_type == 'booking' else locked_target.balance_due
+            if remaining <= 0:
+                messages.error(request, f"This {target_type} is already fully paid — no new payment was recorded.", extra_tags='swal-error')
+                return redirect('dashboard:reception')
+
+            instance = Payment(booking=locked_target) if target_type == 'booking' else Payment(order=locked_target)
+            form = PaymentForm(request.POST, instance=instance)
+            if form.is_valid():
+                payment = form.save(commit=False)
+                payment.received_by = request.user
+                payment.save()
+                if payment.change_given > 0:
+                    messages.success(request, f"Payment recorded. CHANGE DUE: KSh {payment.change_given:,.0f}")
+                else:
+                    messages.success(request, f"Payment of KSh {payment.amount:,.0f} recorded.")
+                return redirect('dashboard:reception')
     else:
         form = PaymentForm()
 
@@ -349,6 +369,16 @@ def rooms_view(request):
     unclaimed_lost_count = LostFoundItem.objects.filter(status='unclaimed').count()
     active_bookings = {b.assigned_room_id: b for b in Booking.objects.filter(status='checked_in', assigned_room__isnull=False)}
 
+    today = timezone.localdate()
+    day_start, day_end = _local_day_bounds(today, today)
+    today_payments = Payment.objects.filter(booking__isnull=False, created_at__gte=day_start, created_at__lt=day_end)
+    today_revenue = today_payments.aggregate(total=Sum('amount'))['total'] or 0
+    revenue_by_method = {
+        code: today_payments.filter(method=code).aggregate(total=Sum('amount'))['total'] or 0
+        for code, _ in Payment.METHOD_CHOICES
+    }
+    bank_total = (revenue_by_method.get('bank_equity', 0) + revenue_by_method.get('bank_family', 0) + revenue_by_method.get('bank_coop', 0))
+
     return render(request, 'dashboard/rooms.html', {
         'rooms': rooms,
         'counts': counts,
@@ -356,6 +386,10 @@ def rooms_view(request):
         'open_maintenance_count': open_maintenance_count,
         'unclaimed_lost_count': unclaimed_lost_count,
         'active_bookings': active_bookings,
+        'today_revenue': today_revenue,
+        'revenue_by_method': revenue_by_method,
+        'bank_total': bank_total,
+        'trend_url': reverse('dashboard:rooms_revenue_trend'),
     })
 
 @staff_module_required('rooms')
@@ -735,6 +769,79 @@ def lostfound_dispose(request, item_id):
     item.save(update_fields=['status'])
     messages.success(request, "Marked disposed.")
     return redirect('dashboard:lostfound_list')
+
+@staff_module_required('rooms')
+def rooms_export_pdf(request):
+    date_from, date_to = _report_range(request)
+    range_start, range_end = _local_day_bounds(date_from, date_to)
+
+    payments = list(Payment.objects.filter(
+        booking__isnull=False,
+        created_at__gte=range_start, created_at__lt=range_end,
+    ).select_related('booking', 'booking__room_type', 'booking__assigned_room', 'booking__conference_room').order_by('created_at'))
+
+    days = _group_payments_by_day(payments)
+    grand_total = sum((p.amount for p in payments), Decimal('0'))
+    total_change = sum((p.change_given for p in payments), Decimal('0'))
+    subtotal_excl_vat = grand_total / (1 + VAT_RATE) if grand_total else Decimal('0')
+
+    method_totals = {}
+    for d in days:
+        for m, v in d['by_method'].items():
+            method_totals[m] = method_totals.get(m, Decimal('0')) + v
+
+    by_type, by_room = {}, {}
+    for p in payments:
+        b = p.booking
+        type_name = b.room_type.name if b.room_type else "Conference / Other"
+        by_type[type_name] = by_type.get(type_name, Decimal('0')) + p.amount
+        if b.assigned_room:
+            room_label = f"Room {b.assigned_room.number}"
+        elif b.conference_room:
+            room_label = b.conference_room.name
+        else:
+            room_label = "Unassigned"
+        by_room[room_label] = by_room.get(room_label, Decimal('0')) + p.amount
+
+    type_sorted = sorted(by_type.items(), key=lambda x: x[1], reverse=True)
+    type_max = type_sorted[0][1] if type_sorted else Decimal('1')
+    type_rows = [{'label': n, 'amount': a, 'pct': float(a / type_max * 100)} for n, a in type_sorted]
+
+    room_sorted = sorted(by_room.items(), key=lambda x: x[1], reverse=True)[:10]
+    room_max = room_sorted[0][1] if room_sorted else Decimal('1')
+    room_rows = [{'label': n, 'amount': a, 'pct': float(a / room_max * 100)} for n, a in room_sorted]
+
+    unpaid_bookings = [b for b in Booking.objects.filter(
+        status__in=['confirmed', 'checked_in', 'checked_out'],
+        created_at__gte=range_start, created_at__lt=range_end,
+    ).select_related('room_type', 'assigned_room') if b.total_balance_due > 0]
+
+    span = (date_to - date_from).days + 1
+    html_string = render_to_string('dashboard/rooms_report_pdf.html', {
+        'days': days, 'date_from': date_from, 'date_to': date_to,
+        'payment_count': len(payments),
+        'generated_at': timezone.now(),
+        'generated_by': request.user.get_full_name() or request.user.username,
+        'grand_total': grand_total,
+        'subtotal_excl_vat': subtotal_excl_vat,
+        'vat_amount': grand_total - subtotal_excl_vat,
+        'total_change': total_change,
+        'method_totals': method_totals,
+        'daily_average': grand_total / span if span else Decimal('0'),
+        'type_rows': type_rows,
+        'room_rows': room_rows,
+        'unpaid_bookings': unpaid_bookings,
+        'total_outstanding': sum((b.total_balance_due for b in unpaid_bookings), Decimal('0')),
+    })
+    pdf_file = HTML(string=html_string, base_url=request.build_absolute_uri('/')).write_pdf()
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="rooms_sales_{date_from}_to_{date_to}.pdf"'
+    return response
+
+@staff_module_required('rooms')
+def rooms_revenue_trend(request):
+    date_from, date_to = _report_range(request, default_days=6)
+    return _trend_payload(Payment.objects.filter(booking__isnull=False), date_from, date_to)
 #### end of room views ####
 
 ### start of restaurant views
@@ -959,7 +1066,8 @@ def kitchen_item_sales_pdf(request):
 # ==============================================================================
 
 def _can_touch_usage_log(user, department):
-    module = 'restaurant_kitchen' if department == 'kitchen' else 'rooms'
+    module_map = {'kitchen': 'restaurant_kitchen', 'housekeeping': 'rooms', 'bar': 'bar'}
+    module = module_map.get(department, department)
     return can_access(user, module) or can_access(user, 'store')
 
 def _usage_log_view(request, department, template_name, back_url_name):
@@ -1061,9 +1169,7 @@ def _usage_log_confirm(request, department):
 
 @login_required
 def kitchen_usage_log_view(request):
-    return _usage_log_view(
-        request, 'kitchen', 'dashboard/kitchen_usage_log.html', 'dashboard:restaurant_kitchen_display'
-    )
+    return _usage_log_view(request, 'kitchen', 'dashboard/kitchen_usage_log.html', 'dashboard:restaurant_kitchen_display')
 
 @login_required
 def kitchen_usage_log_add(request):
@@ -1077,6 +1183,28 @@ def kitchen_usage_log_delete(request, item_id):
 def kitchen_usage_log_confirm(request):
     return _usage_log_confirm(request, 'kitchen')
 
+# ------------------------------------------------------------------------------
+# BAR USAGE LOG ENDPOINTS
+# ------------------------------------------------------------------------------
+
+@login_required
+def bar_usage_log_view(request):
+    return _usage_log_view(
+        request, 'bar', 'dashboard/bar_usage_log.html', 'dashboard:bar'
+    )
+
+@login_required
+def bar_usage_log_add(request):
+    return _usage_log_add(request, 'bar')
+
+@login_required
+def bar_usage_log_delete(request, item_id):
+    return _usage_log_delete(request, item_id, 'bar')
+
+@login_required
+def bar_usage_log_confirm(request):
+    return _usage_log_confirm(request, 'bar')
+
 
 # ------------------------------------------------------------------------------
 # HOUSEKEEPING USAGE LOG ENDPOINTS
@@ -1084,9 +1212,7 @@ def kitchen_usage_log_confirm(request):
 
 @login_required
 def housekeeping_usage_log_view(request):
-    return _usage_log_view(
-        request, 'housekeeping', 'dashboard/housekeeping_usage_log.html', 'dashboard:rooms'
-    )
+    return _usage_log_view(request, 'housekeeping', 'dashboard/housekeeping_usage_log.html', 'dashboard:rooms')
 
 @login_required
 def housekeeping_usage_log_add(request):
@@ -1122,29 +1248,31 @@ def restaurant_record_payment(request, order_id):
     order = get_object_or_404(Order, id=order_id)
 
     if order.room_booking_id or order.bar_tab_id:
-        messages.error(
-            request,
-            "This order belongs to another department and can't be settled from Restaurant & Kitchen.",
-            extra_tags='swal-error',
-        )
+        messages.error(request, "This order belongs to another department and can't be settled from Restaurant & Kitchen.", extra_tags='swal-error')
         return redirect('dashboard:restaurant_kitchen')
 
     if not order.is_fully_served:
         messages.error(request, _order_not_served_message(order), extra_tags='swal-warning')
         return redirect('dashboard:restaurant_kitchen')
-    
+
     if request.method == 'POST':
-        instance = Payment(order=order)
-        form = PaymentForm(request.POST, instance=instance)
-        if form.is_valid():
-            payment = form.save(commit=False)
-            payment.received_by = request.user
-            payment.save()
-            if payment.change_given > 0:
-                messages.success(request, f"Payment recorded. CHANGE DUE: KSh {payment.change_given:,.0f}")
-            else:
-                messages.success(request, f"Payment of KSh {payment.amount:,.0f} recorded.")
-            return redirect('dashboard:restaurant_kitchen')
+        with transaction.atomic():
+            locked_order = Order.objects.select_for_update().get(id=order.id)
+            if locked_order.balance_due <= 0:
+                messages.error(request, f"Order #{locked_order.id} is already fully paid — no new payment was recorded.", extra_tags='swal-error')
+                return redirect('dashboard:restaurant_kitchen')
+
+            instance = Payment(order=locked_order)
+            form = PaymentForm(request.POST, instance=instance)
+            if form.is_valid():
+                payment = form.save(commit=False)
+                payment.received_by = request.user
+                payment.save()
+                if payment.change_given > 0:
+                    messages.success(request, f"Payment recorded. CHANGE DUE: KSh {payment.change_given:,.0f}")
+                else:
+                    messages.success(request, f"Payment of KSh {payment.amount:,.0f} recorded.")
+                return redirect('dashboard:restaurant_kitchen')
     else:
         form = PaymentForm(initial={'amount': order.balance_due})
 
@@ -1690,17 +1818,12 @@ def bar_cancel_order(request, order_id):
 
     return redirect('dashboard:bar_tab_pos', tab_id=tab.id)
 
-# NEW
 @staff_module_required('bar')
 def bar_record_payment(request, order_id):
     order = get_object_or_404(Order, id=order_id)
 
     if not order.bar_tab_id:
-        messages.error(
-            request,
-            "This order belongs to another department and can't be settled from the Bar.",
-            extra_tags='swal-error',
-        )
+        messages.error(request, "This order belongs to another department and can't be settled from the Bar.", extra_tags='swal-error')
         return redirect('dashboard:bar')
 
     if not order.is_fully_served:
@@ -1708,25 +1831,31 @@ def bar_record_payment(request, order_id):
         return redirect('dashboard:bar_tab_pos', tab_id=order.bar_tab_id)
 
     if request.method == 'POST':
-        instance = Payment(order=order)
-        form = PaymentForm(request.POST, instance=instance)
-        if form.is_valid():
-            payment = form.save(commit=False)
-            payment.received_by = request.user
-            payment.save()
+        with transaction.atomic():
+            locked_order = Order.objects.select_for_update().get(id=order.id)
+            if locked_order.balance_due <= 0:
+                messages.error(request, f"Order #{locked_order.id} is already fully paid — no new payment was recorded.", extra_tags='swal-error')
+                return redirect('dashboard:bar_tab_pos', tab_id=order.bar_tab_id)
 
-            tab = order.bar_tab
-            if not tab.open_orders:
-                tab.status = 'closed'
-                tab.closed_at = timezone.now()
-                tab.save(update_fields=['status', 'closed_at'])
-                messages.success(request, f"Payment recorded. Tab for {tab.customer_name} is now closed.")
-            else:
-                if payment.change_given > 0:
-                    messages.success(request, f"Payment recorded. CHANGE DUE: KSh {payment.change_given:,.0f}")
+            instance = Payment(order=locked_order)
+            form = PaymentForm(request.POST, instance=instance)
+            if form.is_valid():
+                payment = form.save(commit=False)
+                payment.received_by = request.user
+                payment.save()
+
+                tab = locked_order.bar_tab
+                if not tab.open_orders:
+                    tab.status = 'closed'
+                    tab.closed_at = timezone.now()
+                    tab.save(update_fields=['status', 'closed_at'])
+                    messages.success(request, f"Payment recorded. Tab for {tab.customer_name} is now closed.")
                 else:
-                    messages.success(request, f"Payment of KSh {payment.amount:,.0f} recorded.")
-            return redirect('dashboard:bar')
+                    if payment.change_given > 0:
+                        messages.success(request, f"Payment recorded. CHANGE DUE: KSh {payment.change_given:,.0f}")
+                    else:
+                        messages.success(request, f"Payment of KSh {payment.amount:,.0f} recorded.")
+                return redirect('dashboard:bar')
     else:
         form = PaymentForm(initial={'amount': order.balance_due})
 
@@ -2044,9 +2173,16 @@ def store_view(request):
         'suppliers': Supplier.objects.filter(is_active=True),
     })
 
+# NEW
 @staff_module_required('store')
 def store_usage_logs_view(request):
+    DEPARTMENTS = [('kitchen', 'Kitchen'), ('housekeeping', 'Housekeeping'), ('bar', 'Bar')]
+    valid_depts = {code for code, _ in DEPARTMENTS}
+
     dept = request.GET.get('department', 'kitchen')
+    if dept not in valid_depts:
+        dept = 'kitchen'  # guard: an unrecognized value would build a bad url name below
+
     preset = request.GET.get('preset', 'week')
     today = timezone.localdate()
     days = {'today': 0, 'week': 7, 'month': 30, 'quarter': 90, 'year': 365}.get(preset, 7)
@@ -2056,9 +2192,12 @@ def store_usage_logs_view(request):
         log__department=dept, log__date__gte=date_from, log__date__lte=today
     ).select_related('stock_item', 'added_by', 'log').order_by('-log__date', '-added_at')
 
-    wastage_items = WastageLog.objects.filter(
-        stock_item__department='bar', logged_at__date__gte=date_from, logged_at__date__lte=today
-    ).select_related('stock_item', 'logged_by').order_by('-logged_at')
+    if dept == 'bar':
+        wastage_items = WastageLog.objects.filter(
+            stock_item__department='bar', logged_at__date__gte=date_from, logged_at__date__lte=today
+        ).select_related('stock_item', 'logged_by').order_by('-logged_at')
+    else:
+        wastage_items = WastageLog.objects.none()
 
     # Value-based trend, not raw quantity, this is what makes units comparable.
     chart_days = [(date_from + timezone.timedelta(days=i)) for i in range((today - date_from).days + 1)]
@@ -2084,6 +2223,9 @@ def store_usage_logs_view(request):
     return render(request, 'dashboard/store_usage_logs.html', {
         'usage_items': usage_items, 'wastage_items': wastage_items,
         'department': dept, 'preset': preset, 'date_from': date_from, 'date_to': today,
+        'departments': DEPARTMENTS,
+        'add_url_name': f'dashboard:{dept}_usage_log_add',
+        'confirm_url_name': f'dashboard:{dept}_usage_log_confirm',
         'chart_labels': json.dumps([d.strftime('%b %d') for d in chart_days]),
         'chart_data': json.dumps(daily_values),
         'total_value_issued': round(total_value_issued, 2),

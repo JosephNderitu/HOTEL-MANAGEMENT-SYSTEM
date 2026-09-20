@@ -92,6 +92,20 @@ class Payment(models.Model):
             raise ValidationError("A payment can't be linked to both a booking and an order.")
         if self.amount_tendered is not None and self.amount_tendered < self.amount:
             raise ValidationError("Amount tendered can't be less than the amount being paid.")
+
+        # Block ghost/duplicate entries: a NEW payment can never exceed what's still owed.
+        # Only checked on creation — editing an existing payment in admin re-counts itself
+        # in the balance and would otherwise reject a no-op save.
+        if self.pk is None and self.amount is not None:
+            target = self.booking or self.order
+            remaining = getattr(target, 'balance_due', None)
+            if remaining is None:
+                remaining = getattr(target, 'total_balance_due', None)
+            if remaining is not None and self.amount > remaining + Decimal('0.01'):
+                raise ValidationError(
+                    f"This payment of KSh {self.amount:,.2f} is more than the KSh {remaining:,.2f} still owed. "
+                    "This order may already be paid — refresh the page before trying again."
+                )
     
     def __str__(self):
         target = self.booking or self.order
