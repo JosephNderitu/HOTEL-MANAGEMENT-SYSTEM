@@ -110,6 +110,7 @@ urlpatterns = [
     path('store/stocktakes/start/', views.stocktake_start, name='stocktake_start'),
     path('store/stocktakes/<int:stocktake_id>/', views.stocktake_detail, name='stocktake_detail'),
     path('store/stocktakes/<int:stocktake_id>/finalize/', views.stocktake_finalize, name='stocktake_finalize'),
+    path('store/spend-trend/', views.store_spend_trend, name='store_spend_trend'),
     
     ##receipt uRLs
     path('receipt/<int:order_id>/', views.order_receipt, name='order_receipt'),

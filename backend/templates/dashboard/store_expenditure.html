@@ -1,27 +1,99 @@
 {% extends "dashboard/base_dashboard.html" %}
 {% block dashboard_content %}
 {% include "dashboard/_store_styles.html" %}
+<style>
+    .exp-pill { font-size: 12px; font-weight: 600; padding: 7px 16px; border-radius: 9999px; transition: background .15s, color .15s; }
+    .exp-pill.active { background: #0B6B3A; color: #fff; }
+    .exp-pill:not(.active) { border: 1px solid #d1d5db; color: #6b7280; }
+    .exp-delta { font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 3px; }
+    .exp-delta.up { color: #dc2626; }
+    .exp-delta.down { color: #0B6B3A; }
+    .exp-bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .exp-bar-row:last-child { margin-bottom: 0; }
+    .exp-bar-label { width: 140px; font-size: 12.5px; font-weight: 600; color: #222; flex-shrink: 0; }
+    .exp-bar-track { flex: 1; background: #f0f2f0; border-radius: 6px; height: 16px; overflow: hidden; }
+    .exp-bar-fill { background: linear-gradient(90deg, #0B6B3A, #0d8248); height: 100%; border-radius: 6px; }
+    .exp-bar-value { width: 100px; text-align: right; font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    details.dept-card summary { cursor: pointer; list-style: none; }
+    details.dept-card summary::-webkit-details-marker { display: none; }
+    details.dept-card summary .chevron { transition: transform .15s; }
+    details.dept-card[open] summary .chevron { transform: rotate(90deg); }
+</style>
 
 <a href="{% url 'dashboard:store' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; Store</a>
 <h1 class="text-2xl font-bold text-black mt-1 mb-6">Expenditure Report</h1>
 
-<form method="get" class="flex flex-wrap gap-2 mb-6">
-    <input type="date" name="date_from" value="{{ date_from }}" class="border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
-    <input type="date" name="date_to" value="{{ date_to }}" class="border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
-    <button type="submit" class="bg-[#0B6B3A] text-white text-sm font-semibold px-5 py-2 rounded-lg">View</button>
-    <a href="{% url 'dashboard:store_expenditure_pdf' %}?date_from={{ date_from }}&date_to={{ date_to }}" class="bg-[#C9A227] text-black text-sm font-semibold px-5 py-2 rounded-lg"><i class="fa-solid fa-file-pdf mr-1"></i>Download PDF</a>
-</form>
+{% if messages %}{% for message in messages %}
+<div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
+{% endfor %}{% endif %}
 
-<div class="grid grid-cols-3 gap-4 mb-8">
-    <div class="bg-white border border-[#eef0ee] rounded-xl p-4"><p class="text-xs text-gray-500 uppercase">Excl. VAT</p><p class="text-xl font-bold text-black">KSh {{ grand_excl|floatformat:0 }}</p></div>
-    <div class="bg-white border border-[#eef0ee] rounded-xl p-4"><p class="text-xs text-gray-500 uppercase">VAT</p><p class="text-xl font-bold text-black">KSh {{ grand_vat|floatformat:0 }}</p></div>
-    <div class="bg-white border border-[#0B6B3A] rounded-xl p-4"><p class="text-xs text-gray-500 uppercase">Total (Incl. VAT)</p><p class="text-xl font-bold text-[#0B6B3A]">KSh {{ grand_incl|floatformat:0 }}</p></div>
+<!-- Preset range pills -->
+<div class="flex flex-wrap gap-2 mb-3">
+    <a href="?preset=today" class="exp-pill {% if preset == 'today' and not request.GET.date_from %}active{% endif %}">Today</a>
+    <a href="?preset=week" class="exp-pill {% if preset == 'week' and not request.GET.date_from %}active{% endif %}">7 Days</a>
+    <a href="?preset=month" class="exp-pill {% if preset == 'month' and not request.GET.date_from %}active{% endif %}">30 Days</a>
+    <a href="?preset=quarter" class="exp-pill {% if preset == 'quarter' and not request.GET.date_from %}active{% endif %}">90 Days</a>
+    <a href="?preset=half_year" class="exp-pill {% if preset == 'half_year' and not request.GET.date_from %}active{% endif %}">6 Months</a>
+    <a href="?preset=year" class="exp-pill {% if preset == 'year' and not request.GET.date_from %}active{% endif %}">1 Year</a>
 </div>
 
+<!-- Custom exact range -->
+<form method="get" class="flex flex-wrap items-center gap-2 mb-6">
+    <span class="text-xs text-gray-400">or an exact range:</span>
+    <input type="date" name="date_from" value="{{ date_from|date:'Y-m-d' }}" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm">
+    <input type="date" name="date_to" value="{{ date_to|date:'Y-m-d' }}" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm">
+    <button type="submit" class="bg-[#0B6B3A] text-white text-sm font-semibold px-4 py-1.5 rounded-lg">View</button>
+    <a href="{% url 'dashboard:store_expenditure_pdf' %}?date_from={{ date_from|date:'Y-m-d' }}&date_to={{ date_to|date:'Y-m-d' }}" class="bg-[#C9A227] text-black text-sm font-semibold px-4 py-1.5 rounded-lg ml-auto"><i class="fa-solid fa-file-pdf mr-1"></i>Download PDF</a>
+</form>
+
+<!-- Headline stats -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    <div class="bg-white border border-[#eef0ee] rounded-xl p-4">
+        <p class="text-xs text-gray-500 uppercase">Excl. VAT</p>
+        <p class="text-xl font-bold text-black">KSh {{ grand_excl|floatformat:0 }}</p>
+    </div>
+    <div class="bg-white border border-[#eef0ee] rounded-xl p-4">
+        <p class="text-xs text-gray-500 uppercase">VAT (16%)</p>
+        <p class="text-xl font-bold text-black">KSh {{ grand_vat|floatformat:0 }}</p>
+    </div>
+    <div class="bg-white border border-[#0B6B3A] rounded-xl p-4">
+        <p class="text-xs text-gray-500 uppercase">Total (Incl. VAT)</p>
+        <p class="text-xl font-bold text-[#0B6B3A]">KSh {{ grand_incl|floatformat:0 }}</p>
+        {% if change_pct is not None %}
+        <p class="exp-delta {% if change_pct > 0 %}up{% else %}down{% endif %} mt-1">
+            <i class="fa-solid fa-arrow-{% if change_pct > 0 %}up{% else %}down{% endif %}"></i>
+            {{ change_pct|floatformat:0 }}% vs the same length period before this one
+        </p>
+        {% endif %}
+    </div>
+    <div class="bg-white border border-[#eef0ee] rounded-xl p-4">
+        <p class="text-xs text-gray-500 uppercase">Daily Average</p>
+        <p class="text-xl font-bold text-black">KSh {{ daily_average|floatformat:0 }}</p>
+    </div>
+</div>
+
+<!-- Where the money went -->
+{% if summary %}
+<div class="bg-white border border-gray-200 rounded-2xl p-5 mb-8">
+    <h2 class="font-bold text-black text-sm mb-4">Where the money went</h2>
+    {% for dept, data in summary.items %}
+    <div class="exp-bar-row">
+        <span class="exp-bar-label">{{ data.label }}</span>
+        <div class="exp-bar-track"><div class="exp-bar-fill" style="width:{{ data.pct }}%;"></div></div>
+        <span class="exp-bar-value">KSh {{ data.total_incl|floatformat:0 }}</span>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Department detail, collapsible -->
 {% for dept, data in summary.items %}
-<div class="bg-white border border-gray-200 rounded-2xl p-5 mb-4">
-    <h2 class="font-bold text-black text-sm mb-3">{{ data.label }} — KSh {{ data.total_incl|floatformat:0 }}</h2>
-    <div class="overflow-x-auto">
+<details class="dept-card bg-white border border-gray-200 rounded-2xl p-5 mb-4" {% if forloop.first %}open{% endif %}>
+    <summary class="flex items-center justify-between">
+        <span class="font-bold text-black text-sm"><i class="fa-solid fa-chevron-right chevron text-xs text-gray-400 mr-2"></i>{{ data.label }}</span>
+        <span class="font-bold text-[#0B6B3A]">KSh {{ data.total_incl|floatformat:0 }}</span>
+    </summary>
+    <div class="overflow-x-auto mt-4">
         <table class="st-table w-full text-sm">
             <thead><tr class="text-xs text-gray-500 uppercase text-left border-b border-gray-100"><th class="py-2">Item</th><th>Qty</th><th>Unit Cost</th><th>Total</th></tr></thead>
             <tbody>
@@ -36,6 +108,6 @@
             </tbody>
         </table>
     </div>
-</div>
+</details>
 {% empty %}<p class="text-gray-400 text-center py-14">No purchases in this range.</p>{% endfor %}
 {% endblock %}

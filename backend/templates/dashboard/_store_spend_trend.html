@@ -1,0 +1,158 @@
+{% comment %}
+Multi-department spend trend panel.
+Usage: {% include "dashboard/_store_spend_trend.html" with trend_url=spend_trend_url %}
+Endpoint must return {"labels": [...], "datasets": [{"label": "Kitchen", "data": [...]}, ...]}
+{% endcomment %}
+
+<div class="bg-white border border-gray-200 rounded-2xl p-5 mb-8">
+    <div class="flex items-end justify-between flex-wrap gap-4 mb-4">
+        <div>
+            <h2 class="font-bold text-black text-sm">Spend trend, by department</h2>
+            <p class="text-xs text-gray-500 mt-0.5">What was purchased, by the day it was logged<span id="spendTrendRange" class="text-gray-400"></span></p>
+        </div>
+        <div class="flex items-end gap-2 flex-wrap">
+            <div class="flex bg-gray-100 rounded-full p-1" id="spendTrendPresets">
+                <button type="button" data-days="13" class="px-3 py-1 text-xs font-semibold rounded-full transition">14 days</button>
+                <button type="button" data-days="29" class="px-3 py-1 text-xs font-semibold rounded-full transition">30 days</button>
+                <button type="button" data-days="89" class="px-3 py-1 text-xs font-semibold rounded-full transition">90 days</button>
+            </div>
+            <div class="flex items-center gap-1">
+                <input type="date" id="spendTrendFrom" class="border border-gray-300 rounded-lg text-xs px-2 py-1.5">
+                <span class="text-gray-400 text-xs">to</span>
+                <input type="date" id="spendTrendTo" class="border border-gray-300 rounded-lg text-xs px-2 py-1.5">
+                <button type="button" id="spendTrendApply" class="bg-[#0B6B3A] text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-[#095430] transition">Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="flex flex-wrap gap-6 mb-4 border-b border-gray-100 pb-4">
+        <div><p class="text-xs text-gray-500">Spent in range</p><p class="text-xl font-bold text-[#0B6B3A]" id="spendTrendTotal">—</p></div>
+        <div><p class="text-xs text-gray-500">Daily average</p><p class="text-xl font-bold text-black" id="spendTrendAvg">—</p></div>
+        <div><p class="text-xs text-gray-500">Highest single day</p><p class="text-xl font-bold text-black" id="spendTrendPeak">—</p></div>
+    </div>
+
+    <div class="relative h-64 sm:h-72">
+        <canvas id="spendTrendCanvas"></canvas>
+        <p id="spendTrendEmpty" class="hidden absolute inset-0 flex items-center justify-center text-sm text-gray-400">Nothing was purchased in this range.</p>
+    </div>
+</div>
+
+<script>
+(function () {
+    const url = "{{ trend_url }}";
+    const canvas = document.getElementById("spendTrendCanvas");
+    const elFrom  = document.getElementById("spendTrendFrom");
+    const elTo    = document.getElementById("spendTrendTo");
+    const elTotal = document.getElementById("spendTrendTotal");
+    const elAvg   = document.getElementById("spendTrendAvg");
+    const elPeak  = document.getElementById("spendTrendPeak");
+    const elEmpty = document.getElementById("spendTrendEmpty");
+    const elRange = document.getElementById("spendTrendRange");
+    const presets = document.getElementById("spendTrendPresets");
+    if (!canvas) return;
+
+    window.ensureLib = window.ensureLib || function (globalName, src) {
+        if (window[globalName]) return Promise.resolve();
+        window.__libPromises = window.__libPromises || {};
+        if (!window.__libPromises[src]) {
+            window.__libPromises[src] = new Promise(function (resolve, reject) {
+                const s = document.createElement("script");
+                s.src = src; s.async = true;
+                s.onload = resolve;
+                s.onerror = function () { reject(new Error("Could not load " + src)); };
+                document.head.appendChild(s);
+            });
+        }
+        return window.__libPromises[src];
+    };
+
+    const money = n => "KSh " + Math.round(n).toLocaleString();
+    const iso   = d => d.toISOString().slice(0, 10);
+    const colors = ["#0B6B3A", "#C9A227", "#3b82f6", "#dc2626", "#8b5cf6", "#06b6d4"];
+
+    function markPreset(days) {
+        presets.querySelectorAll("button").forEach(b => {
+            const on = String(days) === b.dataset.days;
+            b.className = "px-3 py-1 text-xs font-semibold rounded-full transition " +
+                (on ? "bg-white text-[#0B6B3A] shadow-sm" : "text-gray-500 hover:text-black");
+        });
+    }
+
+    function draw(labels, datasets) {
+        if (window._spendTrendChart) window._spendTrendChart.destroy();
+        window._spendTrendChart = new Chart(canvas, {
+            type: "line",
+            data: {
+                labels,
+                datasets: datasets.map((d, i) => ({
+                    label: d.label, data: d.data,
+                    borderColor: colors[i % colors.length],
+                    backgroundColor: colors[i % colors.length] + "18",
+                    borderWidth: 2, tension: 0.35, fill: false, pointRadius: 0, pointHoverRadius: 4,
+                })),
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                interaction: { mode: "index", intersect: false },
+                plugins: {
+                    legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 10 } } },
+                    tooltip: { padding: 10, callbacks: { label: c => `${c.dataset.label}: ${money(c.parsed.y)}` } },
+                },
+                scales: {
+                    y: { beginAtZero: true, grid: { color: "#f0f0ef" }, ticks: { callback: v => v >= 1000 ? (v / 1000) + "k" : v, font: { size: 11 }, color: "#9ca3af" } },
+                    x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkipPadding: 18, font: { size: 11 }, color: "#9ca3af" } },
+                },
+            },
+        });
+    }
+
+    async function load(from, to) {
+        elFrom.value = from;
+        elTo.value = to;
+        try {
+            const res  = await fetch(`${url}?date_from=${from}&date_to=${to}`);
+            const data = await res.json();
+            draw(data.labels, data.datasets);
+
+            const totals = data.labels.map((_, i) => data.datasets.reduce((s, ds) => s + (ds.data[i] || 0), 0));
+            const grand = totals.reduce((a, b) => a + b, 0);
+            const peakIdx = totals.indexOf(Math.max(...totals));
+
+            elTotal.textContent = money(grand);
+            elAvg.textContent   = money(totals.length ? grand / totals.length : 0);
+            elPeak.textContent  = grand > 0 ? `${money(totals[peakIdx])} · ${data.labels[peakIdx]}` : "—";
+            elRange.textContent = ` · ${data.labels[0] || ""} – ${data.labels[data.labels.length - 1] || ""}`;
+            elEmpty.classList.toggle("hidden", grand > 0);
+        } catch (e) {
+            elEmpty.textContent = "Couldn't load the trend. Refresh the page to try again.";
+            elEmpty.classList.remove("hidden");
+        }
+    }
+
+    function loadDays(days) {
+        markPreset(days);
+        const to = new Date();
+        const from = new Date();
+        from.setDate(to.getDate() - days);
+        load(iso(from), iso(to));
+    }
+
+    presets.addEventListener("click", e => {
+        const btn = e.target.closest("button[data-days]");
+        if (btn) loadDays(parseInt(btn.dataset.days, 10));
+    });
+    document.getElementById("spendTrendApply").addEventListener("click", () => {
+        if (!elFrom.value || !elTo.value) return;
+        if (elFrom.value > elTo.value) elFrom.value = elTo.value;
+        markPreset(-1);
+        load(elFrom.value, elTo.value);
+    });
+
+    window.ensureLib("Chart", "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js")
+        .then(function () { loadDays(13); }) // default: last 14 days, matching the old fixed chart
+        .catch(function () {
+            elEmpty.textContent = "The chart library couldn't load. Check the internet connection on this machine.";
+            elEmpty.classList.remove("hidden");
+        });
+})();
+</script>

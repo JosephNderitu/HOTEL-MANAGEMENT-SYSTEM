@@ -1,6 +1,18 @@
 {% extends "dashboard/base_dashboard.html" %}
 {% block dashboard_content %}
 {% include "dashboard/_store_styles.html" %}
+<style>
+    .delta { font-size: 10.5px; font-weight: 700; display: inline-flex; align-items: center; gap: 3px; margin-top: 2px; }
+    .delta.up { color: #dc2626; }
+    .delta.down { color: #0B6B3A; }
+    .delta.flat { color: #9ca3af; }
+    .top-row { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
+    .top-row:last-child { margin-bottom: 0; }
+    .top-label { width: 40%; font-size: 12px; color: #333; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .top-track { flex: 1; background: #f3f4f2; border-radius: 5px; height: 10px; overflow: hidden; }
+    .top-fill { background: #0B6B3A; height: 100%; border-radius: 5px; }
+    .top-value { width: 90px; text-align: right; font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+</style>
 
 <div class="st-hero">
     <div>
@@ -26,10 +38,44 @@
 </div>
 {% endif %}
 
-<div class="grid grid-cols-2 gap-4 mb-6">
-    <div class="st-stat"><p class="num">KSh {{ today_total|floatformat:0 }}</p><p class="lbl">Spent Today</p></div>
-    <div class="st-stat"><p class="num">KSh {{ week_total|floatformat:0 }}</p><p class="lbl">Spent This Week</p></div>
+<!-- Comparative stats -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div class="st-stat">
+        <p class="num">KSh {{ today_total|floatformat:0 }}</p>
+        <p class="lbl">Spent Today</p>
+        {% if today_change is not None %}
+        <p class="delta {% if today_change > 0 %}up{% elif today_change < 0 %}down{% else %}flat{% endif %}">
+            <i class="fa-solid fa-arrow-{% if today_change > 0 %}up{% elif today_change < 0 %}down{% else %}right{% endif %}"></i>
+            {{ today_change|floatformat:0 }}% vs yesterday
+        </p>
+        {% else %}
+        <p class="delta flat">No spend yesterday to compare</p>
+        {% endif %}
+    </div>
+    <div class="st-stat">
+        <p class="num">KSh {{ week_total|floatformat:0 }}</p>
+        <p class="lbl">Spent This Week</p>
+        {% if week_change is not None %}
+        <p class="delta {% if week_change > 0 %}up{% elif week_change < 0 %}down{% else %}flat{% endif %}">
+            <i class="fa-solid fa-arrow-{% if week_change > 0 %}up{% elif week_change < 0 %}down{% else %}right{% endif %}"></i>
+            {{ week_change|floatformat:0 }}% vs last week
+        </p>
+        {% else %}
+        <p class="delta flat">No spend last week to compare</p>
+        {% endif %}
+    </div>
+    <div class="st-stat">
+        <p class="num">KSh {{ month_total|floatformat:0 }}</p>
+        <p class="lbl">Spent This Month</p>
+    </div>
+    <div class="st-stat">
+        <p class="num">KSh {{ stock_value|floatformat:0 }}</p>
+        <p class="lbl">Value Sitting In Stock Right Now</p>
+    </div>
 </div>
+
+<!-- Spend trend, department-controllable -->
+{% include "dashboard/_store_spend_trend.html" with trend_url=spend_trend_url %}
 
 <div class="grid lg:grid-cols-3 gap-6 mb-8">
     <div class="lg:col-span-2 st-card">
@@ -82,11 +128,29 @@
         </form>
     </div>
 
-    <div class="st-card">
-        <h2><span class="icon-badge"><i class="fa-solid fa-chart-line"></i></span>Spend by Department</h2>
-        <p class="text-[11px] text-gray-400 mb-3">Last 14 days</p>
-        <div class="st-chart-box">
-            <canvas id="spendChart" height="220"></canvas>
+    <div class="space-y-6">
+        <div class="st-card">
+            <h2><span class="icon-badge"><i class="fa-solid fa-building"></i></span>Top Departments</h2>
+            <p class="text-[11px] text-gray-400 mb-3">This month</p>
+            {% for row in top_departments %}
+            <div class="top-row">
+                <span class="top-label">{{ row.label }}</span>
+                <div class="top-track"><div class="top-fill" style="width:{{ row.pct }}%;"></div></div>
+                <span class="top-value">KSh {{ row.amount|floatformat:0 }}</span>
+            </div>
+            {% empty %}<p class="text-gray-400 text-sm text-center py-4">Nothing logged this month yet.</p>{% endfor %}
+        </div>
+
+        <div class="st-card">
+            <h2><span class="icon-badge"><i class="fa-solid fa-truck"></i></span>Top Suppliers</h2>
+            <p class="text-[11px] text-gray-400 mb-3">This month</p>
+            {% for row in top_suppliers %}
+            <div class="top-row">
+                <span class="top-label">{{ row.label }}</span>
+                <div class="top-track"><div class="top-fill" style="width:{{ row.pct }}%; background:#C9A227;"></div></div>
+                <span class="top-value">KSh {{ row.amount|floatformat:0 }}</span>
+            </div>
+            {% empty %}<p class="text-gray-400 text-sm text-center py-4">Nothing logged this month yet.</p>{% endfor %}
         </div>
     </div>
 </div>
@@ -119,7 +183,6 @@
 
 <div id="store-toast-container" class="fixed top-20 right-6 z-50 flex flex-col gap-2 items-end"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const modeInput = document.getElementById('mode-input');
@@ -160,17 +223,6 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     deptSelect.addEventListener('change', loadStockItems);
     loadStockItems();
-
-    const colors = ['#0B6B3A', '#C9A227', '#3b82f6', '#dc2626', '#8b5cf6', '#06b6d4'];
-    const datasets = {{ chart_datasets|safe }}.map((d, i) => ({
-        label: d.label, data: d.data, borderColor: colors[i % colors.length],
-        backgroundColor: colors[i % colors.length] + '22', tension: 0.35, fill: false,
-    }));
-    new Chart(document.getElementById('spendChart'), {
-        type: 'line',
-        data: { labels: {{ chart_labels|safe }}, datasets },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } }, scales: { y: { beginAtZero: true } } },
-    });
 
     const toastContainer = document.getElementById('store-toast-container');
     const liveDot = document.getElementById('live-dot');

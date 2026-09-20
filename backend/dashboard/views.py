@@ -2143,36 +2143,93 @@ def store_view(request):
     else:
         form = PurchaseLogForm(initial={'purchased_at': today, 'vat_inclusive': True, 'department': 'kitchen'})
 
-    today_purchases = PurchaseLog.objects.filter(purchased_at__date=today)
-    today_total = sum((p.total_cost for p in today_purchases), Decimal('0'))
-    week_purchases = PurchaseLog.objects.filter(purchased_at__date__gte=week_ago)
-    week_total = sum((p.total_cost for p in week_purchases), Decimal('0'))
+    # NEW
+    def _spend_between(d_from, d_to):
+        qs = PurchaseLog.objects.filter(purchased_at__date__gte=d_from, purchased_at__date__lte=d_to)
+        return sum((p.total_cost for p in qs), Decimal('0'))
+
+    def _pct_change(current, previous):
+        if not previous:
+            return None
+        return float((current - previous) / previous * 100)
+
+    yesterday = today - timezone.timedelta(days=1)
+    week_start = today - timezone.timedelta(days=6)
+    last_week_start = week_start - timezone.timedelta(days=7)
+    last_week_end = week_start - timezone.timedelta(days=1)
+    month_start = today.replace(day=1)
+
+    today_total = _spend_between(today, today)
+    yesterday_total = _spend_between(yesterday, yesterday)
+    week_total = _spend_between(week_start, today)
+    last_week_total = _spend_between(last_week_start, last_week_end)
+    month_total = _spend_between(month_start, today)
+
+    today_change = _pct_change(today_total, yesterday_total)
+    week_change = _pct_change(week_total, last_week_total)
+
+    stock_value = sum(
+        (i.quantity_on_hand * i.last_unit_cost for i in StockItem.objects.filter(is_active=True) if i.last_unit_cost),
+        Decimal('0')
+    )
+
+    month_purchases = list(PurchaseLog.objects.filter(
+        purchased_at__date__gte=month_start, purchased_at__date__lte=today
+    ).select_related('supplier'))
+    by_dept, by_supplier = {}, {}
+    for p in month_purchases:
+        by_dept[p.get_department_display()] = by_dept.get(p.get_department_display(), Decimal('0')) + p.total_cost
+        key = p.supplier.name if p.supplier else "No supplier recorded"
+        by_supplier[key] = by_supplier.get(key, Decimal('0')) + p.total_cost
+
+    dept_max = max(by_dept.values(), default=Decimal('1')) or Decimal('1')
+    top_departments = [
+        {'label': n, 'amount': a, 'pct': float(a / dept_max * 100)}
+        for n, a in sorted(by_dept.items(), key=lambda x: x[1], reverse=True)[:5]
+    ]
+    supplier_max = max(by_supplier.values(), default=Decimal('1')) or Decimal('1')
+    top_suppliers = [
+        {'label': n, 'amount': a, 'pct': float(a / supplier_max * 100)}
+        for n, a in sorted(by_supplier.items(), key=lambda x: x[1], reverse=True)[:5]
+    ]
 
     recent_purchases = PurchaseLog.objects.select_related('stock_item', 'purchased_by').prefetch_related('receipts')[:15]
     low_stock_items = [i for i in StockItem.objects.filter(is_active=True) if i.stock_status != 'ok']
 
-    chart_days = [(today - timezone.timedelta(days=i)) for i in range(13, -1, -1)]
-    dept_codes = [c for c, _ in StockItem.DEPARTMENT_CHOICES]
-    dept_labels = dict(StockItem.DEPARTMENT_CHOICES)
-    daily_by_dept = {code: [] for code in dept_codes}
-    for day in chart_days:
-        day_purchases = PurchaseLog.objects.filter(purchased_at__date=day)
-        for code in dept_codes:
-            total = sum((p.total_cost for p in day_purchases if p.department == code), Decimal('0'))
-            daily_by_dept[code].append(float(total))
-
     return render(request, 'dashboard/store.html', {
-        'form': form, 
-        'today_total': today_total, 
-        'week_total': week_total,
-        'recent_purchases': recent_purchases, 
+        'form': form,
+        'today_total': today_total, 'yesterday_total': yesterday_total, 'today_change': today_change,
+        'week_total': week_total, 'last_week_total': last_week_total, 'week_change': week_change,
+        'month_total': month_total, 'stock_value': stock_value,
+        'top_departments': top_departments, 'top_suppliers': top_suppliers,
+        'recent_purchases': recent_purchases,
         'low_stock_items': low_stock_items,
-        'chart_labels': json.dumps([d.strftime('%b %d') for d in chart_days]),
-        'chart_datasets': json.dumps([{'label': dept_labels[c], 'data': daily_by_dept[c]} for c in dept_codes]),
         'department_choices': StockItem.DEPARTMENT_CHOICES,
         'suppliers': Supplier.objects.filter(is_active=True),
+        'spend_trend_url': reverse('dashboard:store_spend_trend'),
     })
 
+@staff_module_required('store')
+def store_spend_trend(request):
+    date_from, date_to = _report_range(request, default_days=13)
+    days = [(date_from + timezone.timedelta(days=i)) for i in range((date_to - date_from).days + 1)]
+    dept_codes = [c for c, _ in StockItem.DEPARTMENT_CHOICES]
+    dept_labels = dict(StockItem.DEPARTMENT_CHOICES)
+
+    purchases = list(PurchaseLog.objects.filter(purchased_at__date__gte=date_from, purchased_at__date__lte=date_to))
+    daily = {d: {c: Decimal('0') for c in dept_codes} for d in days}
+    for p in purchases:
+        d = p.purchased_at.date() if hasattr(p.purchased_at, 'date') else p.purchased_at
+        if d in daily and p.department in daily[d]:
+            daily[d][p.department] += p.total_cost
+
+    return JsonResponse({
+        'labels': [d.strftime('%b %d') for d in days],
+        'datasets': [
+            {'label': dept_labels[c], 'data': [float(daily[d][c]) for d in days]}
+            for c in dept_codes
+        ],
+    })
 # NEW
 @staff_module_required('store')
 def store_usage_logs_view(request):
@@ -2255,9 +2312,23 @@ def store_expenditure_report(request):
     grand_excl = sum((d['total_excl'] for d in summary.values()), Decimal('0'))
     grand_vat = sum((d['total_vat'] for d in summary.values()), Decimal('0'))
 
+    span = (date_to - date_from).days + 1
+    daily_average = grand_incl / span if span else Decimal('0')
+
+    # Same-length prior period, for a "vs last period" comparison
+    prev_to = date_from - timezone.timedelta(days=1)
+    prev_from = prev_to - timezone.timedelta(days=span - 1)
+    prev_total = sum((p.total_cost for p in get_purchases_in_range(prev_from, prev_to)), Decimal('0'))
+    change_pct = float((grand_incl - prev_total) / prev_total * 100) if prev_total else None
+
+    dept_max = max((d['total_incl'] for d in summary.values()), default=Decimal('1')) or Decimal('1')
+    for d in summary.values():
+        d['pct'] = float(d['total_incl'] / dept_max * 100)
+
     return render(request, 'dashboard/store_expenditure.html', {
         'summary': summary, 'date_from': date_from, 'date_to': date_to, 'preset': preset,
         'grand_incl': grand_incl, 'grand_excl': grand_excl, 'grand_vat': grand_vat,
+        'daily_average': daily_average, 'change_pct': change_pct,
     })
 
 @staff_module_required('store')
