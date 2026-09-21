@@ -3,6 +3,8 @@ from django.db import models
 from django.conf import settings
 from django.utils import timezone
 from public_site.models import compress_image_if_needed
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 
 VAT_RATE = Decimal('0.16')
 
@@ -212,3 +214,11 @@ class StockTakeLine(models.Model):
     def __str__(self):
         return f"{self.stock_item.name}: system {self.system_quantity}, counted {self.counted_quantity}"
     
+@receiver(post_save, sender=StockItem)
+def auto_enable_linked_menu_item(sender, instance, **kwargs):
+    if instance.linked_menu_item_id and not instance.linked_menu_item.is_available:
+        # .update() bypasses full_clean()/clean() — safe here because the FK
+        # is already committed to the DB at this point, so the constraint is genuinely satisfied.
+        instance.linked_menu_item.__class__.objects.filter(
+            pk=instance.linked_menu_item_id
+        ).update(is_available=True)

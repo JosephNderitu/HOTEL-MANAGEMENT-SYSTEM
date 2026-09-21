@@ -436,11 +436,17 @@ class MenuItem(models.Model):
             raise ValidationError("VIP price should not be lower than the regular price.")
         if self.cost_price is not None and self.cost_price > self.regular_price:
             raise ValidationError("Cost price is higher than the selling price. Check the figures.")
-        if self.requires_stock_link and self.is_available and not hasattr(self, 'stock_item'):
-            raise ValidationError(
-                "Bar drinks must be linked to a stock item before they can be made available. "
-                "Create the stock record first, then link it from Store & Inventory."
-            )
+
+        if self.requires_stock_link and self.is_available:
+            if self.pk is None:
+                # Brand new row — a StockItem can't possibly point at it yet.
+                # Save it as unavailable instead of blocking creation.
+                self.is_available = False
+            elif not hasattr(self, 'stock_item'):
+                raise ValidationError(
+                    "Bar drinks must be linked to a stock item before they can be made available. "
+                    "Create the stock record first, then link it from Store & Inventory."
+                )
 
     def __str__(self):
         return self.name
