@@ -2,78 +2,179 @@
 {% block dashboard_content %}
 {% include "dashboard/_hrm_styles.html" %}
 <a href="{% url 'dashboard:hrm' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; HRM</a>
-<h1 class="text-xl font-bold text-black mt-1 mb-6">Clock In / Out</h1>
+
+<div class="hr-hero-card rounded-2xl p-6 md:p-8 mt-3 mb-6 text-white">
+    <p class="text-xs uppercase tracking-wide text-white/60 mb-1" id="today-date"></p>
+    <div class="flex flex-wrap items-end justify-between gap-4">
+        <div>
+            <p class="hr-live-clock" id="live-clock">--:--:--</p>
+            {% if assignment %}
+            <p class="text-sm text-white/70 mt-1">{{ assignment.shift.name }} &middot; {{ assignment.shift.start_time|time:"H:i" }}&ndash;{{ assignment.shift.end_time|time:"H:i" }}</p>
+            {% else %}
+            <p class="text-sm text-white/50 mt-1">No shift scheduled today</p>
+            {% endif %}
+        </div>
+        <div id="shift-status-box"></div>
+    </div>
+</div>
 
 {% if messages %}{% for message in messages %}
-<div class="bg-{% if message.tags == 'error' %}red-50 border-red-300 text-red-700{% else %}[#0B6B3A]/10 border-[#0B6B3A] text-[#0B6B3A]{% endif %} border text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
+<div class="{% if message.tags == 'error' %}bg-red-50 border-red-300 text-red-700{% else %}bg-[#0B6B3A]/10 border-[#0B6B3A] text-[#0B6B3A]{% endif %} border text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
 {% endfor %}{% endif %}
 
-<div class="hr-card max-w-md">
-    <p class="text-sm mb-1">Status: <strong>{% if record.clock_out_time %}Done for today{% elif record.clock_in_time %}Clocked in at {{ record.clock_in_time|date:"H:i" }}{% else %}Not clocked in{% endif %}</strong></p>
-    {% if record.is_late %}<p class="text-red-600 text-xs mb-3">Late by {{ record.late_minutes }} min</p>{% endif %}
+<div class="grid lg:grid-cols-2 gap-6">
+    <div class="hr-hero-card rounded-2xl p-6 text-white">
+        <h2 class="font-bold text-sm mb-4 flex items-center gap-2"><i class="fa-solid fa-location-dot text-[#C9A227]"></i> Your Location</h2>
+        <div class="hr-radar-wrap" id="radar-wrap" data-geofence-radius-m="{{ geofence_radius_m }}" data-geofence-lat="{{ geofence_lat }}" data-geofence-lng="{{ geofence_lng }}">
+            <div class="hr-radar-ring" style="width:180px;height:180px;"></div>
+            <div class="hr-radar-center"></div>
+            <div class="hr-radar-marker hr-radar-out hidden" id="radar-marker"></div>
+        </div>
+        <p class="text-center text-sm mt-4" id="location-status"><i class="fa-solid fa-spinner fa-spin mr-1"></i>Getting your location...</p>
+    </div>
 
-    <video id="camera-preview" autoplay playsinline class="w-full rounded-xl bg-black mb-3" style="max-height:260px;"></video>
-    <canvas id="photo-canvas" class="hidden"></canvas>
-    <img id="photo-preview" class="hidden w-full rounded-xl mb-3">
+    <div class="hr-hero-card rounded-2xl p-6 text-white">
+        <h2 class="font-bold text-sm mb-4 flex items-center gap-2"><i class="fa-solid fa-shield-halved text-[#C9A227]"></i> Confirm It's You</h2>
 
-    <p id="location-status" class="text-xs text-gray-400 mb-3"><i class="fa-solid fa-location-dot mr-1"></i>Getting your location...</p>
-
-    <div class="flex gap-2">
-        {% if not record.clock_in_time %}
-        <button id="capture-btn" class="flex-1 bg-[#0B6B3A] text-white font-bold py-3 rounded-full">Take Photo</button>
-        <form id="clock-in-form" method="post" action="{% url 'dashboard:hrm_clock_action' 'in' %}" enctype="multipart/form-data" class="hidden flex-1">
-            {% csrf_token %}<input type="hidden" name="lat" id="in-lat"><input type="hidden" name="lng" id="in-lng"><input type="file" name="photo" id="in-photo" class="hidden">
-            <button type="submit" class="w-full bg-[#C9A227] text-black font-bold py-3 rounded-full">Confirm Clock In</button>
-        </form>
-        {% elif not record.clock_out_time %}
-        <button id="capture-btn" class="flex-1 bg-[#0B6B3A] text-white font-bold py-3 rounded-full">Take Photo</button>
-        <form id="clock-out-form" method="post" action="{% url 'dashboard:hrm_clock_action' 'out' %}" enctype="multipart/form-data" class="hidden flex-1">
-            {% csrf_token %}<input type="hidden" name="lat" id="out-lat"><input type="hidden" name="lng" id="out-lng"><input type="file" name="photo" id="out-photo" class="hidden">
-            <button type="submit" class="w-full bg-[#C9A227] text-black font-bold py-3 rounded-full">Confirm Clock Out</button>
-        </form>
+        {% if record.clock_out_time %}
+        <div class="text-center py-8">
+            <i class="fa-solid fa-circle-check text-4xl text-[#C9A227] mb-3"></i>
+            <p class="font-semibold">All done for today. See you tomorrow!</p>
+        </div>
         {% else %}
-        <p class="text-gray-400 text-sm">See you tomorrow.</p>
+        {% if not record.clock_in_time %}
+        <form method="post" action="{% url 'dashboard:hrm_clock_action' 'in' %}" id="clock-form" class="space-y-3">
+        {% else %}
+        <form method="post" action="{% url 'dashboard:hrm_clock_action' 'out' %}" id="clock-form" class="space-y-3">
+        {% endif %}
+            {% csrf_token %}
+            <div>
+                <label class="text-xs font-semibold text-white/70 mb-1 block">National ID / Passport No.</label>
+                {{ form.national_id }}
+            </div>
+            <div>
+                <label class="text-xs font-semibold text-white/70 mb-1 block">Phone Number</label>
+                {{ form.phone }}
+            </div>
+            <input type="hidden" name="lat" id="hidden-lat">
+            <input type="hidden" name="lng" id="hidden-lng">
+            <button type="submit" id="clock-submit-btn" disabled
+                class="w-full bg-[#C9A227] hover:bg-[#b08d1f] disabled:opacity-40 disabled:cursor-not-allowed text-slate-900 font-extrabold py-3 rounded-full mt-2 transition-colors">
+                {% if not record.clock_in_time %}Confirm Clock In{% else %}Confirm Clock Out{% endif %}
+            </button>
+            <p class="text-[11px] text-white/50 text-center">Waiting for your location before you can confirm.</p>
+        </form>
         {% endif %}
     </div>
 </div>
 
 <script>
-let currentLat = null, currentLng = null, currentBlob = null;
-const video = document.getElementById('camera-preview');
-const canvas = document.getElementById('photo-canvas');
-const preview = document.getElementById('photo-preview');
-const captureBtn = document.getElementById('capture-btn');
-const locStatus = document.getElementById('location-status');
+(function () {
+    // ---------- Live clock + shift status ----------
+    var statusBox = document.getElementById('shift-status-box');
+    var dateEl = document.getElementById('today-date');
+    var clockEl = document.getElementById('live-clock');
+    {% if assignment %}
+    var shiftStart = new Date();
+    shiftStart.setHours({{ assignment.shift.start_time.hour }}, {{ assignment.shift.start_time.minute }}, 0, 0);
+    var graceMs = {{ assignment.shift.grace_minutes }} * 60000;
+    {% endif %}
+    {% if record.clock_in_time %}
+    var alreadyClockedIn = true;
+    var actualLate = {{ record.is_late|yesno:"true,false" }};
+    var actualLateMinutes = {{ record.late_minutes }};
+    {% else %}
+    var alreadyClockedIn = false;
+    {% endif %}
 
-navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } }).then(stream => { video.srcObject = stream; }).catch(() => { locStatus.textContent = 'Camera access denied, photo is required.'; });
+    function tick() {
+        var now = new Date();
+        dateEl.textContent = now.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        clockEl.textContent = now.toLocaleTimeString(undefined, { hour12: false });
 
-navigator.geolocation.getCurrentPosition(
-    pos => { currentLat = pos.coords.latitude; currentLng = pos.coords.longitude; locStatus.innerHTML = '<i class="fa-solid fa-circle-check text-[#0B6B3A] mr-1"></i>Location captured'; },
-    () => { locStatus.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-red-500 mr-1"></i>Location unavailable, enable it to clock in'; }
-);
+        var html = '';
+        {% if assignment %}
+        if (alreadyClockedIn) {
+            if (actualLate) {
+                html = '<span class="hr-shift-status-badge hr-status-late"><i class="fa-solid fa-triangle-exclamation"></i> ' + actualLateMinutes + ' min late</span>';
+            } else {
+                html = '<span class="hr-shift-status-badge hr-status-ontime"><i class="fa-solid fa-check"></i> Clocked in on time</span>';
+            }
+        } else {
+            var diffMs = now - shiftStart;
+            if (diffMs < 0) {
+                var mins = Math.ceil(-diffMs / 60000);
+                html = '<span class="hr-shift-status-badge hr-status-upcoming"><i class="fa-regular fa-clock"></i> Shift starts in ' + mins + ' min</span>';
+            } else if (diffMs <= graceMs) {
+                html = '<span class="hr-shift-status-badge hr-status-ontime"><i class="fa-solid fa-check"></i> On time</span>';
+            } else {
+                var lateMins = Math.floor(diffMs / 60000);
+                html = '<span class="hr-shift-status-badge hr-status-late"><i class="fa-solid fa-triangle-exclamation"></i> ' + lateMins + ' min late</span>';
+            }
+        }
+        {% endif %}
+        statusBox.innerHTML = html;
+    }
+    tick();
+    setInterval(tick, 1000);
 
-if (captureBtn) {
-    captureBtn.addEventListener('click', function () {
-        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-        canvas.getContext('2d').drawImage(video, 0, 0);
-        canvas.toBlob(blob => {
-            currentBlob = blob;
-            preview.src = URL.createObjectURL(blob);
-            preview.classList.remove('hidden'); video.classList.add('hidden'); captureBtn.classList.add('hidden');
+    // ---------- Geofence radar ----------
+    var radarWrap = document.getElementById('radar-wrap');
+    var marker = document.getElementById('radar-marker');
+    var locStatus = document.getElementById('location-status');
+    var submitBtn = document.getElementById('clock-submit-btn');
+    var geoLat = parseFloat(radarWrap.dataset.geofenceLat);
+    var geoLng = parseFloat(radarWrap.dataset.geofenceLng);
+    var geoRadiusM = parseFloat(radarWrap.dataset.geofenceRadiusM);
+    var RING_PX = 90; // half of the 180px ring
+    var MAX_DISPLAY_PX = 105;
 
-            const dt = new DataTransfer();
-            dt.items.add(new File([blob], 'clock.jpg', { type: 'image/jpeg' }));
-            {% if not record.clock_in_time %}
-            document.getElementById('in-photo').files = dt.files;
-            document.getElementById('in-lat').value = currentLat; document.getElementById('in-lng').value = currentLng;
-            document.getElementById('clock-in-form').classList.remove('hidden');
-            {% elif not record.clock_out_time %}
-            document.getElementById('out-photo').files = dt.files;
-            document.getElementById('out-lat').value = currentLat; document.getElementById('out-lng').value = currentLng;
-            document.getElementById('clock-out-form').classList.remove('hidden');
-            {% endif %}
-        }, 'image/jpeg', 0.85);
-    });
-}
+    function haversine(lat1, lng1, lat2, lng2) {
+        var R = 6371000, toRad = function (d) { return d * Math.PI / 180; };
+        var dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+        var a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+        return 2 * R * Math.asin(Math.sqrt(a));
+    }
+    function bearing(lat1, lng1, lat2, lng2) {
+        var toRad = function (d) { return d * Math.PI / 180; }, toDeg = function (r) { return r * 180 / Math.PI; };
+        var y = Math.sin(toRad(lng2 - lng1)) * Math.cos(toRad(lat2));
+        var x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(toRad(lng2 - lng1));
+        return (toDeg(Math.atan2(y, x)) + 360) % 360;
+    }
+
+    if (!navigator.geolocation) {
+        locStatus.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-red-400 mr-1"></i>Location not supported on this device.';
+    } else {
+        navigator.geolocation.getCurrentPosition(function (pos) {
+            var lat = pos.coords.latitude, lng = pos.coords.longitude;
+            document.getElementById('hidden-lat').value = lat;
+            document.getElementById('hidden-lng').value = lng;
+
+            var distanceM = haversine(lat, lng, geoLat, geoLng);
+            var bearingDeg = bearing(geoLat, geoLng, lat, lng);
+            var scale = RING_PX / geoRadiusM;
+            var distPx = Math.min(distanceM * scale, MAX_DISPLAY_PX);
+            var rad = bearingDeg * Math.PI / 180;
+            var x = Math.sin(rad) * distPx, y = -Math.cos(rad) * distPx;
+
+            marker.style.left = 'calc(50% + ' + x + 'px)';
+            marker.style.top = 'calc(50% + ' + y + 'px)';
+            marker.classList.remove('hidden');
+
+            var within = distanceM <= geoRadiusM;
+            marker.classList.toggle('hr-radar-in', within);
+            marker.classList.toggle('hr-radar-out', !within);
+
+            if (within) {
+                locStatus.innerHTML = '<i class="fa-solid fa-circle-check text-emerald-400 mr-1"></i>Within range (' + Math.round(distanceM) + 'm from center)';
+            } else {
+                locStatus.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-red-400 mr-1"></i>Not within range &mdash; ' + Math.round(distanceM) + 'm away';
+            }
+            if (submitBtn) submitBtn.disabled = false;
+        }, function () {
+            locStatus.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-red-400 mr-1"></i>Location unavailable. Enable location access to clock in/out.';
+        }, { enableHighAccuracy: true });
+    }
+})();
 </script>
 {% endblock %}

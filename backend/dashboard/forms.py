@@ -255,3 +255,47 @@ class ShiftSwapRequestForm(forms.ModelForm):
             raise forms.ValidationError("End date can't be before start date.")
         return cleaned
     
+from django import forms
+
+def _normalize_id(s):
+    return ''.join(ch for ch in (s or '') if ch.isalnum()).lower()
+
+FIELD_CLASS = (
+    "w-full bg-white text-slate-900 placeholder-slate-400 border border-slate-300 "
+    "focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/30 rounded-xl px-4 py-3 "
+    "text-sm focus:outline-none transition-all caret-slate-900"
+)
+
+class ClockVerifyForm(forms.Form):
+    national_id = forms.CharField(
+        max_length=20,
+        widget=forms.TextInput(attrs={
+            'class': FIELD_CLASS, 
+            'placeholder': 'Your National ID / Passport No.', 
+            'autocomplete': 'off'
+        })
+    )
+    phone = forms.CharField(
+        max_length=20,
+        widget=forms.TextInput(attrs={
+            'class': FIELD_CLASS, 
+            'placeholder': 'Your phone number', 
+            'autocomplete': 'off'
+        })
+    )
+    lat = forms.FloatField(widget=forms.HiddenInput())
+    lng = forms.FloatField(widget=forms.HiddenInput())
+
+    def __init__(self, *args, staff=None, **kwargs):
+        self.staff = staff
+        super().__init__(*args, **kwargs)
+
+    def clean(self):
+        cleaned = super().clean()
+        national_id = cleaned.get('national_id', '')
+        phone = cleaned.get('phone', '')
+        profile = getattr(self.staff, 'staff_profile', None)
+        if not profile or _normalize_id(national_id) != _normalize_id(profile.national_id) \
+                or _normalize_id(phone) != _normalize_id(profile.phone):
+            raise forms.ValidationError("Your ID number or phone number doesn't match our records. Please check and try again.")
+        return cleaned

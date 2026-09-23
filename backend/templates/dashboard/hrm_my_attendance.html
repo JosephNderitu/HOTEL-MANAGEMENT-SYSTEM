@@ -1,22 +1,260 @@
 {% extends "dashboard/base_dashboard.html" %}
 {% block dashboard_content %}
 {% include "dashboard/_hrm_styles.html" %}
-<a href="{% url 'dashboard:hrm' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; HRM</a>
-<h1 class="text-xl font-bold text-black mt-1 mb-6">My Attendance</h1>
-<div class="hr-card overflow-x-auto">
-    <table class="hr-table w-full">
-        <thead><tr><th>Date</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>Late</th></tr></thead>
-        <tbody>
-        {% for r in records %}
-        <tr>
-            <td data-label="Date">{{ r.date }}</td>
-            <td data-label="Clock In">{{ r.clock_in_time|date:"H:i"|default:"—" }}{% if not r.clock_in_within_geofence and r.clock_in_time %} <span class="hr-badge bg-red-100 text-red-600">flagged</span>{% endif %}</td>
-            <td data-label="Clock Out">{{ r.clock_out_time|date:"H:i"|default:"—" }}</td>
-            <td data-label="Hours">{{ r.hours_worked|default:"—" }}</td>
-            <td data-label="Late">{% if r.is_late %}<span class="hr-badge bg-[#C9A227] text-black">{{ r.late_minutes }} min</span>{% else %}—{% endif %}</td>
-        </tr>
-        {% empty %}<tr><td colspan="5" class="text-center text-gray-400 py-8">No attendance records yet.</td></tr>{% endfor %}
-        </tbody>
-    </table>
+
+<!-- Header -->
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+    <div>
+        <a href="{% url 'dashboard:hrm' %}" class="inline-flex items-center text-[#0B6B3A] text-xs sm:text-sm font-semibold hover:underline mb-1">
+            <i class="fa-solid fa-arrow-left mr-1.5"></i> Back to HRM
+        </a>
+        <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">My Attendance Log</h1>
+        <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Track your shift timings, compliance flags, and weekly performance.</p>
+    </div>
+</div>
+
+<!-- KPI Summary Cards Grid (Crisp Visible Borders) -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 mb-6">
+    <!-- Total Days -->
+    <div class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-300 shadow-sm flex items-center justify-between">
+        <div>
+            <p class="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Shifts</p>
+            <p class="text-xl sm:text-2xl font-black text-slate-900 mt-1">{{ total_records_count }}</p>
+        </div>
+        <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-[#0B6B3A]/10 text-[#0B6B3A] flex items-center justify-center font-bold text-base sm:text-lg">
+            <i class="fa-regular fa-calendar-check"></i>
+        </div>
+    </div>
+
+    <!-- On-Time Rate -->
+    <div class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-300 shadow-sm flex items-center justify-between">
+        <div>
+            <p class="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">On-Time Rate</p>
+            <p class="text-xl sm:text-2xl font-black text-emerald-600 mt-1">{{ on_time_rate }}%</p>
+        </div>
+        <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-base sm:text-lg">
+            <i class="fa-solid fa-user-check"></i>
+        </div>
+    </div>
+
+    <!-- Late Clock-Ins -->
+    <div class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-300 shadow-sm flex items-center justify-between">
+        <div>
+            <p class="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">Late Clock-Ins</p>
+            <p class="text-xl sm:text-2xl font-black text-[#C9A227] mt-1">{{ total_late_count }}</p>
+        </div>
+        <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-[#C9A227]/10 text-[#C9A227] flex items-center justify-center font-bold text-base sm:text-lg">
+            <i class="fa-solid fa-clock-rotate-left"></i>
+        </div>
+    </div>
+
+    <!-- Off-Site Flags -->
+    <div class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-300 shadow-sm flex items-center justify-between">
+        <div>
+            <p class="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">Off-Site Flags</p>
+            <p class="text-xl sm:text-2xl font-black text-rose-600 mt-1">{{ total_flagged_count }}</p>
+        </div>
+        <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold text-base sm:text-lg">
+            <i class="fa-solid fa-location-crosshairs"></i>
+        </div>
+    </div>
+</div>
+
+<!-- Controls & Filter Toolbar -->
+<div class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-300 shadow-sm mb-6 space-y-4">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="hr-seg-group flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 overflow-x-auto">
+            <a href="?time_frame=all{% if status_filter %}&status={{ status_filter }}{% endif %}" class="px-3 py-1.5 text-xs font-bold rounded-lg whitespace-nowrap {% if time_frame == 'all' %}bg-white text-slate-900 shadow-sm{% else %}text-slate-600{% endif %}">All Time</a>
+            <a href="?time_frame=this_week{% if status_filter %}&status={{ status_filter }}{% endif %}" class="px-3 py-1.5 text-xs font-bold rounded-lg whitespace-nowrap {% if time_frame == 'this_week' %}bg-white text-slate-900 shadow-sm{% else %}text-slate-600{% endif %}">This Week</a>
+            <a href="?time_frame=last_week{% if status_filter %}&status={{ status_filter }}{% endif %}" class="px-3 py-1.5 text-xs font-bold rounded-lg whitespace-nowrap {% if time_frame == 'last_week' %}bg-white text-slate-900 shadow-sm{% else %}text-slate-600{% endif %}">Last Week</a>
+            <a href="?time_frame=this_month{% if status_filter %}&status={{ status_filter }}{% endif %}" class="px-3 py-1.5 text-xs font-bold rounded-lg whitespace-nowrap {% if time_frame == 'this_month' %}bg-white text-slate-900 shadow-sm{% else %}text-slate-600{% endif %}">This Month</a>
+        </div>
+
+        <div class="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+            <a href="?status=all{% if time_frame %}&time_frame={{ time_frame }}{% endif %}" class="px-3 py-1.5 rounded-full text-xs font-bold border border-slate-300 whitespace-nowrap {% if status_filter == 'all' %}bg-slate-900 text-white border-slate-900{% else %}bg-white text-slate-700{% endif %}">All Logs</a>
+            <a href="?status=late{% if time_frame %}&time_frame={{ time_frame }}{% endif %}" class="px-3 py-1.5 rounded-full text-xs font-bold border border-slate-300 whitespace-nowrap {% if status_filter == 'late' %}bg-[#C9A227] text-white border-[#C9A227]{% else %}bg-white text-slate-700{% endif %}"><i class="fa-solid fa-clock mr-1"></i> Late Only</a>
+            <a href="?status=flagged{% if time_frame %}&time_frame={{ time_frame }}{% endif %}" class="px-3 py-1.5 rounded-full text-xs font-bold border border-slate-300 whitespace-nowrap {% if status_filter == 'flagged' %}bg-rose-600 text-white border-rose-600{% else %}bg-white text-slate-700{% endif %}"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Off-Site Flags</a>
+        </div>
+    </div>
+
+    <hr class="border-slate-200">
+
+    <form method="get" class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {% if time_frame %}<input type="hidden" name="time_frame" value="{{ time_frame }}">{% endif %}
+        {% if status_filter %}<input type="hidden" name="status" value="{{ status_filter }}">{% endif %}
+        <div>
+            <label class="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1 block">From Date</label>
+            <input type="date" name="start_date" value="{{ start_date }}" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0B6B3A]/20 focus:border-[#0B6B3A]">
+        </div>
+        <div>
+            <label class="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1 block">To Date</label>
+            <input type="date" name="end_date" value="{{ end_date }}" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0B6B3A]/20 focus:border-[#0B6B3A]">
+        </div>
+        <div class="flex items-end gap-2">
+            <button type="submit" class="w-full bg-[#0B6B3A] hover:bg-[#074726] text-white font-bold py-2.5 px-4 rounded-xl text-xs transition-colors shadow-sm flex items-center justify-center gap-1.5">
+                <i class="fa-solid fa-filter"></i> Apply Filters
+            </button>
+            <a href="{% url 'dashboard:hrm_my_attendance' %}" class="bg-slate-100 border border-slate-300 hover:bg-slate-200 text-slate-600 font-semibold py-2.5 px-3 rounded-xl text-xs transition-colors flex items-center justify-center" title="Reset Filters">
+                <i class="fa-solid fa-rotate-right"></i>
+            </a>
+        </div>
+    </form>
+</div>
+
+<!-- Attendance Table Wrapper with Horizontal Scroll & Solid Mobile Borders -->
+<div class="bg-white rounded-2xl border border-slate-300 shadow-sm overflow-hidden mb-6">
+    <!-- Visual Scroll Indicator hint for Mobile -->
+    <div class="sm:hidden px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-[11px] text-slate-500 font-medium">
+        <span><i class="fa-solid fa-arrows-left-right text-slate-400 mr-1"></i> Swipe table left/right to view details</span>
+    </div>
+
+    <div class="overflow-x-auto scrollbar-thin">
+        <table class="w-full text-left border-collapse min-w-[680px]">
+            <thead>
+                <tr class="bg-slate-50 border-b border-slate-300 text-[11px] uppercase tracking-wider text-slate-600 font-bold">
+                    <th class="py-3.5 px-4 sm:px-6 sticky left-0 bg-slate-50 z-10">Shift Date</th>
+                    <th class="py-3.5 px-4 sm:px-6">Clock In</th>
+                    <th class="py-3.5 px-4 sm:px-6">Clock Out</th>
+                    <th class="py-3.5 px-4 sm:px-6">Hours Worked</th>
+                    <th class="py-3.5 px-4 sm:px-6">Punctuality</th>
+                    <th class="py-3.5 px-4 sm:px-6 text-right">Location Status</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-200 text-sm">
+                {% for r in page_obj %}
+                <tr class="hover:bg-slate-50/70 transition-colors">
+                    <!-- Date (Sticky on scroll for easy reading) -->
+                    <td class="py-3.5 px-4 sm:px-6 font-semibold text-slate-900 whitespace-nowrap sticky left-0 bg-white z-10 border-r border-slate-100 sm:border-r-0">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center shrink-0">
+                                {{ r.date|date:"d" }}
+                            </div>
+                            <div>
+                                <p class="text-xs font-bold text-slate-900">{{ r.date|date:"D, M d, Y" }}</p>
+                                <p class="text-[11px] text-slate-500 font-normal">Regular Shift</p>
+                            </div>
+                        </div>
+                    </td>
+
+                    <!-- Clock In -->
+                    <td class="py-3.5 px-4 sm:px-6 whitespace-nowrap">
+                        {% if r.clock_in_time %}
+                            <div>
+                                <span class="font-bold text-slate-800">{{ r.clock_in_time|date:"H:i" }}</span>
+                                <span class="text-[11px] text-slate-500 block font-normal">Recorded</span>
+                            </div>
+                        {% else %}
+                            <span class="text-slate-400 font-medium">&mdash;</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Clock Out -->
+                    <td class="py-3.5 px-4 sm:px-6 whitespace-nowrap">
+                        {% if r.clock_out_time %}
+                            <div>
+                                <span class="font-bold text-slate-800">{{ r.clock_out_time|date:"H:i" }}</span>
+                                <span class="text-[11px] text-slate-500 block font-normal">Recorded</span>
+                            </div>
+                        {% else %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-300">
+                                Active Shift
+                            </span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Hours -->
+                    <td class="py-3.5 px-4 sm:px-6 font-semibold text-slate-700 whitespace-nowrap">
+                        {% if r.hours_worked %}
+                            <span class="inline-flex items-center gap-1">
+                                <i class="fa-regular fa-clock text-slate-400 text-xs"></i> {{ r.hours_worked }} hrs
+                            </span>
+                        {% else %}
+                            <span class="text-slate-400 font-normal">&mdash;</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Punctuality / Late Status -->
+                    <td class="py-3.5 px-4 sm:px-6 whitespace-nowrap">
+                        {% if r.is_late %}
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-300">
+                                <i class="fa-solid fa-triangle-exclamation text-amber-600"></i> {{ r.late_minutes }}m late
+                            </span>
+                        {% elif r.clock_in_time %}
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-300">
+                                <i class="fa-solid fa-circle-check text-emerald-600"></i> On Time
+                            </span>
+                        {% else %}
+                            <span class="text-slate-400">&mdash;</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Location Status -->
+                    <td class="py-3.5 px-4 sm:px-6 text-right whitespace-nowrap">
+                        {% if r.clock_in_time %}
+                            {% if r.clock_in_within_geofence %}
+                                <span class="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-300">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span> Verified On-Site
+                                </span>
+                            {% else %}
+                                <span class="inline-flex items-center gap-1.5 text-xs font-bold text-rose-800 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-300" title="Clocked in outside authorized zone">
+                                    <i class="fa-solid fa-location-crosshairs text-rose-600"></i> 
+                                    {% if r.clock_in_distance_m %}
+                                        {{ r.clock_in_distance_m|floatformat:0 }}m away
+                                    {% else %}
+                                        Off-Site Flagged
+                                    {% endif %}
+                                </span>
+                            {% endif %}
+                        {% else %}
+                            <span class="text-slate-400">&mdash;</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" class="p-8 text-center bg-white">
+                        <i class="fa-regular fa-folder-open text-3xl text-slate-300 mb-2"></i>
+                        <p class="font-bold text-slate-700 text-sm">No attendance records found</p>
+                        <p class="text-xs text-slate-400 mt-1">Try resetting your date filters or switching view categories.</p>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination Footer -->
+    {% if page_obj.has_other_pages %}
+    <div class="px-4 sm:px-6 py-4 bg-slate-50/80 border-t border-slate-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <p class="text-xs text-slate-600 font-medium text-center sm:text-left">
+            Showing <span class="font-bold text-slate-900">{{ page_obj.start_index }}</span> to <span class="font-bold text-slate-900">{{ page_obj.end_index }}</span> of <span class="font-bold text-slate-900">{{ paginator.count }}</span> entries
+        </p>
+        <div class="flex items-center justify-center gap-1">
+            {% if page_obj.has_previous %}
+                <a href="?page={{ page_obj.previous_page_number }}{% if time_frame %}&time_frame={{ time_frame }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}" class="w-8 h-8 flex items-center justify-center bg-white border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-100">
+                    <i class="fa-solid fa-chevron-left text-xs"></i>
+                </a>
+            {% else %}
+                <span class="w-8 h-8 flex items-center justify-center bg-slate-100 border border-slate-200 rounded-lg text-slate-300"><i class="fa-solid fa-chevron-left text-xs"></i></span>
+            {% endif %}
+
+            {% for page_num in paginator.page_range %}
+                {% if page_num == page_obj.number %}
+                    <span class="w-8 h-8 flex items-center justify-center bg-[#0B6B3A] text-white font-bold text-xs rounded-lg shadow-sm">{{ page_num }}</span>
+                {% elif page_num > page_obj.number|add:'-3' and page_num < page_obj.number|add:'3' %}
+                    <a href="?page={{ page_num }}{% if time_frame %}&time_frame={{ time_frame }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}" class="w-8 h-8 flex items-center justify-center bg-white border border-slate-300 rounded-lg text-xs text-slate-700 font-medium hover:bg-slate-100">{{ page_num }}</a>
+                {% endif %}
+            {% endfor %}
+
+            {% if page_obj.has_next %}
+                <a href="?page={{ page_obj.next_page_number }}{% if time_frame %}&time_frame={{ time_frame }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}" class="w-8 h-8 flex items-center justify-center bg-white border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-100">
+                    <i class="fa-solid fa-chevron-right text-xs"></i>
+                </a>
+            {% else %}
+                <span class="w-8 h-8 flex items-center justify-center bg-slate-100 border border-slate-200 rounded-lg text-slate-300"><i class="fa-solid fa-chevron-right text-xs"></i></span>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}

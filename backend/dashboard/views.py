@@ -2579,11 +2579,43 @@ def hrm_home(request):
         'pending_leave': pending_leave, 'can_manage': can_manage_hrm(request.user),
     })
 
+import math
+from django.conf import settings
+
+# Alias settings to match the names used in your view context
+GEOFENCE_LAT = settings.HOTEL_LATITUDE
+GEOFENCE_LNG = settings.HOTEL_LONGITUDE
+GEOFENCE_RADIUS_M = settings.HOTEL_GEOFENCE_RADIUS_METERS
+
+def is_within_geofence(lat, lng, center_lat=GEOFENCE_LAT, center_lng=GEOFENCE_LNG, radius_m=GEOFENCE_RADIUS_M):
+    """
+    Calculates distance between (lat, lng) and the geofence center using the Haversine formula.
+    Returns True if distance <= radius_m in meters.
+    """
+    if lat is None or lng is None:
+        return False
+
+    R = 6371000  # Earth's radius in meters
+    phi1, phi2 = math.radians(lat), math.radians(center_lat)
+    dphi = math.radians(center_lat - lat)
+    dlambda = math.radians(center_lng - lng)
+
+    a = math.sin(dphi / 2)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    distance = R * c
+
+    return distance <= radius_m
+
 @login_required
 def hrm_clock_view(request):
     today = timezone.localdate()
     record, _ = AttendanceRecord.objects.get_or_create(staff=request.user, date=today)
-    return render(request, 'dashboard/hrm_clock.html', {'record': record})
+    assignment = ShiftAssignment.objects.filter(staff=request.user, date=today).select_related('shift').first()
+    form = ClockVerifyForm(staff=request.user)
+    return render(request, 'dashboard/hrm_clock.html', {
+        'record': record, 'assignment': assignment, 'form': form,
+        'geofence_lat': GEOFENCE_LAT, 'geofence_lng': GEOFENCE_LNG, 'geofence_radius_m': GEOFENCE_RADIUS_M,
+    })
 
 @login_required
 def hrm_clock_action(request, action):
@@ -2592,25 +2624,37 @@ def hrm_clock_action(request, action):
     today = timezone.localdate()
     record, _ = AttendanceRecord.objects.get_or_create(staff=request.user, date=today)
 
-    try:
-        lat, lng = float(request.POST.get('lat')), float(request.POST.get('lng'))
-    except (TypeError, ValueError):
-        messages.error(request, "Location is required. Enable location access and try again.")
+    form = ClockVerifyForm(request.POST, staff=request.user)
+    if not form.is_valid():
+        for error_list in form.errors.values():
+            for error in error_list:
+                messages.error(request, error)
         return redirect('dashboard:hrm_clock')
 
-    photo = request.FILES.get('photo')
-    if not photo:
-        messages.error(request, "A photo is required to clock in or out.")
-        return redirect('dashboard:hrm_clock')
-
+    lat, lng = form.cleaned_data['lat'], form.cleaned_data['lng']
+    phone = form.cleaned_data['phone'].strip()
     within = is_within_geofence(lat, lng)
+
+    # Anti buddy-punching: this exact phone number can't already have been
+    # used for this same action (clock-in or clock-out) by someone else today.
+    phone_field = f'clock_{action}_phone'
+    already_used = AttendanceRecord.objects.filter(
+        date=today, **{phone_field: phone}
+    ).exclude(staff=request.user).exists()
+    if already_used:
+        messages.error(
+            request,
+            f"This phone number has already been used to clock {'in' if action == 'in' else 'out'} "
+            "today by another staff member. Contact HR if this is a mistake."
+        )
+        return redirect('dashboard:hrm_clock')
 
     if action == 'in':
         if record.clock_in_time:
             messages.error(request, "You've already clocked in today.")
             return redirect('dashboard:hrm_clock')
         record.clock_in_time = timezone.now()
-        record.clock_in_lat, record.clock_in_lng, record.clock_in_photo = lat, lng, photo
+        record.clock_in_lat, record.clock_in_lng, record.clock_in_phone = lat, lng, phone
         record.clock_in_within_geofence = within
 
         assignment = ShiftAssignment.objects.filter(staff=request.user, date=today).select_related('shift').first()
@@ -2634,7 +2678,7 @@ def hrm_clock_action(request, action):
             messages.error(request, "You've already clocked out today.")
             return redirect('dashboard:hrm_clock')
         record.clock_out_time = timezone.now()
-        record.clock_out_lat, record.clock_out_lng, record.clock_out_photo = lat, lng, photo
+        record.clock_out_lat, record.clock_out_lng, record.clock_out_phone = lat, lng, phone
         record.clock_out_within_geofence = within
         record.save()
         msg = "Clocked out."
@@ -2646,8 +2690,67 @@ def hrm_clock_action(request, action):
 
 @login_required
 def hrm_my_attendance(request):
-    records = AttendanceRecord.objects.filter(staff=request.user).order_by('-date')[:60]
-    return render(request, 'dashboard/hrm_my_attendance.html', {'records': records})
+    user = request.user
+    base_qs = AttendanceRecord.objects.filter(staff=user).order_by('-date')
+    
+    # Query parameters
+    time_frame = request.GET.get('time_frame', 'all')
+    status_filter = request.GET.get('status', 'all')
+    start_date = request.GET.get('start_date', '')
+    end_date = request.GET.get('end_date', '')
+    page_number = request.GET.get('page', 1)
+
+    today = timezone.localdate()
+    
+    # Time-frame pre-filtering
+    if time_frame == 'this_week':
+        start_of_week = today - timedelta(days=today.weekday())
+        base_qs = base_qs.filter(date__gte=start_of_week)
+    elif time_frame == 'last_week':
+        start_of_last_week = today - timedelta(days=today.weekday() + 7)
+        end_of_last_week = start_of_last_week + timedelta(days=6)
+        base_qs = base_qs.filter(date__range=[start_of_last_week, end_of_last_week])
+    elif time_frame == 'this_month':
+        base_qs = base_qs.filter(date__year=today.year, date__month=today.month)
+
+    # Date range inputs
+    if start_date:
+        base_qs = base_qs.filter(date__gte=start_date)
+    if end_date:
+        base_qs = base_qs.filter(date__lte=end_date)
+
+    # Pre-compute metrics on filtered base query
+    total_records_count = base_qs.count()
+    total_late_count = base_qs.filter(is_late=True).count()
+    total_flagged_count = base_qs.filter(clock_in_time__isnull=False, clock_in_within_geofence=False).count()
+    
+    on_time_count = total_records_count - total_late_count
+    on_time_rate = round((on_time_count / total_records_count) * 100) if total_records_count > 0 else 100
+
+    # Status tab filter (applied to the table list)
+    table_qs = base_qs
+    if status_filter == 'late':
+        table_qs = table_qs.filter(is_late=True)
+    elif status_filter == 'flagged':
+        table_qs = table_qs.filter(clock_in_time__isnull=False, clock_in_within_geofence=False)
+
+    # Pagination (15 records per page)
+    paginator = Paginator(table_qs, 15)
+    page_obj = paginator.get_page(page_number)
+
+    context = {
+        'page_obj': page_obj,
+        'paginator': paginator,
+        'total_records_count': total_records_count,
+        'total_late_count': total_late_count,
+        'total_flagged_count': total_flagged_count,
+        'on_time_rate': on_time_rate,
+        'time_frame': time_frame,
+        'status_filter': status_filter,
+        'start_date': start_date,
+        'end_date': end_date,
+    }
+    return render(request, 'dashboard/hrm_my_attendance.html', context)
 
 @login_required
 def hrm_my_shifts(request):

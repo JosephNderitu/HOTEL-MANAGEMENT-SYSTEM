@@ -164,13 +164,13 @@ class AttendanceRecord(models.Model):
     clock_in_time = models.DateTimeField(null=True, blank=True)
     clock_in_lat = models.FloatField(null=True, blank=True)
     clock_in_lng = models.FloatField(null=True, blank=True)
-    clock_in_photo = models.ImageField(upload_to='attendance_photos/', null=True, blank=True)
+    clock_in_phone = models.CharField(max_length=20, blank=True)
     clock_in_within_geofence = models.BooleanField(default=False)
 
     clock_out_time = models.DateTimeField(null=True, blank=True)
     clock_out_lat = models.FloatField(null=True, blank=True)
     clock_out_lng = models.FloatField(null=True, blank=True)
-    clock_out_photo = models.ImageField(upload_to='attendance_photos/', null=True, blank=True)
+    clock_out_phone = models.CharField(max_length=20, blank=True)
     clock_out_within_geofence = models.BooleanField(default=False)
 
     is_late = models.BooleanField(default=False)
