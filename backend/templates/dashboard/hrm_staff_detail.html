@@ -1,0 +1,29 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+{% include "dashboard/_hrm_styles.html" %}
+<a href="{% url 'dashboard:hrm_staff_list' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; Staff Directory</a>
+<h1 class="text-xl font-bold text-black mt-1 mb-1">{{ staff_user.get_full_name|default:staff_user.username }}</h1>
+<p class="text-gray-500 text-sm mb-6">{{ profile.position|default:"—" }} &middot; {{ profile.get_department_display|default:"—" }} &middot; ID: {{ staff_user.staff_profile.national_id|default:"—" }}</p>
+
+<div class="grid lg:grid-cols-2 gap-6 mb-6">
+    <div class="hr-card">
+        <h2 class="font-bold text-black text-sm mb-3">Recent Attendance</h2>
+        {% for a in attendance|slice:":10" %}<div class="flex justify-between text-sm border-b border-gray-50 py-1.5"><span>{{ a.date }}</span><span>{{ a.clock_in_time|date:"H:i"|default:"—" }} – {{ a.clock_out_time|date:"H:i"|default:"—" }}{% if a.is_late %} <span class="hr-badge bg-[#C9A227] text-black">late</span>{% endif %}</span></div>{% empty %}<p class="text-gray-400 text-sm">No records.</p>{% endfor %}
+    </div>
+    <div class="hr-card">
+        <h2 class="font-bold text-black text-sm mb-3">Leave Balances</h2>
+        {% for b in balances %}<div class="flex justify-between text-sm mb-2"><span>{{ b.leave_type.name }}</span><strong>{{ b.remaining_days }}/{{ b.allocated_days }}</strong></div>{% empty %}<p class="text-gray-400 text-sm">None set.</p>{% endfor %}
+    </div>
+</div>
+
+<div class="grid lg:grid-cols-2 gap-6">
+    <div class="hr-card">
+        <div class="flex justify-between items-center mb-3"><h2 class="font-bold text-black text-sm">Payroll History</h2><a href="{% url 'dashboard:hrm_payroll_create' staff_user.id %}" class="text-xs font-semibold text-[#0B6B3A] hover:underline">+ New</a></div>
+        {% for p in payroll %}<div class="flex justify-between text-sm border-b border-gray-50 py-1.5"><span>{{ p.period_month }}/{{ p.period_year }}</span><span>KSh {{ p.net_pay|floatformat:0 }} <span class="hr-badge {% if p.status == 'finalized' %}bg-[#0B6B3A] text-white{% else %}bg-[#C9A227] text-black{% endif %}">{{ p.get_status_display }}</span></span></div>{% empty %}<p class="text-gray-400 text-sm">None yet.</p>{% endfor %}
+    </div>
+    <div class="hr-card">
+        <div class="flex justify-between items-center mb-3"><h2 class="font-bold text-black text-sm">Performance Reviews</h2><a href="{% url 'dashboard:hrm_performance_create' staff_user.id %}" class="text-xs font-semibold text-[#0B6B3A] hover:underline">+ New</a></div>
+        {% for r in reviews %}<div class="flex justify-between text-sm border-b border-gray-50 py-1.5"><span>{{ r.review_period }}</span><span>{{ r.overall_rating }}/5 <span class="hr-badge {% if r.status == 'finalized' %}bg-[#0B6B3A] text-white{% else %}bg-[#C9A227] text-black{% endif %}">{{ r.get_status_display }}</span></span></div>{% empty %}<p class="text-gray-400 text-sm">None yet.</p>{% endfor %}
+    </div>
+</div>
+{% endblock %}

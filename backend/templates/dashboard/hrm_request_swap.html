@@ -1,0 +1,81 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+{% include "dashboard/_hrm_styles.html" %}
+<a href="{% url 'dashboard:hrm_my_shifts' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; My Shifts</a>
+<h1 class="text-xl font-bold text-black mt-1 mb-6 flex items-center gap-2"><i class="fa-solid fa-repeat text-[#0B6B3A]"></i> Request a Shift Change</h1>
+
+{% if messages %}{% for message in messages %}
+<div class="{% if message.tags == 'error' %}bg-red-50 border-red-300 text-red-700{% else %}bg-[#0B6B3A]/10 border-[#0B6B3A] text-[#0B6B3A]{% endif %} border text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
+{% endfor %}{% endif %}
+
+<div class="hr-tile rounded-2xl p-6 max-w-2xl">
+    <form method="post" class="space-y-5">
+        {% csrf_token %}
+
+        <div>
+            <label class="text-xs font-semibold text-gray-600 mb-2 block">What kind of change is this?</label>
+            <div class="grid sm:grid-cols-2 gap-3">
+                {% for radio in form.mode %}
+                <label class="hr-mode-card {% if forloop.first %}hr-mode-active{% endif %}" data-mode-card>
+                    {{ radio.tag }}
+                    <p class="font-semibold text-sm text-black flex items-center gap-2">
+                        <i class="fa-solid {% if forloop.first %}fa-user-clock{% else %}fa-people-arrows{% endif %} text-[#0B6B3A]"></i>
+                        {{ radio.choice_label }}
+                    </p>
+                    <p class="text-xs text-gray-500 mt-0.5">
+                        {% if forloop.first %}Just move your own shift for the range{% else %}Swap days with a named colleague{% endif %}
+                    </p>
+                </label>
+                {% endfor %}
+            </div>
+            {% if form.mode.errors %}<p class="text-red-600 text-xs mt-1">{{ form.mode.errors.0 }}</p>{% endif %}
+        </div>
+
+        <div class="grid sm:grid-cols-2 gap-4">
+            <div>
+                <label class="text-xs font-semibold text-gray-600 mb-1 block">From</label>
+                {{ form.start_date }}
+                {% if form.start_date.errors %}<p class="text-red-600 text-xs mt-1">{{ form.start_date.errors.0 }}</p>{% endif %}
+            </div>
+            <div>
+                <label class="text-xs font-semibold text-gray-600 mb-1 block">To</label>
+                {{ form.end_date }}
+                {% if form.end_date.errors %}<p class="text-red-600 text-xs mt-1">{{ form.end_date.errors.0 }}</p>{% endif %}
+            </div>
+        </div>
+
+        <div id="self-fields">
+            <label class="text-xs font-semibold text-gray-600 mb-1 block">Move to shift</label>
+            {{ form.requested_shift }}
+            {% if form.requested_shift.errors %}<p class="text-red-600 text-xs mt-1">{{ form.requested_shift.errors.0 }}</p>{% endif %}
+        </div>
+
+        <div id="trade-fields" class="hidden">
+            <label class="text-xs font-semibold text-gray-600 mb-1 block">Trade with</label>
+            {{ form.trade_with }}
+            {% if form.trade_with.errors %}<p class="text-red-600 text-xs mt-1">{{ form.trade_with.errors.0 }}</p>{% endif %}
+        </div>
+
+        <div>
+            <label class="text-xs font-semibold text-gray-600 mb-1 block">Reason</label>
+            {{ form.reason }}
+            {% if form.reason.errors %}<p class="text-red-600 text-xs mt-1">{{ form.reason.errors.0 }}</p>{% endif %}
+        </div>
+
+        <button type="submit" class="w-full bg-[#0B6B3A] hover:bg-[#074726] transition-colors text-white font-bold py-3 rounded-full flex items-center justify-center gap-2"><i class="fa-solid fa-paper-plane"></i> Submit Request</button>
+    </form>
+</div>
+
+<script>
+document.querySelectorAll('[data-mode-card] input[type="radio"]').forEach(function (radio) {
+    radio.addEventListener('change', function () {
+        document.querySelectorAll('[data-mode-card]').forEach(function (card) {
+            card.classList.toggle('hr-mode-active', card.querySelector('input').checked);
+        });
+        var isSelf = radio.value === 'self';
+        document.getElementById('self-fields').classList.toggle('hidden', !isSelf);
+        document.getElementById('trade-fields').classList.toggle('hidden', isSelf);
+    });
+});
+</script>
+{% endblock %}

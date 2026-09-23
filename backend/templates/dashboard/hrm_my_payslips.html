@@ -1,0 +1,14 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+{% include "dashboard/_hrm_styles.html" %}
+<a href="{% url 'dashboard:hrm' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; HRM</a>
+<h1 class="text-xl font-bold text-black mt-1 mb-6">My Payslips</h1>
+<div class="space-y-2">
+{% for r in records %}
+<div class="hr-card flex items-center justify-between">
+    <div><p class="font-bold text-black">{{ r.period_month }}/{{ r.period_year }}</p><p class="text-xs text-gray-500">Net Pay: KSh {{ r.net_pay|floatformat:0 }}</p></div>
+    <a href="{% url 'dashboard:hrm_payslip_pdf' r.id %}" class="text-xs font-semibold bg-[#C9A227] text-black px-4 py-2 rounded-full">Download PDF</a>
+</div>
+{% empty %}<p class="text-gray-400 text-center py-10">No payslips available yet.</p>{% endfor %}
+</div>
+{% endblock %}

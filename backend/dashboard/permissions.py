@@ -69,6 +69,7 @@ def get_allowed_modules(user):
         mods = ROLE_MODULE_MAP.get(group_name)
         if mods:
             allowed.update(mods)
+    allowed.add('hrm')  # every staff member gets self-service HRM access (clock in, own leave, own payslips)
     return allowed
 
 
@@ -79,3 +80,10 @@ def can_manage_bookings_from_rooms(user):
     if has_full_access(user):
         return True
     return user.groups.filter(name__in=FRONT_DESK_CAPABLE_GROUPS).exists()
+
+HRM_MANAGER_GROUPS = FULL_ACCESS_GROUPS | {'HR Manager'}
+
+def can_manage_hrm(user):
+    if user.is_superuser:
+        return True
+    return user.groups.filter(name__in=HRM_MANAGER_GROUPS).exists()

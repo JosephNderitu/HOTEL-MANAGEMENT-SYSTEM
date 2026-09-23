@@ -3,18 +3,17 @@ import json
 import base64
 import io
 import qrcode
-from .permissions import can_access
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from .permissions import MODULES, get_allowed_modules, has_full_access
-from .decorators import staff_module_required
+from .decorators import *
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.utils import timezone
 from django.db.models import Q, Sum
-from .models import GateLog, Payment
+from .models import *
 from .forms import *
 from django.core.paginator import Paginator
 
@@ -35,17 +34,21 @@ from .services import *
 
 from decimal import Decimal
 from django.urls import reverse
-from datetime import datetime, time
-from .permissions import can_manage_bookings_from_rooms
+from datetime import timedelta, datetime, time
+from .permissions import *
 
-from datetime import datetime
-from decimal import Decimal
 from django.http import HttpResponse
 from django.template.loader import render_to_string
 from django.utils import timezone
 from django.utils.dateparse import parse_date
-from weasyprint import HTML
 from django.db.models import Count, Sum as DjangoSum
+
+from django.contrib.auth.models import User
+from hrm.models import *
+from hrm.services import is_within_geofence
+import calendar as cal_module
+
+from django.core.exceptions import ValidationError
 
 COURSE_PRIORITY = {'starter': 0, 'main': 1, 'dessert': 2}
 
@@ -64,7 +67,6 @@ def _parse_date_input(date_str, fallback):
             continue
     return fallback
 
-from datetime import datetime, time
 
 def _local_day_bounds(date_from, date_to):
     """Half-open [start, end) covering whole local days, in the project timezone."""
@@ -75,6 +77,7 @@ def _local_day_bounds(date_from, date_to):
         start = timezone.make_aware(start, tz)
         end = timezone.make_aware(end, tz)
     return start, end
+
 
 @login_required
 def dashboard_home(request):
@@ -2090,9 +2093,6 @@ def gate_export_pdf(request):
     response['Content-Disposition'] = f'attachment; filename="gate_report_{timezone.now().date()}.pdf"'
     return response
 
-@staff_module_required('hrm')
-def hrm_view(request):
-    return render(request, 'dashboard/module_placeholder.html', {'module_label': 'HRM & Management'})
 
 ################################
 ### store Views start
@@ -2341,23 +2341,27 @@ def store_expenditure_pdf(request):
 
     purchases = get_purchases_in_range(date_from, date_to)
     summary = summarize_by_department(purchases)
-    
+
     grand_incl = sum((d['total_incl'] for d in summary.values()), Decimal('0'))
     grand_excl = sum((d['total_excl'] for d in summary.values()), Decimal('0'))
     grand_vat = sum((d['total_vat'] for d in summary.values()), Decimal('0'))
 
     html_string = render_to_string('dashboard/store_expenditure_pdf.html', {
-        'summary': summary, 
-        'date_from': date_from, 
+        'summary': summary,
+        'date_from': date_from,
         'date_to': date_to,
-        'generated_at': timezone.now(), 
+        'generated_at': timezone.now(),
         'generated_by': request.user.get_full_name() or request.user.username,
-        'grand_incl': grand_incl, 
-        'grand_excl': grand_excl, 
+        'grand_incl': grand_incl,
+        'grand_excl': grand_excl,
         'grand_vat': grand_vat,
     })
-    
-    pdf_file = HTML(string=html_string, base_url=request.build_absolute_uri('/')).write_pdf()
+
+    pdf_file = HTML(
+        string=html_string,
+        base_url=request.build_absolute_uri('/')
+    ).write_pdf()
+
     response = HttpResponse(pdf_file, content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="expenditure_{date_from}_to_{date_to}.pdf"'
     return response
@@ -2368,6 +2372,7 @@ def store_inventory_view(request):
     items = StockItem.objects.filter(is_active=True)
     if department_filter:
         items = items.filter(department=department_filter)
+
     items = list(items.order_by('department', 'name'))
 
     chart_labels = [i.name for i in items]
@@ -2377,14 +2382,15 @@ def store_inventory_view(request):
         '#dc2626' if i.stock_status == 'danger' else '#C9A227' if i.stock_status == 'warning' else '#0B6B3A'
         for i in items
     ]
-    
+
     return render(request, 'dashboard/store_inventory.html', {
-        'items': items, 'department_filter': department_filter,
+        'items': items,
+        'department_filter': department_filter,
         'department_choices': StockItem.DEPARTMENT_CHOICES,
-        'chart_labels': json.dumps([i.name for i in items]),
-        'chart_levels': json.dumps([float(i.quantity_on_hand) for i in items]),
-        'chart_reorder': json.dumps([float(i.reorder_level) for i in items]),
-        'chart_colors': json.dumps(['#dc2626' if i.stock_status == 'danger' else '#C9A227' if i.stock_status == 'warning' else '#0B6B3A' for i in items]),
+        'chart_labels': json.dumps(chart_labels),
+        'chart_levels': json.dumps(chart_levels),
+        'chart_reorder': json.dumps(chart_reorder),
+        'chart_colors': json.dumps(chart_colors),
     })
 
 @staff_module_required('store')
@@ -2469,8 +2475,6 @@ def stocktake_finalize(request, stocktake_id):
 
 ### end of store views
 
-#### start of receipt views
-
 @login_required
 def order_receipt(request, order_id):
     if not (can_access(request.user, 'restaurant_kitchen') or can_access(request.user, 'bar') or can_access(request.user, 'reception')):
@@ -2550,4 +2554,475 @@ def booking_bill(request, booking_id):
         'kra_pin': settings.HOTEL_KRA_PIN,
         'hotel_address': settings.HOTEL_ADDRESS,
         'hotel_phone': settings.HOTEL_PHONE,
+    })
+    
+# ==============================================================================
+# HRM Views
+# ==============================================================================
+@login_required
+def hrm_home(request):
+    today = timezone.localdate()
+    attendance_today = AttendanceRecord.objects.filter(staff=request.user, date=today).first()
+    upcoming_shifts = ShiftAssignment.objects.filter(staff=request.user, date__gte=today).select_related('shift').order_by('date')[:7]
+    pending_leave = LeaveRequest.objects.filter(staff=request.user, status='pending').count()
+    return render(request, 'dashboard/hrm_home.html', {
+        'attendance_today': attendance_today, 'upcoming_shifts': upcoming_shifts,
+        'pending_leave': pending_leave, 'can_manage': can_manage_hrm(request.user),
+    })
+
+@login_required
+def hrm_clock_view(request):
+    today = timezone.localdate()
+    record, _ = AttendanceRecord.objects.get_or_create(staff=request.user, date=today)
+    return render(request, 'dashboard/hrm_clock.html', {'record': record})
+
+@login_required
+def hrm_clock_action(request, action):
+    if request.method != 'POST' or action not in ('in', 'out'):
+        return redirect('dashboard:hrm_clock')
+    today = timezone.localdate()
+    record, _ = AttendanceRecord.objects.get_or_create(staff=request.user, date=today)
+
+    try:
+        lat, lng = float(request.POST.get('lat')), float(request.POST.get('lng'))
+    except (TypeError, ValueError):
+        messages.error(request, "Location is required. Enable location access and try again.")
+        return redirect('dashboard:hrm_clock')
+
+    photo = request.FILES.get('photo')
+    if not photo:
+        messages.error(request, "A photo is required to clock in or out.")
+        return redirect('dashboard:hrm_clock')
+
+    within = is_within_geofence(lat, lng)
+
+    if action == 'in':
+        if record.clock_in_time:
+            messages.error(request, "You've already clocked in today.")
+            return redirect('dashboard:hrm_clock')
+        record.clock_in_time = timezone.now()
+        record.clock_in_lat, record.clock_in_lng, record.clock_in_photo = lat, lng, photo
+        record.clock_in_within_geofence = within
+
+        assignment = ShiftAssignment.objects.filter(staff=request.user, date=today).select_related('shift').first()
+        if assignment:
+            record.shift_assignment = assignment
+            shift_start = timezone.make_aware(datetime.combine(today, assignment.shift.start_time))
+            grace_end = shift_start + timedelta(minutes=assignment.shift.grace_minutes)
+            if record.clock_in_time > grace_end:
+                record.is_late = True
+                record.late_minutes = int((record.clock_in_time - shift_start).total_seconds() // 60)
+        record.save()
+        msg = "Clocked in."
+        if not within:
+            msg += " Note: outside the hotel geofence, flagged for review."
+        messages.success(request, msg)
+    else:
+        if not record.clock_in_time:
+            messages.error(request, "You haven't clocked in yet today.")
+            return redirect('dashboard:hrm_clock')
+        if record.clock_out_time:
+            messages.error(request, "You've already clocked out today.")
+            return redirect('dashboard:hrm_clock')
+        record.clock_out_time = timezone.now()
+        record.clock_out_lat, record.clock_out_lng, record.clock_out_photo = lat, lng, photo
+        record.clock_out_within_geofence = within
+        record.save()
+        msg = "Clocked out."
+        if not within:
+            msg += " Note: outside the hotel geofence, flagged for review."
+        messages.success(request, msg)
+
+    return redirect('dashboard:hrm_clock')
+
+@login_required
+def hrm_my_attendance(request):
+    records = AttendanceRecord.objects.filter(staff=request.user).order_by('-date')[:60]
+    return render(request, 'dashboard/hrm_my_attendance.html', {'records': records})
+
+@login_required
+def hrm_my_shifts(request):
+    today = timezone.localdate()
+    assignments = ShiftAssignment.objects.filter(staff=request.user, date__gte=today - timedelta(days=7)).select_related('shift').order_by('date')
+    my_swaps = ShiftSwapRequest.objects.filter(requested_by=request.user).order_by('-created_at')[:10]
+    return render(request, 'dashboard/hrm_my_shifts.html', {'assignments': assignments, 'my_swaps': my_swaps})
+
+@login_required
+def hrm_request_swap(request):
+    if request.method == 'POST':
+        form = ShiftSwapRequestForm(request.POST, staff=request.user)
+        if form.is_valid():
+            swap = form.save(commit=False)
+            swap.requested_by = request.user
+            try:
+                swap.full_clean()
+                swap.save()
+                messages.success(request, "Swap request submitted for manager review.")
+                return redirect('dashboard:hrm_my_shifts')
+            except ValidationError as e:
+                messages.error(request, " ".join(e.messages))
+    else:
+        form = ShiftSwapRequestForm(staff=request.user)
+    return render(request, 'dashboard/hrm_request_swap.html', {'form': form})
+
+@login_required
+def hrm_my_leave(request):
+    today = timezone.localdate()
+    if request.method == 'POST':
+        form = LeaveRequestForm(request.POST, staff=request.user)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Leave request submitted.")
+            return redirect('dashboard:hrm_my_leave')
+    else:
+        form = LeaveRequestForm(staff=request.user)
+
+    requests_qs = LeaveRequest.objects.filter(staff=request.user).select_related('leave_type').order_by('-created_at')
+    balances = LeaveBalance.objects.filter(staff=request.user, year=today.year).select_related('leave_type')
+    balances_map = {b.leave_type_id: b.remaining_days for b in balances}
+    active_leave = LeaveRequest.objects.filter(
+        staff=request.user, status='approved', start_date__lte=today, end_date__gte=today
+    ).select_related('leave_type').first()
+    report_back = (active_leave.end_date + timedelta(days=1)) if active_leave else None
+
+    return render(request, 'dashboard/hrm_my_leave.html', {
+        'form': form, 'requests': requests_qs, 'balances': balances, 'balances_map': balances_map,
+        'active_leave': active_leave, 'report_back': report_back,
+    })
+
+@login_required
+def hrm_my_payslips(request):
+    records = PayrollRecord.objects.filter(staff=request.user, status='finalized').order_by('-period_year', '-period_month')
+    return render(request, 'dashboard/hrm_my_payslips.html', {'records': records})
+
+@login_required
+def hrm_payslip_pdf(request, record_id):
+    record = get_object_or_404(PayrollRecord, id=record_id, staff=request.user, status='finalized')
+    html_string = render_to_string('dashboard/hrm_payslip_pdf.html', {'record': record, 'generated_at': timezone.now()})
+    pdf_file = HTML(string=html_string, base_url=request.build_absolute_uri('/')).write_pdf()
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="payslip_{record.period_month}_{record.period_year}.pdf"'
+    return response
+
+@login_required
+def hrm_my_reviews(request):
+    reviews = PerformanceReview.objects.filter(staff=request.user, status='finalized').order_by('-created_at')
+    return render(request, 'dashboard/hrm_my_reviews.html', {'reviews': reviews})
+
+# ---------- Management tier ----------
+
+@hrm_manager_required
+def hrm_staff_list(request):
+    profiles = StaffProfile.objects.select_related('user').order_by('department', 'user__first_name')
+    return render(request, 'dashboard/hrm_staff_list.html', {'profiles': profiles})
+
+@hrm_manager_required
+def hrm_staff_detail(request, user_id):
+    staff_user = get_object_or_404(User, id=user_id)
+    profile = getattr(staff_user, 'staff_profile', None)
+    attendance = AttendanceRecord.objects.filter(staff=staff_user).order_by('-date')[:30]
+    leave_requests = LeaveRequest.objects.filter(staff=staff_user).select_related('leave_type').order_by('-created_at')[:10]
+    balances = LeaveBalance.objects.filter(staff=staff_user, year=timezone.localdate().year).select_related('leave_type')
+    payroll = PayrollRecord.objects.filter(staff=staff_user).order_by('-period_year', '-period_month')[:6]
+    reviews = PerformanceReview.objects.filter(staff=staff_user).order_by('-created_at')[:5]
+    return render(request, 'dashboard/hrm_staff_detail.html', {
+        'staff_user': staff_user, 'profile': profile, 'attendance': attendance,
+        'leave_requests': leave_requests, 'balances': balances, 'payroll': payroll, 'reviews': reviews,
+    })
+
+@hrm_manager_required
+def hrm_attendance_report(request):
+    today = timezone.localdate()
+    days = int(request.GET.get('days', 30))
+    date_from = today - timedelta(days=days)
+    records = list(AttendanceRecord.objects.filter(date__gte=date_from, date__lte=today).select_related('staff'))
+
+    chart_days = [(date_from + timedelta(days=i)) for i in range((today - date_from).days + 1)]
+    late_counts, total_counts = [], []
+    for day in chart_days:
+        day_records = [r for r in records if r.date == day]
+        total_counts.append(len(day_records))
+        late_counts.append(sum(1 for r in day_records if r.is_late))
+
+    flagged = [r for r in records if not r.clock_in_within_geofence or (r.clock_out_time and not r.clock_out_within_geofence)]
+
+    return render(request, 'dashboard/hrm_attendance_report.html', {
+        'chart_labels': json.dumps([d.strftime('%b %d') for d in chart_days]),
+        'chart_late': json.dumps(late_counts), 'chart_total': json.dumps(total_counts),
+        'flagged': flagged[:20], 'days': days,
+    })
+
+@hrm_manager_required
+def hrm_shift_calendar(request):
+    if request.method == 'POST':
+        form = BulkShiftAssignForm(request.POST)
+        if form.is_valid():
+            created, skipped = ShiftAssignment.bulk_assign(
+                staff=form.cleaned_data['staff'], shift=form.cleaned_data['shift'],
+                start_date=form.cleaned_data['start_date'], end_date=form.cleaned_data['end_date'],
+                assigned_by=request.user,
+            )
+            if created:
+                messages.success(request, f"Assigned {len(created)} day(s).")
+            if skipped:
+                detail = ", ".join(f"{d.strftime('%b %d')} ({reason})" for d, reason in skipped[:8])
+                more = f" and {len(skipped) - 8} more" if len(skipped) > 8 else ""
+                messages.warning(request, f"Skipped {len(skipped)} day(s): {detail}{more}.")
+            return redirect('dashboard:hrm_shift_calendar')
+    else:
+        form = BulkShiftAssignForm()
+
+    today = timezone.localdate()
+    upcoming = ShiftAssignment.objects.filter(date__gte=today).select_related(
+        'staff', 'staff__staff_profile', 'shift'
+    ).order_by('date')[:60]
+    swap_requests = ShiftSwapRequest.objects.filter(status='pending').select_related(
+        'requested_by', 'requested_by__staff_profile', 'requested_shift', 'trade_with'
+    )
+
+    month_str = request.GET.get('month')
+    if month_str:
+        cal_year, cal_month = map(int, month_str.split('-'))
+    else:
+        cal_year, cal_month = today.year, today.month
+
+    first_of_month = date_cls(cal_year, cal_month, 1)
+    grid_start = first_of_month - timedelta(days=first_of_month.weekday())
+    grid_end = grid_start + timedelta(days=41)
+    month_assignments = ShiftAssignment.objects.filter(
+        date__gte=grid_start, date__lte=grid_end
+    ).select_related('staff', 'shift')
+
+    by_date = {}
+    for a in month_assignments:
+        by_date.setdefault(a.date, []).append(a)
+
+    weeks, day = [], grid_start
+    for _ in range(6):
+        week = []
+        for _ in range(7):
+            week.append({
+                'date': day, 'in_month': day.month == cal_month, 'is_today': day == today,
+                'assignments': by_date.get(day, []),
+            })
+            day += timedelta(days=1)
+        weeks.append(week)
+
+    prev_month = (cal_year - 1, 12) if cal_month == 1 else (cal_year, cal_month - 1)
+    next_month = (cal_year + 1, 1) if cal_month == 12 else (cal_year, cal_month + 1)
+
+    return render(request, 'dashboard/hrm_shift_calendar.html', {
+        'form': form, 'upcoming': upcoming, 'swap_requests': swap_requests,
+        'weeks': weeks, 'cal_month_label': first_of_month.strftime('%B %Y'),
+        'prev_month': f"{prev_month[0]}-{prev_month[1]:02d}",
+        'next_month': f"{next_month[0]}-{next_month[1]:02d}",
+    })
+
+@hrm_manager_required
+def hrm_weekly_off(request):
+    if request.method == 'POST':
+        form = StaffWeeklyOffForm(request.POST)
+        if form.is_valid():
+            staff = form.cleaned_data['staff']
+            weekdays = sorted(int(w) for w in form.cleaned_data['weekdays'])
+            if weekdays:
+                StaffWeeklyOff.objects.update_or_create(staff=staff, defaults={'weekdays': weekdays})
+            else:
+                StaffWeeklyOff.objects.filter(staff=staff).delete()
+            messages.success(request, f"Updated weekly off days for {staff.get_full_name() or staff.username}.")
+            return redirect('dashboard:hrm_weekly_off')
+    else:
+        form = StaffWeeklyOffForm()
+
+    staff_offs = {
+        off.staff: off.weekday_labels()
+        for off in StaffWeeklyOff.objects.select_related('staff').order_by('staff__first_name')
+        if off.weekdays
+    }
+    return render(request, 'dashboard/hrm_weekly_off.html', {'form': form, 'staff_offs': staff_offs})
+
+@hrm_manager_required
+def hrm_weekly_off_lookup(request, user_id):
+    off = StaffWeeklyOff.objects.filter(staff_id=user_id).first()
+    return JsonResponse({'weekdays': off.weekdays if off else []})
+
+@hrm_manager_required
+def hrm_shift_swap_review(request, swap_id, action):
+    if request.method != 'POST':
+        return redirect('dashboard:hrm_shift_calendar')
+    swap = get_object_or_404(ShiftSwapRequest, id=swap_id, status='pending')
+    if action == 'approve':
+        swap.apply(reviewed_by=request.user)
+        messages.success(request, "Swap approved and shifts updated.")
+    else:
+        reason = request.POST.get('rejection_reason', '').strip()
+        if not reason:
+            messages.error(request, "Please provide a reason for rejecting this request.")
+            return redirect('dashboard:hrm_shift_calendar')
+        swap.status = 'rejected'
+        swap.rejection_reason = reason
+        swap.reviewed_by = request.user
+        swap.reviewed_at = timezone.now()
+        swap.save()
+        messages.success(request, "Swap rejected.")
+    return redirect('dashboard:hrm_shift_calendar')
+
+@hrm_manager_required
+def hrm_leave_requests(request):
+    status_filter = request.GET.get('status', 'pending')
+    today = timezone.localdate()
+    requests_qs = LeaveRequest.objects.select_related('staff', 'leave_type').order_by('-created_at')
+    if status_filter:
+        requests_qs = requests_qs.filter(status=status_filter)
+    requests_qs = list(requests_qs)
+
+    balances_by_staff = {}
+    for b in LeaveBalance.objects.filter(year=today.year).select_related('leave_type'):
+        balances_by_staff.setdefault(b.staff_id, []).append(b)
+    for r in requests_qs:
+        r.staff_balances = balances_by_staff.get(r.staff_id, [])
+
+    return render(request, 'dashboard/hrm_leave_requests.html', {'requests': requests_qs, 'status_filter': status_filter})
+
+@hrm_manager_required
+def hrm_leave_review(request, leave_id, action):
+    if request.method != 'POST':
+        return redirect('dashboard:hrm_leave_requests')
+    leave = get_object_or_404(LeaveRequest, id=leave_id, status='pending')
+
+    if action == 'approve':
+        balance, _ = LeaveBalance.objects.get_or_create(
+            staff=leave.staff, leave_type=leave.leave_type, year=leave.start_date.year,
+            defaults={'allocated_days': leave.leave_type.default_days_per_year},
+        )
+        if leave.days_count > balance.remaining_days:
+            messages.error(request, f"{leave.staff} only has {balance.remaining_days} day(s) of {leave.leave_type} left, this request needs {leave.days_count}.")
+            return redirect('dashboard:hrm_leave_requests')
+        balance.used_days += leave.days_count
+        balance.save(update_fields=['used_days'])
+        leave.status = 'approved'
+    else:
+        reason = request.POST.get('rejection_reason', '').strip()
+        if not reason:
+            messages.error(request, "Please provide a reason for rejecting this request.")
+            return redirect('dashboard:hrm_leave_requests')
+        leave.status = 'rejected'
+        leave.rejection_reason = reason
+    leave.reviewed_by = request.user
+    leave.reviewed_at = timezone.now()
+    leave.save()
+    messages.success(request, f"Leave request {leave.status}.")
+    return redirect('dashboard:hrm_leave_requests')
+
+@hrm_manager_required
+def hrm_payroll_list(request):
+    period_month = int(request.GET.get('month', timezone.localdate().month))
+    period_year = int(request.GET.get('year', timezone.localdate().year))
+    records = PayrollRecord.objects.filter(period_month=period_month, period_year=period_year).select_related('staff')
+    already = set(records.values_list('staff_id', flat=True))
+    staff_without = StaffProfile.objects.exclude(user_id__in=already).select_related('user')
+    return render(request, 'dashboard/hrm_payroll_list.html', {
+        'records': records, 'staff_without': staff_without, 'period_month': period_month, 'period_year': period_year,
+    })
+
+@hrm_manager_required
+def hrm_payroll_create(request, user_id):
+    staff_user = get_object_or_404(User, id=user_id)
+    profile = getattr(staff_user, 'staff_profile', None)
+    if request.method == 'POST':
+        form = PayrollForm(request.POST)
+        if form.is_valid():
+            record = form.save(commit=False)
+            record.staff = staff_user
+            record.generated_by = request.user
+            record.save()
+            messages.success(request, f"Payroll record created for {staff_user.get_full_name() or staff_user.username}.")
+            return redirect('dashboard:hrm_payroll_list')
+    else:
+        today = timezone.localdate()
+        form = PayrollForm(initial={'period_month': today.month, 'period_year': today.year, 'basic_salary': profile.pay_rate if profile else 0})
+    return render(request, 'dashboard/hrm_payroll_create.html', {'form': form, 'staff_user': staff_user})
+
+@hrm_manager_required
+def hrm_payroll_finalize(request, record_id):
+    if request.method != 'POST':
+        return redirect('dashboard:hrm_payroll_list')
+    record = get_object_or_404(PayrollRecord, id=record_id, status='draft')
+    record.status = 'finalized'
+    record.save(update_fields=['status'])
+    messages.success(request, "Payroll finalized, payslip is now available to the staff member.")
+    return redirect('dashboard:hrm_payroll_list')
+
+@hrm_manager_required
+def hrm_performance_list(request):
+    reviews = PerformanceReview.objects.select_related('staff', 'reviewer').order_by('-created_at')
+    return render(request, 'dashboard/hrm_performance_list.html', {'reviews': reviews})
+
+@hrm_manager_required
+def hrm_performance_create(request, user_id):
+    staff_user = get_object_or_404(User, id=user_id)
+    if request.method == 'POST':
+        form = PerformanceReviewForm(request.POST)
+        if form.is_valid():
+            review = form.save(commit=False)
+            review.staff = staff_user
+            review.reviewer = request.user
+            review.save()
+            messages.success(request, "Review saved as draft.")
+            return redirect('dashboard:hrm_staff_detail', user_id=staff_user.id)
+    else:
+        form = PerformanceReviewForm()
+    return render(request, 'dashboard/hrm_performance_create.html', {'form': form, 'staff_user': staff_user})
+
+@hrm_manager_required
+def hrm_performance_finalize(request, review_id):
+    if request.method != 'POST':
+        return redirect('dashboard:hrm_performance_list')
+    review = get_object_or_404(PerformanceReview, id=review_id, status='draft')
+    review.status = 'finalized'
+    review.save(update_fields=['status'])
+    messages.success(request, "Review finalized and shared with the staff member.")
+    return redirect('dashboard:hrm_performance_list')
+
+@hrm_manager_required
+def hrm_shift_assignment_edit(request, assignment_id):
+    assignment = get_object_or_404(ShiftAssignment, id=assignment_id)
+    if request.method == 'POST':
+        form = ShiftAssignmentForm(request.POST, instance=assignment)
+        if form.is_valid():
+            try:
+                form.instance.full_clean()
+                form.save()
+                messages.success(request, "Shift updated.")
+                return redirect('dashboard:hrm_shift_calendar')
+            except ValidationError as e:
+                messages.error(request, " ".join(e.messages))
+    else:
+        form = ShiftAssignmentForm(instance=assignment)
+    return render(request, 'dashboard/hrm_shift_assignment_edit.html', {'form': form, 'assignment': assignment})
+
+@hrm_manager_required
+def hrm_shift_assignment_delete(request, assignment_id):
+    if request.method != 'POST':
+        return redirect('dashboard:hrm_shift_calendar')
+    get_object_or_404(ShiftAssignment, id=assignment_id).delete()
+    messages.success(request, "Shift assignment removed.")
+    return redirect('dashboard:hrm_shift_calendar')
+
+@login_required
+def hrm_swap_conflict_check(request):
+    date_str = request.GET.get('date')
+    trade_with_id = request.GET.get('trade_with')
+    staff_id = request.GET.get('staff_id') or request.user.id
+    try:
+        day = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except (TypeError, ValueError):
+        return JsonResponse({'same': False})
+    mine = ShiftAssignment.objects.filter(staff_id=staff_id, date=day).select_related('shift').first()
+    theirs = ShiftAssignment.objects.filter(staff_id=trade_with_id, date=day).select_related('shift').first()
+    same = bool(mine and theirs and mine.shift_id == theirs.shift_id)
+    return JsonResponse({
+        'same': same,
+        'mine': mine.shift.name if mine else None,
+        'theirs': theirs.shift.name if theirs else None,
     })

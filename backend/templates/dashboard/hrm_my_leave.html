@@ -1,0 +1,124 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+{% include "dashboard/_hrm_styles.html" %}
+<a href="{% url 'dashboard:hrm' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; HRM</a>
+<h1 class="text-xl font-bold text-black mt-1 mb-6 flex items-center gap-2"><i class="fa-solid fa-plane-departure text-[#0B6B3A]"></i> My Leave</h1>
+
+{% if messages %}{% for message in messages %}<div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>{% endfor %}{% endif %}
+
+{{ balances_map|json_script:"balances-map-data" }}
+
+{% if active_leave %}
+<div class="hr-hero-card rounded-2xl p-6 md:p-8 text-white mb-6">
+    <p class="text-xs uppercase tracking-wide text-white/70 mb-3 flex items-center gap-2">
+        <i class="fa-solid fa-umbrella-beach text-[#C9A227]"></i> You're currently on {{ active_leave.leave_type.name }}
+    </p>
+    <div class="flex gap-3 flex-wrap" id="countdown-wrap" data-report-back="{{ report_back|date:'c' }}">
+        <div class="hr-countdown-box"><p class="hr-countdown-num" id="cd-days">--</p><p class="hr-countdown-label">Days</p></div>
+        <div class="hr-countdown-box"><p class="hr-countdown-num" id="cd-hours">--</p><p class="hr-countdown-label">Hours</p></div>
+        <div class="hr-countdown-box"><p class="hr-countdown-num" id="cd-mins">--</p><p class="hr-countdown-label">Mins</p></div>
+        <div class="hr-countdown-box"><p class="hr-countdown-num" id="cd-secs">--</p><p class="hr-countdown-label">Secs</p></div>
+    </div>
+    <p class="text-xs text-white/70 mt-3">Expected back on {{ report_back|date:"D, M d, Y" }}</p>
+</div>
+{% endif %}
+
+<div class="grid lg:grid-cols-3 gap-6">
+    <div class="hr-tile rounded-2xl p-5">
+        <h2 class="font-bold text-black text-sm mb-4 flex items-center gap-2"><i class="fa-solid fa-wallet text-[#0B6B3A]"></i> Balances</h2>
+        {% for b in balances %}
+        <div class="flex justify-between items-center text-sm mb-2.5">
+            <span>{{ b.leave_type.name }}</span>
+            <span class="hr-balance-chip {% if b.remaining_days <= 2 %}hr-balance-low{% endif %}">{{ b.remaining_days }} / {{ b.allocated_days }} days</span>
+        </div>
+        {% empty %}<p class="text-gray-400 text-sm">No balance set yet, contact HR.</p>{% endfor %}
+    </div>
+
+    <div class="hr-tile rounded-2xl p-5">
+        <h2 class="font-bold text-black text-sm mb-4 flex items-center gap-2"><i class="fa-solid fa-paper-plane text-[#0B6B3A]"></i> Request Leave</h2>
+        <form method="post" class="space-y-3">
+            {% csrf_token %}
+            <div>
+                <label class="text-xs font-semibold text-gray-600 mb-1 block">{{ form.leave_type.label }}</label>
+                {{ form.leave_type }}
+                <p class="text-xs text-[#0B6B3A] mt-1" id="remaining-hint"></p>
+                {% if form.leave_type.errors %}<p class="text-red-600 text-xs mt-1">{{ form.leave_type.errors.0 }}</p>{% endif %}
+            </div>
+            <div>
+                <label class="text-xs font-semibold text-gray-600 mb-1 block">{{ form.start_date.label }}</label>
+                {{ form.start_date }}
+                {% if form.start_date.errors %}<p class="text-red-600 text-xs mt-1">{{ form.start_date.errors.0 }}</p>{% endif %}
+            </div>
+            <div>
+                <label class="text-xs font-semibold text-gray-600 mb-1 block">Number of days</label>
+                {{ form.days_requested }}
+                <p class="text-xs text-gray-500 mt-1" id="end-date-preview"></p>
+                {% if form.days_requested.errors %}<p class="text-red-600 text-xs mt-1">{{ form.days_requested.errors.0 }}</p>{% endif %}
+            </div>
+            <div>
+                <label class="text-xs font-semibold text-gray-600 mb-1 block">{{ form.reason.label }}</label>
+                {{ form.reason }}
+                {% if form.reason.errors %}<p class="text-red-600 text-xs mt-1">{{ form.reason.errors.0 }}</p>{% endif %}
+            </div>
+            {% if form.non_field_errors %}<p class="text-red-600 text-xs">{{ form.non_field_errors.0 }}</p>{% endif %}
+            <button type="submit" class="w-full bg-[#0B6B3A] hover:bg-[#074726] transition-colors text-white font-bold py-2.5 rounded-full flex items-center justify-center gap-2"><i class="fa-solid fa-check"></i> Submit Request</button>
+        </form>
+    </div>
+
+    <div class="hr-tile rounded-2xl p-5">
+        <h2 class="font-bold text-black text-sm mb-4 flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left text-[#0B6B3A]"></i> My Requests</h2>
+        <div class="max-h-[420px] overflow-y-auto custom-scrollbar pr-1">
+        {% for r in requests %}
+        <div class="border-b border-gray-100 py-2.5 text-sm">
+            <p class="font-semibold">{{ r.leave_type.name }} — {{ r.start_date|date:"M d" }} to {{ r.end_date|date:"M d, Y" }} ({{ r.days_count }}d)</p>
+            <span class="hr-badge {% if r.status == 'approved' %}bg-[#0B6B3A] text-white{% elif r.status == 'rejected' %}bg-red-500 text-white{% else %}bg-[#C9A227] text-black{% endif %}">{{ r.get_status_display }}</span>
+            {% if r.status == 'rejected' and r.rejection_reason %}<p class="text-xs text-red-500 mt-1.5">"{{ r.rejection_reason }}"</p>{% endif %}
+        </div>
+        {% empty %}<p class="text-gray-400 text-sm">No requests yet.</p>{% endfor %}
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var wrap = document.getElementById('countdown-wrap');
+    if (!wrap) return;
+    var target = new Date(wrap.dataset.reportBack).getTime();
+    function tick() {
+        var diff = Math.max(target - Date.now(), 0);
+        document.getElementById('cd-days').textContent = Math.floor(diff / 86400000);
+        document.getElementById('cd-hours').textContent = Math.floor((diff % 86400000) / 3600000);
+        document.getElementById('cd-mins').textContent = Math.floor((diff % 3600000) / 60000);
+        document.getElementById('cd-secs').textContent = Math.floor((diff % 60000) / 1000);
+    }
+    tick();
+    setInterval(tick, 1000);
+})();
+
+var balancesMap = JSON.parse(document.getElementById('balances-map-data').textContent);
+
+function updateRemainingHint() {
+    var typeId = document.getElementById('id_leave_type').value;
+    var remaining = balancesMap[typeId];
+    var hint = document.getElementById('remaining-hint');
+    hint.textContent = remaining !== undefined ? ('You have ' + remaining + ' day(s) remaining.') : '';
+    document.getElementById('id_days_requested').max = remaining !== undefined ? remaining : '';
+}
+function updatePreview() {
+    var start = document.getElementById('id_start_date').value;
+    var days = parseInt(document.getElementById('id_days_requested').value || '0', 10);
+    var preview = document.getElementById('end-date-preview');
+    if (start && days > 0) {
+        var d = new Date(start);
+        d.setDate(d.getDate() + days - 1);
+        preview.textContent = 'Returning: ' + d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+    } else {
+        preview.textContent = '';
+    }
+}
+document.getElementById('id_leave_type').addEventListener('change', updateRemainingHint);
+document.getElementById('id_days_requested').addEventListener('input', updatePreview);
+document.getElementById('id_start_date').addEventListener('change', updatePreview);
+updateRemainingHint();
+</script>
+{% endblock %}

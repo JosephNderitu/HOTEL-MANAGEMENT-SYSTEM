@@ -1,0 +1,76 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+{% include "dashboard/_hrm_styles.html" %}
+<a href="{% url 'dashboard:hrm' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; HRM</a>
+<h1 class="text-xl font-bold text-black mt-1 mb-6 flex items-center gap-2"><i class="fa-solid fa-envelope-open-text text-[#0B6B3A]"></i> Leave Requests</h1>
+
+{% if messages %}{% for message in messages %}<div class="{% if message.tags == 'error' %}bg-red-50 border-red-300 text-red-700{% else %}bg-[#0B6B3A]/10 border-[#0B6B3A] text-[#0B6B3A]{% endif %} border text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>{% endfor %}{% endif %}
+
+<div class="flex gap-2 mb-5">
+    <a href="?status=pending" class="text-xs px-4 py-2 rounded-full {% if status_filter == 'pending' %}bg-[#0B6B3A] text-white{% else %}border border-gray-300 text-gray-600{% endif %}">Pending</a>
+    <a href="?status=approved" class="text-xs px-4 py-2 rounded-full {% if status_filter == 'approved' %}bg-[#0B6B3A] text-white{% else %}border border-gray-300 text-gray-600{% endif %}">Approved</a>
+    <a href="?status=rejected" class="text-xs px-4 py-2 rounded-full {% if status_filter == 'rejected' %}bg-[#0B6B3A] text-white{% else %}border border-gray-300 text-gray-600{% endif %}">Rejected</a>
+</div>
+
+<div class="space-y-3">
+{% for r in requests %}
+<div class="hr-tile rounded-2xl p-4">
+    <div class="flex items-start justify-between flex-wrap gap-3">
+        <div class="flex items-start gap-3">
+            <div class="hr-avatar mt-0.5">{{ r.staff.get_full_name|default:r.staff.username|slice:":2"|upper }}</div>
+            <div>
+                <p class="font-semibold text-sm text-black">
+                    {{ r.staff.get_full_name|default:r.staff.username }}
+                    {% if r.staff.staff_profile %}<span class="text-xs text-gray-400 font-normal">— {{ r.staff.staff_profile.position|default:r.staff.staff_profile.get_department_display }}</span>{% endif %}
+                </p>
+                <p class="text-xs text-gray-500 mt-0.5">
+                    <span class="hr-badge bg-gray-100 text-gray-700">{{ r.leave_type.name }}</span>
+                    {{ r.start_date|date:"M d" }} &ndash; {{ r.end_date|date:"M d, Y" }} ({{ r.days_count }}d)
+                </p>
+                {% if r.reason %}<p class="text-xs text-gray-400 mt-1">"{{ r.reason }}"</p>{% endif %}
+                {% if r.status == 'rejected' and r.rejection_reason %}<p class="text-xs text-red-500 mt-1">Rejected: "{{ r.rejection_reason }}"</p>{% endif %}
+                {% if r.staff_balances %}
+                <div class="flex flex-wrap gap-1.5 mt-2">
+                    {% for b in r.staff_balances %}
+                    <span class="hr-balance-chip {% if b.remaining_days <= 2 %}hr-balance-low{% endif %}">{{ b.leave_type.name }}: {{ b.remaining_days }}/{{ b.allocated_days }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if r.status == 'pending' %}
+        <div class="flex gap-2 shrink-0">
+            <form method="post" action="{% url 'dashboard:hrm_leave_review' r.id 'approve' %}">{% csrf_token %}<button class="text-xs font-semibold bg-[#0B6B3A] text-white px-4 py-2 rounded-full hover:bg-[#074726] inline-flex items-center gap-1.5"><i class="fa-solid fa-check"></i> Approve</button></form>
+            <button type="button" onclick="rejectLeave({{ r.id }})" class="text-xs font-semibold border border-red-400 text-red-500 px-4 py-2 rounded-full hover:bg-red-50 inline-flex items-center gap-1.5"><i class="fa-solid fa-xmark"></i> Reject</button>
+            <form id="reject-form-{{ r.id }}" method="post" action="{% url 'dashboard:hrm_leave_review' r.id 'reject' %}" class="hidden">
+                {% csrf_token %}<input type="hidden" name="rejection_reason" id="reject-reason-{{ r.id }}">
+            </form>
+        </div>
+        {% else %}
+        <span class="hr-badge {% if r.status == 'approved' %}bg-[#0B6B3A] text-white{% else %}bg-red-500 text-white{% endif %}">{{ r.get_status_display }}</span>
+        {% endif %}
+    </div>
+</div>
+{% empty %}<p class="text-gray-400 text-center py-10">Nothing here.</p>{% endfor %}
+</div>
+
+<script>
+function rejectLeave(id) {
+    Swal.fire({
+        title: 'Reject Leave Request',
+        input: 'textarea',
+        inputPlaceholder: 'Explain why this request is being rejected (e.g. days exceed remaining balance)...',
+        showCancelButton: true,
+        confirmButtonText: 'Reject',
+        confirmButtonColor: '#dc2626',
+        inputValidator: function (value) { if (!value) return 'A reason is required'; }
+    }).then(function (result) {
+        if (result.isConfirmed) {
+            document.getElementById('reject-reason-' + id).value = result.value;
+            document.getElementById('reject-form-' + id).submit();
+        }
+    });
+}
+</script>
+{% endblock %}

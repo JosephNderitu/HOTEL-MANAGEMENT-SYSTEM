@@ -1,0 +1,21 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+{% include "dashboard/_hrm_styles.html" %}
+<a href="{% url 'dashboard:hrm' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; HRM</a>
+<h1 class="text-xl font-bold text-black mt-1 mb-6">Payroll — {{ period_month }}/{{ period_year }}</h1>
+{% if messages %}{% for message in messages %}<div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>{% endfor %}{% endif %}
+
+<div class="hr-card mb-6 overflow-x-auto">
+    <h2 class="font-bold text-black text-sm mb-3">Generated Records</h2>
+    <table class="hr-table w-full"><thead><tr><th>Staff</th><th>Net Pay</th><th>Status</th><th></th></tr></thead><tbody>
+    {% for r in records %}<tr><td data-label="Staff">{{ r.staff.get_full_name|default:r.staff.username }}</td><td data-label="Net Pay">KSh {{ r.net_pay|floatformat:0 }}</td><td data-label="Status"><span class="hr-badge {% if r.status == 'finalized' %}bg-[#0B6B3A] text-white{% else %}bg-[#C9A227] text-black{% endif %}">{{ r.get_status_display }}</span></td>
+        <td data-label="">{% if r.status == 'draft' %}<form method="post" action="{% url 'dashboard:hrm_payroll_finalize' r.id %}">{% csrf_token %}<button class="text-xs font-semibold bg-[#0B6B3A] text-white px-3 py-1.5 rounded-full">Finalize</button></form>{% endif %}</td>
+    </tr>{% empty %}<tr><td colspan="4" class="text-center text-gray-400 py-6">None yet.</td></tr>{% endfor %}
+    </tbody></table>
+</div>
+
+<div class="hr-card">
+    <h2 class="font-bold text-black text-sm mb-3">Staff Without a Record This Period</h2>
+    {% for p in staff_without %}<div class="flex justify-between items-center border-b border-gray-50 py-2 text-sm"><span>{{ p.user.get_full_name|default:p.user.username }}</span><a href="{% url 'dashboard:hrm_payroll_create' p.user.id %}" class="text-xs font-semibold bg-[#C9A227] text-black px-3 py-1.5 rounded-full">Generate</a></div>{% empty %}<p class="text-gray-400 text-sm">Everyone's done.</p>{% endfor %}
+</div>
+{% endblock %}

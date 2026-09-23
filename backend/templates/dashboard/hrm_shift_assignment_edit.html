@@ -1,0 +1,47 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+{% include "dashboard/_hrm_styles.html" %}
+<a href="{% url 'dashboard:hrm_shift_calendar' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; Shift Calendar</a>
+<h1 class="text-xl font-bold text-black mt-1 mb-6 flex items-center gap-2"><i class="fa-solid fa-pen text-[#0B6B3A]"></i> Edit Shift Assignment</h1>
+
+{% if messages %}{% for message in messages %}<div class="{% if message.tags == 'error' %}bg-red-50 border-red-300 text-red-700{% else %}bg-[#0B6B3A]/10 border-[#0B6B3A] text-[#0B6B3A]{% endif %} border text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>{% endfor %}{% endif %}
+
+<div class="hr-tile rounded-2xl p-6 max-w-lg">
+    <div class="flex items-center gap-3 mb-5 pb-4 border-b border-gray-100">
+        <div class="hr-avatar">{{ assignment.staff.get_full_name|default:assignment.staff.username|slice:":2"|upper }}</div>
+        <div>
+            <p class="font-semibold text-sm text-black">{{ assignment.staff.get_full_name|default:assignment.staff.username }}</p>
+            <p class="text-xs text-gray-500">{{ assignment.staff.staff_profile.position|default:"—" }}</p>
+        </div>
+    </div>
+
+    <form method="post" class="space-y-3">
+        {% csrf_token %}
+        {% for field in form %}
+        <div>
+            <label class="text-xs font-semibold text-gray-600 mb-1 block">{{ field.label }}</label>
+            {{ field }}
+            {% if field.errors %}<p class="text-red-600 text-xs mt-1">{{ field.errors.0 }}</p>{% endif %}
+        </div>
+        {% endfor %}
+        {% if form.non_field_errors %}<p class="text-red-600 text-xs">{{ form.non_field_errors.0 }}</p>{% endif %}
+        <button type="submit" class="w-full bg-[#0B6B3A] hover:bg-[#074726] transition-colors text-white font-bold py-2.5 rounded-full flex items-center justify-center gap-2 mt-2"><i class="fa-solid fa-check"></i> Save Changes</button>
+    </form>
+
+    <button type="button" onclick="deleteAssignment()" class="w-full mt-3 border border-red-300 text-red-500 hover:bg-red-50 font-semibold py-2.5 rounded-full flex items-center justify-center gap-2">
+        <i class="fa-solid fa-trash"></i> Delete This Assignment
+    </button>
+    <form id="delete-form" method="post" action="{% url 'dashboard:hrm_shift_assignment_delete' assignment.id %}" class="hidden">{% csrf_token %}</form>
+</div>
+
+<script>
+function deleteAssignment() {
+    Swal.fire({
+        icon: 'warning', title: 'Remove this shift?', text: 'This cannot be undone.',
+        showCancelButton: true, confirmButtonText: 'Delete', confirmButtonColor: '#dc2626'
+    }).then(function (result) {
+        if (result.isConfirmed) document.getElementById('delete-form').submit();
+    });
+}
+</script>
+{% endblock %}

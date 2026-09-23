@@ -1,0 +1,79 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+{% include "dashboard/_hrm_styles.html" %}
+<a href="{% url 'dashboard:hrm' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; HRM</a>
+<h1 class="text-xl font-bold text-black mt-1 mb-6">Clock In / Out</h1>
+
+{% if messages %}{% for message in messages %}
+<div class="bg-{% if message.tags == 'error' %}red-50 border-red-300 text-red-700{% else %}[#0B6B3A]/10 border-[#0B6B3A] text-[#0B6B3A]{% endif %} border text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
+{% endfor %}{% endif %}
+
+<div class="hr-card max-w-md">
+    <p class="text-sm mb-1">Status: <strong>{% if record.clock_out_time %}Done for today{% elif record.clock_in_time %}Clocked in at {{ record.clock_in_time|date:"H:i" }}{% else %}Not clocked in{% endif %}</strong></p>
+    {% if record.is_late %}<p class="text-red-600 text-xs mb-3">Late by {{ record.late_minutes }} min</p>{% endif %}
+
+    <video id="camera-preview" autoplay playsinline class="w-full rounded-xl bg-black mb-3" style="max-height:260px;"></video>
+    <canvas id="photo-canvas" class="hidden"></canvas>
+    <img id="photo-preview" class="hidden w-full rounded-xl mb-3">
+
+    <p id="location-status" class="text-xs text-gray-400 mb-3"><i class="fa-solid fa-location-dot mr-1"></i>Getting your location...</p>
+
+    <div class="flex gap-2">
+        {% if not record.clock_in_time %}
+        <button id="capture-btn" class="flex-1 bg-[#0B6B3A] text-white font-bold py-3 rounded-full">Take Photo</button>
+        <form id="clock-in-form" method="post" action="{% url 'dashboard:hrm_clock_action' 'in' %}" enctype="multipart/form-data" class="hidden flex-1">
+            {% csrf_token %}<input type="hidden" name="lat" id="in-lat"><input type="hidden" name="lng" id="in-lng"><input type="file" name="photo" id="in-photo" class="hidden">
+            <button type="submit" class="w-full bg-[#C9A227] text-black font-bold py-3 rounded-full">Confirm Clock In</button>
+        </form>
+        {% elif not record.clock_out_time %}
+        <button id="capture-btn" class="flex-1 bg-[#0B6B3A] text-white font-bold py-3 rounded-full">Take Photo</button>
+        <form id="clock-out-form" method="post" action="{% url 'dashboard:hrm_clock_action' 'out' %}" enctype="multipart/form-data" class="hidden flex-1">
+            {% csrf_token %}<input type="hidden" name="lat" id="out-lat"><input type="hidden" name="lng" id="out-lng"><input type="file" name="photo" id="out-photo" class="hidden">
+            <button type="submit" class="w-full bg-[#C9A227] text-black font-bold py-3 rounded-full">Confirm Clock Out</button>
+        </form>
+        {% else %}
+        <p class="text-gray-400 text-sm">See you tomorrow.</p>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+let currentLat = null, currentLng = null, currentBlob = null;
+const video = document.getElementById('camera-preview');
+const canvas = document.getElementById('photo-canvas');
+const preview = document.getElementById('photo-preview');
+const captureBtn = document.getElementById('capture-btn');
+const locStatus = document.getElementById('location-status');
+
+navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } }).then(stream => { video.srcObject = stream; }).catch(() => { locStatus.textContent = 'Camera access denied, photo is required.'; });
+
+navigator.geolocation.getCurrentPosition(
+    pos => { currentLat = pos.coords.latitude; currentLng = pos.coords.longitude; locStatus.innerHTML = '<i class="fa-solid fa-circle-check text-[#0B6B3A] mr-1"></i>Location captured'; },
+    () => { locStatus.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-red-500 mr-1"></i>Location unavailable, enable it to clock in'; }
+);
+
+if (captureBtn) {
+    captureBtn.addEventListener('click', function () {
+        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+        canvas.getContext('2d').drawImage(video, 0, 0);
+        canvas.toBlob(blob => {
+            currentBlob = blob;
+            preview.src = URL.createObjectURL(blob);
+            preview.classList.remove('hidden'); video.classList.add('hidden'); captureBtn.classList.add('hidden');
+
+            const dt = new DataTransfer();
+            dt.items.add(new File([blob], 'clock.jpg', { type: 'image/jpeg' }));
+            {% if not record.clock_in_time %}
+            document.getElementById('in-photo').files = dt.files;
+            document.getElementById('in-lat').value = currentLat; document.getElementById('in-lng').value = currentLng;
+            document.getElementById('clock-in-form').classList.remove('hidden');
+            {% elif not record.clock_out_time %}
+            document.getElementById('out-photo').files = dt.files;
+            document.getElementById('out-lat').value = currentLat; document.getElementById('out-lng').value = currentLng;
+            document.getElementById('clock-out-form').classList.remove('hidden');
+            {% endif %}
+        }, 'image/jpeg', 0.85);
+    });
+}
+</script>
+{% endblock %}

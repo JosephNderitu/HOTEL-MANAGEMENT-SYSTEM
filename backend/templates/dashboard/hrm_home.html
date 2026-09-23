@@ -1,0 +1,235 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+{% include "dashboard/_hrm_styles.html" %}
+
+<div class="max-w-7xl mx-auto space-y-8 pb-10">
+
+    <!-- 1. Hero Hub Header -->
+    <div class="hr-hero-card rounded-2xl p-6 md:p-8 text-white flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+        <div class="space-y-2 max-w-xl z-10">
+            <div class="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md px-3 py-1 rounded-full text-xs font-semibold text-[#C9A227] border border-white/10">
+                <i class="fa-solid fa-shield-halved text-[10px]"></i> Enterprise Workspace
+            </div>
+            <h1 class="text-2xl md:text-3xl font-black tracking-tight">HRM &amp; Workforce Portal</h1>
+            <p class="text-white/80 text-xs md:text-sm font-light leading-relaxed">
+                Seamlessly manage daily attendance, shift rosters, leave applications, and real-time operations.
+            </p>
+        </div>
+
+        <!-- Dynamic Clock Action Widget -->
+        <div class="z-10 bg-white/10 backdrop-blur-md border border-white/15 p-4 rounded-xl flex items-center gap-4 min-w-[260px] justify-between shadow-inner">
+            <div class="space-y-1">
+                <span class="text-[11px] font-medium text-white/70 block uppercase tracking-wider">Attendance Status</span>
+                <span class="text-xs font-bold text-white flex items-center gap-1.5">
+                    {% if attendance_today.clock_in_time and not attendance_today.clock_out_time %}
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span> On Duty
+                    {% elif attendance_today.clock_out_time %}
+                        <i class="fa-solid fa-circle-check text-amber-400"></i> Completed
+                    {% else %}
+                        <i class="fa-solid fa-circle-minus text-white/50"></i> Off Duty
+                    {% endif %}
+                </span>
+            </div>
+
+            <a href="{% url 'dashboard:hrm_clock' %}" 
+               class="inline-flex items-center gap-2 bg-[#C9A227] hover:bg-[#b08d1f] text-slate-900 font-extrabold text-xs px-5 py-3 rounded-xl transition-all shadow-md hover:shadow-lg active:scale-95">
+                {% if attendance_today.clock_in_time and not attendance_today.clock_out_time %}
+                    <i class="fa-solid fa-right-from-bracket"></i> Clock Out
+                {% elif attendance_today.clock_out_time %}
+                    <i class="fa-solid fa-rotate-right"></i> Review Log
+                {% else %}
+                    <i class="fa-solid fa-right-to-bracket"></i> Clock In
+                {% endif %}
+            </a>
+        </div>
+    </div>
+
+    <!-- 2. Employee Self-Service (ESS) Grid -->
+    <div>
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xs uppercase tracking-widest font-black text-slate-400 flex items-center gap-2">
+                <i class="fa-solid fa-user-gear text-xs text-[#0B6B3A]"></i> Employee Self-Service
+            </h2>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <!-- Attendance -->
+            <a href="{% url 'dashboard:hrm_my_attendance' %}" class="hr-tile hr-tile-accent p-5 rounded-2xl flex flex-col justify-between group">
+                <div class="flex items-center justify-between">
+                    <div class="w-11 h-11 rounded-xl bg-amber-50 text-[#C9A227] flex items-center justify-center hr-icon-wrapper">
+                        <i class="fa-solid fa-clock-rotate-left text-lg"></i>
+                    </div>
+                    <i class="fa-solid fa-chevron-right text-xs text-slate-300 group-hover:text-[#C9A227] group-hover:translate-x-1 transition-all"></i>
+                </div>
+                <div class="mt-4">
+                    <p class="text-sm font-bold text-slate-800">My Attendance</p>
+                    <p class="text-[11px] text-slate-400 mt-0.5">Logs &amp; Geofence status</p>
+                </div>
+            </a>
+
+            <!-- Shifts -->
+            <a href="{% url 'dashboard:hrm_my_shifts' %}" class="hr-tile hr-tile-accent p-5 rounded-2xl flex flex-col justify-between group">
+                <div class="flex items-center justify-between">
+                    <div class="w-11 h-11 rounded-xl bg-amber-50 text-[#C9A227] flex items-center justify-center hr-icon-wrapper">
+                        <i class="fa-solid fa-calendar-week text-lg"></i>
+                    </div>
+                    <i class="fa-solid fa-chevron-right text-xs text-slate-300 group-hover:text-[#C9A227] group-hover:translate-x-1 transition-all"></i>
+                </div>
+                <div class="mt-4">
+                    <p class="text-sm font-bold text-slate-800">My Shifts</p>
+                    <p class="text-[11px] text-slate-400 mt-0.5">Schedules &amp; Swap requests</p>
+                </div>
+            </a>
+
+            <!-- Leave Requests -->
+            <a href="{% url 'dashboard:hrm_my_leave' %}" class="hr-tile hr-tile-accent p-5 rounded-2xl flex flex-col justify-between group relative">
+                <div class="flex items-center justify-between">
+                    <div class="w-11 h-11 rounded-xl bg-amber-50 text-[#C9A227] flex items-center justify-center hr-icon-wrapper">
+                        <i class="fa-solid fa-plane-departure text-lg"></i>
+                    </div>
+                    {% if pending_leave %}
+                    <span class="bg-[#C9A227] text-slate-900 text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm">
+                        {{ pending_leave }} Pending
+                    </span>
+                    {% else %}
+                    <i class="fa-solid fa-chevron-right text-xs text-slate-300 group-hover:text-[#C9A227] group-hover:translate-x-1 transition-all"></i>
+                    {% endif %}
+                </div>
+                <div class="mt-4">
+                    <p class="text-sm font-bold text-slate-800">My Leave</p>
+                    <p class="text-[11px] text-slate-400 mt-0.5">Balances &amp; Applications</p>
+                </div>
+            </a>
+
+            <!-- Payslips -->
+            <a href="{% url 'dashboard:hrm_my_payslips' %}" class="hr-tile hr-tile-accent p-5 rounded-2xl flex flex-col justify-between group">
+                <div class="flex items-center justify-between">
+                    <div class="w-11 h-11 rounded-xl bg-amber-50 text-[#C9A227] flex items-center justify-center hr-icon-wrapper">
+                        <i class="fa-solid fa-file-invoice-dollar text-lg"></i>
+                    </div>
+                    <i class="fa-solid fa-chevron-right text-xs text-slate-300 group-hover:text-[#C9A227] group-hover:translate-x-1 transition-all"></i>
+                </div>
+                <div class="mt-4">
+                    <p class="text-sm font-bold text-slate-800">My Payslips</p>
+                    <p class="text-[11px] text-slate-400 mt-0.5">Statements &amp; Tax records</p>
+                </div>
+            </a>
+        </div>
+    </div>
+
+    <!-- 3. Upcoming Shift Widget -->
+    {% if upcoming_shifts %}
+    <div class="bg-slate-900 rounded-2xl p-5 text-white shadow-lg border border-slate-800">
+        <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-3">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                <i class="fa-solid fa-business-time text-[#C9A227]"></i> Upcoming Roster Stream
+            </h3>
+            <a href="{% url 'dashboard:hrm_my_shifts' %}" class="text-[11px] text-[#C9A227] hover:underline font-semibold">View All</a>
+        </div>
+        <div class="flex gap-3 overflow-x-auto pb-1 custom-scrollbar">
+            {% for item in upcoming_shifts %}
+            <div class="flex-none bg-slate-800/80 border border-slate-700/60 rounded-xl p-3 min-w-[170px]">
+                <p class="text-[10px] uppercase font-bold text-[#C9A227]">{{ item.date|date:"D, M d" }}</p>
+                <p class="text-xs font-bold text-slate-100 mt-1">{{ item.shift.name }}</p>
+                <p class="text-[11px] text-slate-400 mt-0.5"><i class="fa-regular fa-clock mr-1"></i>{{ item.shift.start_time|time:"H:i" }} - {{ item.shift.end_time|time:"H:i" }}</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 4. Manager Control Center -->
+    {% if can_manage %}
+    <div class="space-y-4 pt-2">
+        <div class="flex items-center justify-between">
+            <h2 class="text-xs uppercase tracking-widest font-black text-slate-400 flex items-center gap-2">
+                <i class="fa-solid fa-sliders text-xs text-[#0B6B3A]"></i> Management Control Panel
+            </h2>
+            <span class="text-[10px] bg-emerald-100 text-[#0B6B3A] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                Manager Privileges Enabled
+            </span>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
+            <!-- Staff Directory -->
+            <a href="{% url 'dashboard:hrm_staff_list' %}" class="hr-tile p-4 rounded-2xl flex flex-col justify-between group">
+                <div class="w-10 h-10 rounded-xl bg-emerald-50 text-[#0B6B3A] flex items-center justify-center hr-icon-wrapper mb-3">
+                    <i class="fa-solid fa-users text-base"></i>
+                </div>
+                <div>
+                    <p class="text-xs font-bold text-slate-800 group-hover:text-[#0B6B3A] transition-colors">Staff Directory</p>
+                    <p class="text-[10px] text-slate-400 mt-0.5">Profiles &amp; Roles</p>
+                </div>
+            </a>
+
+            <!-- Shift Calendar -->
+            <a href="{% url 'dashboard:hrm_shift_calendar' %}" class="hr-tile p-4 rounded-2xl flex flex-col justify-between group">
+                <div class="w-10 h-10 rounded-xl bg-emerald-50 text-[#0B6B3A] flex items-center justify-center hr-icon-wrapper mb-3">
+                    <i class="fa-solid fa-calendar-days text-base"></i>
+                </div>
+                <div>
+                    <p class="text-xs font-bold text-slate-800 group-hover:text-[#0B6B3A] transition-colors">Shift Roster</p>
+                    <p class="text-[10px] text-slate-400 mt-0.5">Schedule &amp; Swaps</p>
+                </div>
+            </a>
+
+            <!-- Weekly Off Patterns -->
+            <a href="{% url 'dashboard:hrm_weekly_off' %}" class="hr-tile p-4 rounded-2xl flex flex-col justify-between group">
+                <div class="w-10 h-10 rounded-xl bg-emerald-50 text-[#0B6B3A] flex items-center justify-center hr-icon-wrapper mb-3">
+                    <i class="fa-solid fa-calendar-xmark text-base"></i>
+                </div>
+                <div>
+                    <p class="text-xs font-bold text-slate-800 group-hover:text-[#0B6B3A] transition-colors">Weekly Off</p>
+                    <p class="text-[10px] text-slate-400 mt-0.5">Standing Off-Day Patterns</p>
+                </div>
+            </a>
+
+            <!-- Leave Approvals -->
+            <a href="{% url 'dashboard:hrm_leave_requests' %}" class="hr-tile p-4 rounded-2xl flex flex-col justify-between group">
+                <div class="w-10 h-10 rounded-xl bg-emerald-50 text-[#0B6B3A] flex items-center justify-center hr-icon-wrapper mb-3">
+                    <i class="fa-solid fa-envelope-open-text text-base"></i>
+                </div>
+                <div>
+                    <p class="text-xs font-bold text-slate-800 group-hover:text-[#0B6B3A] transition-colors">Leave Requests</p>
+                    <p class="text-[10px] text-slate-400 mt-0.5">Review Applications</p>
+                </div>
+            </a>
+
+            <!-- Attendance Reports -->
+            <a href="{% url 'dashboard:hrm_attendance_report' %}" class="hr-tile p-4 rounded-2xl flex flex-col justify-between group">
+                <div class="w-10 h-10 rounded-xl bg-emerald-50 text-[#0B6B3A] flex items-center justify-center hr-icon-wrapper mb-3">
+                    <i class="fa-solid fa-chart-line text-base"></i>
+                </div>
+                <div>
+                    <p class="text-xs font-bold text-slate-800 group-hover:text-[#0B6B3A] transition-colors">Attendance</p>
+                    <p class="text-[10px] text-slate-400 mt-0.5">Logs &amp; Geofencing</p>
+                </div>
+            </a>
+
+            <!-- Payroll -->
+            <a href="{% url 'dashboard:hrm_payroll_list' %}" class="hr-tile p-4 rounded-2xl flex flex-col justify-between group">
+                <div class="w-10 h-10 rounded-xl bg-emerald-50 text-[#0B6B3A] flex items-center justify-center hr-icon-wrapper mb-3">
+                    <i class="fa-solid fa-sack-dollar text-base"></i>
+                </div>
+                <div>
+                    <p class="text-xs font-bold text-slate-800 group-hover:text-[#0B6B3A] transition-colors">Payroll Hub</p>
+                    <p class="text-[10px] text-slate-400 mt-0.5">Process &amp; Finalize</p>
+                </div>
+            </a>
+
+            <!-- Performance Reviews -->
+            <a href="{% url 'dashboard:hrm_performance_list' %}" class="hr-tile p-4 rounded-2xl flex flex-col justify-between group">
+                <div class="w-10 h-10 rounded-xl bg-emerald-50 text-[#0B6B3A] flex items-center justify-center hr-icon-wrapper mb-3">
+                    <i class="fa-solid fa-award text-base"></i>
+                </div>
+                <div>
+                    <p class="text-xs font-bold text-slate-800 group-hover:text-[#0B6B3A] transition-colors">Performance</p>
+                    <p class="text-[10px] text-slate-400 mt-0.5">Appraisals &amp; KPI</p>
+                </div>
+            </a>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

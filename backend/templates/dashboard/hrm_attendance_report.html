@@ -1,0 +1,31 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+{% include "dashboard/_hrm_styles.html" %}
+<a href="{% url 'dashboard:hrm' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; HRM</a>
+<h1 class="text-xl font-bold text-black mt-1 mb-6">Attendance Trends</h1>
+
+<div class="flex gap-2 mb-6">
+    <a href="?days=7" class="text-xs px-3 py-1.5 rounded-full {% if days == 7 %}bg-[#0B6B3A] text-white{% else %}border border-gray-300{% endif %}">7 Days</a>
+    <a href="?days=30" class="text-xs px-3 py-1.5 rounded-full {% if days == 30 %}bg-[#0B6B3A] text-white{% else %}border border-gray-300{% endif %}">30 Days</a>
+    <a href="?days=90" class="text-xs px-3 py-1.5 rounded-full {% if days == 90 %}bg-[#0B6B3A] text-white{% else %}border border-gray-300{% endif %}">90 Days</a>
+</div>
+
+<div class="hr-card mb-6"><div style="position:relative;height:260px;"><canvas id="attChart"></canvas></div></div>
+
+<div class="hr-card">
+    <h2 class="font-bold text-black text-sm mb-3">Flagged (Outside Geofence)</h2>
+    {% for r in flagged %}<div class="flex justify-between text-sm border-b border-gray-50 py-1.5"><span>{{ r.staff.get_full_name|default:r.staff.username }} — {{ r.date }}</span><span class="hr-badge bg-red-100 text-red-600">flagged</span></div>{% empty %}<p class="text-gray-400 text-sm">None flagged.</p>{% endfor %}
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+new Chart(document.getElementById('attChart'), {
+    type: 'line',
+    data: { labels: {{ chart_labels|safe }}, datasets: [
+        { label: 'Total Clock-ins', data: {{ chart_total|safe }}, borderColor: '#0B6B3A', tension: 0.35 },
+        { label: 'Late', data: {{ chart_late|safe }}, borderColor: '#dc2626', tension: 0.35 },
+    ]},
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } },
+});
+</script>
+{% endblock %}

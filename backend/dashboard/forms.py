@@ -2,6 +2,8 @@ from django import forms
 from .models import GateLog
 from public_site.models import *
 from .models import Payment
+from django.contrib.auth.models import User
+from hrm.models import *
 
 FIELD_CLASS = 'w-full border border-[#0B6B3A] rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B6B3A]/20'
 
@@ -105,3 +107,150 @@ class RoomCheckinForm(forms.Form):
     guest_id_no = forms.CharField(required=False, widget=forms.TextInput(attrs={'class': FIELD_CLASS, 'placeholder': 'National ID / Passport'}))
     check_out = forms.DateField(widget=forms.DateInput(attrs={'class': FIELD_CLASS, 'type': 'date'}))
     amount = forms.DecimalField(widget=forms.NumberInput(attrs={'class': FIELD_CLASS, 'step': '0.01', 'placeholder': 'Rate per night'}))
+    
+##############################################
+######### ---------HRM-----------#############
+    
+class LeaveRequestForm(forms.ModelForm):
+    days_requested = forms.IntegerField(
+        min_value=1, widget=forms.NumberInput(attrs={'class': FIELD_CLASS, 'id': 'id_days_requested'})
+    )
+
+    class Meta:
+        model = LeaveRequest
+        fields = ['leave_type', 'start_date', 'reason']
+        widgets = {
+            'leave_type': forms.Select(attrs={'class': FIELD_CLASS, 'id': 'id_leave_type'}),
+            'start_date': forms.DateInput(attrs={'class': FIELD_CLASS, 'type': 'date', 'id': 'id_start_date'}),
+            'reason': forms.Textarea(attrs={'class': FIELD_CLASS, 'rows': 2}),
+        }
+
+    def __init__(self, *args, staff=None, **kwargs):
+        self.staff = staff
+        super().__init__(*args, **kwargs)
+
+    def clean(self):
+        cleaned = super().clean()
+        leave_type = cleaned.get('leave_type')
+        days = cleaned.get('days_requested')
+        start = cleaned.get('start_date')
+        if leave_type and days and start and self.staff:
+            balance, _ = LeaveBalance.objects.get_or_create(
+                staff=self.staff, leave_type=leave_type, year=start.year,
+                defaults={'allocated_days': leave_type.default_days_per_year},
+            )
+            if days > balance.remaining_days:
+                raise forms.ValidationError(
+                    f"You only have {balance.remaining_days} day(s) of {leave_type} remaining."
+                )
+            cleaned['end_date'] = start + timedelta(days=days - 1)
+        return cleaned
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        instance.end_date = self.cleaned_data['end_date']
+        if commit:
+            instance.save()
+        return instance
+
+
+class ShiftAssignmentForm(forms.ModelForm):
+    class Meta:
+        model = ShiftAssignment
+        fields = ['staff', 'shift', 'date']
+        widgets = {
+            'staff': forms.Select(attrs={'class': FIELD_CLASS}),
+            'shift': forms.Select(attrs={'class': FIELD_CLASS}),
+            'date': forms.DateInput(attrs={'class': FIELD_CLASS, 'type': 'date'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['staff'].queryset = User.objects.filter(is_staff=True).order_by('first_name')
+
+
+class PayrollForm(forms.ModelForm):
+    class Meta:
+        model = PayrollRecord
+        fields = ['period_month', 'period_year', 'basic_salary', 'allowances_total', 'allowances_notes', 'deductions_total', 'deductions_notes', 'overtime_hours', 'overtime_rate']
+        widgets = {
+            'period_month': forms.NumberInput(attrs={'class': FIELD_CLASS, 'min': 1, 'max': 12}),
+            'period_year': forms.NumberInput(attrs={'class': FIELD_CLASS}),
+            'basic_salary': forms.NumberInput(attrs={'class': FIELD_CLASS, 'step': '0.01'}),
+            'allowances_total': forms.NumberInput(attrs={'class': FIELD_CLASS, 'step': '0.01'}),
+            'allowances_notes': forms.TextInput(attrs={'class': FIELD_CLASS, 'placeholder': 'e.g. Housing, transport'}),
+            'deductions_total': forms.NumberInput(attrs={'class': FIELD_CLASS, 'step': '0.01'}),
+            'deductions_notes': forms.TextInput(attrs={'class': FIELD_CLASS, 'placeholder': 'e.g. NHIF, NSSF, PAYE'}),
+            'overtime_hours': forms.NumberInput(attrs={'class': FIELD_CLASS, 'step': '0.01'}),
+            'overtime_rate': forms.NumberInput(attrs={'class': FIELD_CLASS, 'step': '0.01'}),
+        }
+
+
+class PerformanceReviewForm(forms.ModelForm):
+    class Meta:
+        model = PerformanceReview
+        fields = ['review_period', 'overall_rating', 'strengths', 'areas_to_improve', 'goals']
+        widgets = {
+            'review_period': forms.TextInput(attrs={'class': FIELD_CLASS, 'placeholder': 'e.g. Q1 2026'}),
+            'overall_rating': forms.Select(choices=[(i, i) for i in range(1, 6)], attrs={'class': FIELD_CLASS}),
+            'strengths': forms.Textarea(attrs={'class': FIELD_CLASS, 'rows': 3}),
+            'areas_to_improve': forms.Textarea(attrs={'class': FIELD_CLASS, 'rows': 3}),
+            'goals': forms.Textarea(attrs={'class': FIELD_CLASS, 'rows': 2}),
+        }
+        
+class BulkShiftAssignForm(forms.Form):
+    staff = forms.ModelChoiceField(queryset=User.objects.filter(is_staff=True).order_by('first_name'), widget=forms.Select(attrs={'class': FIELD_CLASS}))
+    shift = forms.ModelChoiceField(queryset=Shift.objects.all(), widget=forms.Select(attrs={'class': FIELD_CLASS}))
+    start_date = forms.DateField(widget=forms.DateInput(attrs={'class': FIELD_CLASS, 'type': 'date'}))
+    end_date = forms.DateField(widget=forms.DateInput(attrs={'class': FIELD_CLASS, 'type': 'date'}))
+
+    def clean(self):
+        cleaned = super().clean()
+        start, end = cleaned.get('start_date'), cleaned.get('end_date')
+        if start and end and end < start:
+            raise forms.ValidationError("End date can't be before start date.")
+        return cleaned
+
+
+class StaffWeeklyOffForm(forms.Form):
+    staff = forms.ModelChoiceField(queryset=User.objects.filter(is_staff=True).order_by('first_name'), widget=forms.Select(attrs={'class': FIELD_CLASS}))
+    weekdays = forms.MultipleChoiceField(choices=StaffWeeklyOff.WEEKDAY_CHOICES, widget=forms.CheckboxSelectMultiple, required=False)
+
+
+class ShiftSwapRequestForm(forms.ModelForm):
+    class Meta:
+        model = ShiftSwapRequest
+        fields = ['mode', 'start_date', 'end_date', 'requested_shift', 'trade_with', 'reason']
+        widgets = {
+            'mode': forms.RadioSelect,
+            'start_date': forms.DateInput(attrs={'class': FIELD_CLASS, 'type': 'date'}),
+            'end_date': forms.DateInput(attrs={'class': FIELD_CLASS, 'type': 'date'}),
+            'requested_shift': forms.Select(attrs={'class': FIELD_CLASS}),
+            'trade_with': forms.Select(attrs={'class': FIELD_CLASS}),
+            'reason': forms.Textarea(attrs={'class': FIELD_CLASS, 'rows': 2, 'placeholder': 'Why do you need this change?'}),
+        }
+
+    def __init__(self, *args, staff=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        qs = User.objects.filter(is_staff=True).order_by('first_name')
+        if staff:
+            qs = qs.exclude(id=staff.id)
+            my_profile = getattr(staff, 'staff_profile', None)
+            if my_profile and my_profile.position:
+                qs = qs.filter(staff_profile__position__iexact=my_profile.position)
+        self.fields['trade_with'].queryset = qs
+        self.fields['requested_shift'].required = False
+        self.fields['trade_with'].required = False
+
+    def clean(self):
+        cleaned = super().clean()
+        mode = cleaned.get('mode')
+        if mode == 'self' and not cleaned.get('requested_shift'):
+            self.add_error('requested_shift', "Pick the shift you want to move to.")
+        if mode == 'trade' and not cleaned.get('trade_with'):
+            self.add_error('trade_with', "Pick the colleague you want to trade with.")
+        start, end = cleaned.get('start_date'), cleaned.get('end_date')
+        if start and end and end < start:
+            raise forms.ValidationError("End date can't be before start date.")
+        return cleaned
+    

@@ -1,0 +1,14 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+{% include "dashboard/_hrm_styles.html" %}
+<a href="{% url 'dashboard:hrm' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; HRM</a>
+<h1 class="text-xl font-bold text-black mt-1 mb-6">My Performance Reviews</h1>
+{% for r in reviews %}
+<div class="hr-card mb-3">
+    <div class="flex justify-between items-center mb-2"><p class="font-bold text-black">{{ r.review_period }}</p><span class="hr-badge bg-[#0B6B3A] text-white">{{ r.overall_rating }}/5</span></div>
+    {% if r.strengths %}<p class="text-sm mb-1"><strong>Strengths:</strong> {{ r.strengths }}</p>{% endif %}
+    {% if r.areas_to_improve %}<p class="text-sm mb-1"><strong>Areas to Improve:</strong> {{ r.areas_to_improve }}</p>{% endif %}
+    {% if r.goals %}<p class="text-sm"><strong>Goals:</strong> {{ r.goals }}</p>{% endif %}
+</div>
+{% empty %}<p class="text-gray-400 text-center py-10">No reviews shared yet.</p>{% endfor %}
+{% endblock %}

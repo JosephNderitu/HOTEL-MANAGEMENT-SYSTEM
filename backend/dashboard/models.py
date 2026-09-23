@@ -6,13 +6,62 @@ import uuid
 
 
 class StaffProfile(models.Model):
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='staff_profile')
+    DEPARTMENT_CHOICES = [
+        ('front_office', 'Front Office'),
+        ('housekeeping', 'Housekeeping'),
+        ('kitchen', 'Kitchen'),
+        ('restaurant', 'Restaurant'),
+        ('bar', 'Bar'),
+        ('security', 'Security'),
+        ('store', 'Store & Inventory'),
+        ('management', 'Management'),
+        ('hr', 'Human Resources'),
+        ('maintenance', 'Maintenance'),
+    ]
+    EMPLOYMENT_STATUS_CHOICES = [
+        ('active', 'Active'),
+        ('on_leave', 'On Leave'),
+        ('suspended', 'Suspended'),
+        ('terminated', 'Terminated'),
+    ]
+    PAY_TYPE_CHOICES = [
+        ('monthly', 'Monthly Salary'),
+        ('daily', 'Daily Rate'),
+        ('hourly', 'Hourly Rate'),
+    ]
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='staff_profile'
+    )
     national_id = models.CharField(
-        max_length=20, unique=True,
+        max_length=20,
+        unique=True,
         help_text="National ID or Passport number. Used to identify this staff member on any record they handle."
     )
     phone = models.CharField(max_length=20, blank=True)
-    department_note = models.CharField(max_length=100, blank=True, help_text="Optional, e.g. 'Night shift', 'Gate 2'")
+    position = models.CharField(max_length=100, blank=True)
+    department = models.CharField(max_length=20, choices=DEPARTMENT_CHOICES, blank=True)
+    department_note = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Optional, e.g. 'Night shift', 'Gate 2'"
+    )
+    date_joined_role = models.DateField(null=True, blank=True)
+    employment_status = models.CharField(
+        max_length=15,
+        choices=EMPLOYMENT_STATUS_CHOICES,
+        default='active'
+    )
+    pay_type = models.CharField(
+        max_length=10,
+        choices=PAY_TYPE_CHOICES,
+        default='monthly'
+    )
+    pay_rate = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    emergency_contact_name = models.CharField(max_length=150, blank=True)
+    emergency_contact_phone = models.CharField(max_length=20, blank=True)
     is_active_staff = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

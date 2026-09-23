@@ -1,0 +1,22 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+{% include "dashboard/_hrm_styles.html" %}
+<a href="{% url 'dashboard:hrm' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; HRM</a>
+<h1 class="text-xl font-bold text-black mt-1 mb-6">Staff Directory</h1>
+<div class="hr-card overflow-x-auto">
+    <table class="hr-table w-full">
+        <thead><tr><th>Name</th><th>Position</th><th>Department</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+        {% for p in profiles %}
+        <tr>
+            <td data-label="Name">{{ p.user.get_full_name|default:p.user.username }}</td>
+            <td data-label="Position">{{ p.position|default:"—" }}</td>
+            <td data-label="Department">{{ p.get_department_display|default:"—" }}</td>
+            <td data-label="Status"><span class="hr-badge {% if p.employment_status == 'active' %}bg-[#0B6B3A] text-white{% else %}bg-gray-200 text-gray-600{% endif %}">{{ p.get_employment_status_display }}</span></td>
+            <td data-label=""><a href="{% url 'dashboard:hrm_staff_detail' p.user.id %}" class="text-[#0B6B3A] text-xs font-semibold hover:underline">View</a></td>
+        </tr>
+        {% empty %}<tr><td colspan="5" class="text-center text-gray-400 py-8">No staff profiles yet.</td></tr>{% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

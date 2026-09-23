@@ -1,0 +1,41 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+{% include "dashboard/_hrm_styles.html" %}
+<a href="{% url 'dashboard:hrm' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; HRM</a>
+
+<div class="flex items-center justify-between flex-wrap gap-3 mt-1 mb-6">
+    <h1 class="text-xl font-bold text-black flex items-center gap-2"><i class="fa-solid fa-calendar-week text-[#0B6B3A]"></i> My Shifts</h1>
+    <a href="{% url 'dashboard:hrm_request_swap' %}" class="inline-flex items-center gap-1.5 bg-[#0B6B3A] hover:bg-[#074726] transition-colors text-white text-sm font-semibold px-5 py-2.5 rounded-full">
+        <i class="fa-solid fa-repeat"></i> Request Shift Change
+    </a>
+</div>
+
+<div class="grid lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-2 space-y-2.5">
+        {% for a in assignments %}
+        <div class="hr-shift-card {% if a.status == 'cancelled' %}hr-off{% endif %} px-4 py-3 flex items-center justify-between flex-wrap gap-2">
+            <div>
+                <p class="font-bold text-black text-sm flex items-center gap-2"><i class="fa-regular fa-calendar text-[#0B6B3A] text-xs"></i>{{ a.date|date:"D, M d" }} — {{ a.shift.name }}</p>
+                <p class="text-xs text-gray-500 flex items-center gap-1.5 mt-0.5"><i class="fa-regular fa-clock"></i>{{ a.shift.start_time|time:"H:i" }}–{{ a.shift.end_time|time:"H:i" }}</p>
+            </div>
+            <span class="hr-badge {% if a.status == 'scheduled' %}bg-[#0B6B3A] text-white{% elif a.status == 'swapped' %}bg-[#C9A227] text-black{% elif a.status == 'cancelled' %}bg-gray-300 text-gray-600{% else %}bg-amber-100 text-amber-700{% endif %}">{{ a.get_status_display }}</span>
+        </div>
+        {% empty %}<p class="text-gray-400 text-center py-10">No upcoming shifts assigned.</p>{% endfor %}
+    </div>
+
+    <div class="hr-tile rounded-2xl p-5">
+        <h2 class="font-bold text-black text-sm mb-3 flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left text-[#0B6B3A]"></i> My Shift Change Requests</h2>
+        <div class="space-y-3 max-h-[420px] overflow-y-auto custom-scrollbar pr-1">
+        {% for s in my_swaps %}
+        <div class="border-b border-gray-100 pb-2.5 text-sm">
+            <p class="font-semibold text-black">{{ s.start_date|date:"M d" }}&ndash;{{ s.end_date|date:"M d" }}</p>
+            <p class="text-xs text-gray-500">
+                {% if s.mode == 'self' %}Move to {{ s.requested_shift.name }}{% else %}Trade with {{ s.trade_with.get_full_name|default:s.trade_with.username }}{% endif %}
+            </p>
+            <span class="hr-badge mt-1 {% if s.status == 'approved' %}bg-[#0B6B3A] text-white{% elif s.status == 'rejected' %}bg-red-500 text-white{% else %}bg-[#C9A227] text-black{% endif %}">{{ s.get_status_display }}</span>
+        </div>
+        {% empty %}<p class="text-gray-400 text-sm">No requests yet.</p>{% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

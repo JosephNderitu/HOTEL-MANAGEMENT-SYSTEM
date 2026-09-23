@@ -1,0 +1,22 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+{% include "dashboard/_hrm_styles.html" %}
+<a href="{% url 'dashboard:hrm' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; HRM</a>
+<h1 class="text-xl font-bold text-black mt-1 mb-6">My Attendance</h1>
+<div class="hr-card overflow-x-auto">
+    <table class="hr-table w-full">
+        <thead><tr><th>Date</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>Late</th></tr></thead>
+        <tbody>
+        {% for r in records %}
+        <tr>
+            <td data-label="Date">{{ r.date }}</td>
+            <td data-label="Clock In">{{ r.clock_in_time|date:"H:i"|default:"—" }}{% if not r.clock_in_within_geofence and r.clock_in_time %} <span class="hr-badge bg-red-100 text-red-600">flagged</span>{% endif %}</td>
+            <td data-label="Clock Out">{{ r.clock_out_time|date:"H:i"|default:"—" }}</td>
+            <td data-label="Hours">{{ r.hours_worked|default:"—" }}</td>
+            <td data-label="Late">{% if r.is_late %}<span class="hr-badge bg-[#C9A227] text-black">{{ r.late_minutes }} min</span>{% else %}—{% endif %}</td>
+        </tr>
+        {% empty %}<tr><td colspan="5" class="text-center text-gray-400 py-8">No attendance records yet.</td></tr>{% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'public_site',
     'dashboard',
     'store',
+    'hrm',
 ]
 
 ASGI_APPLICATION = 'config.asgi.application'
@@ -185,6 +186,10 @@ EMAIL_TIMEOUT = 10
 HOTEL_KRA_PIN = env('HOTEL_KRA_PIN', default='')
 HOTEL_ADDRESS = env('HOTEL_ADDRESS', default='Kisumu Road, Langas, Eldoret, Kenya')
 HOTEL_PHONE = env('HOTEL_PHONE', default='+254 707 641625')
+
+HOTEL_LATITUDE = env.float('HOTEL_LATITUDE', default=0.0)
+HOTEL_LONGITUDE = env.float('HOTEL_LONGITUDE', default=0.0)
+HOTEL_GEOFENCE_RADIUS_METERS = env.int('HOTEL_GEOFENCE_RADIUS_METERS', default=200)
 
 JAZZMIN_SETTINGS = {
     "site_title": "Queens Garden Admin",

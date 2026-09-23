@@ -1,0 +1,13 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+{% include "dashboard/_hrm_styles.html" %}
+<a href="{% url 'dashboard:hrm' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; HRM</a>
+<h1 class="text-xl font-bold text-black mt-1 mb-6">Performance Reviews</h1>
+{% if messages %}{% for message in messages %}<div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>{% endfor %}{% endif %}
+{% for r in reviews %}
+<div class="hr-card flex items-center justify-between mb-2">
+    <div><p class="font-semibold text-sm">{{ r.staff.get_full_name|default:r.staff.username }} — {{ r.review_period }}</p><p class="text-xs text-gray-500">by {{ r.reviewer.get_full_name|default:r.reviewer.username }} &middot; {{ r.overall_rating }}/5</p></div>
+    {% if r.status == 'draft' %}<form method="post" action="{% url 'dashboard:hrm_performance_finalize' r.id %}">{% csrf_token %}<button class="text-xs font-semibold bg-[#C9A227] text-black px-4 py-2 rounded-full">Finalize &amp; Share</button></form>{% else %}<span class="hr-badge bg-[#0B6B3A] text-white">Finalized</span>{% endif %}
+</div>
+{% empty %}<p class="text-gray-400 text-center py-10">No reviews yet.</p>{% endfor %}
+{% endblock %}
