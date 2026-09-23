@@ -148,6 +148,7 @@ class LeaveRequestForm(forms.ModelForm):
 
     def save(self, commit=True):
         instance = super().save(commit=False)
+        instance.staff = self.staff
         instance.end_date = self.cleaned_data['end_date']
         if commit:
             instance.save()

@@ -2559,6 +2559,15 @@ def booking_bill(request, booking_id):
 # ==============================================================================
 # HRM Views
 # ==============================================================================
+
+from django.core.paginator import Paginator
+
+def _qs_without(request, *keys):
+    qd = request.GET.copy()
+    for k in keys:
+        qd.pop(k, None)
+    return qd.urlencode()
+
 @login_required
 def hrm_home(request):
     today = timezone.localdate()
@@ -2773,16 +2782,54 @@ def hrm_shift_calendar(request):
         form = BulkShiftAssignForm()
 
     today = timezone.localdate()
-    upcoming = ShiftAssignment.objects.filter(date__gte=today).select_related(
-        'staff', 'staff__staff_profile', 'shift'
-    ).order_by('date')[:60]
-    swap_requests = ShiftSwapRequest.objects.filter(status='pending').select_related(
-        'requested_by', 'requested_by__staff_profile', 'requested_shift', 'trade_with'
-    )
 
-    month_str = request.GET.get('month')
-    if month_str:
-        cal_year, cal_month = map(int, month_str.split('-'))
+    # ---------- Upcoming Assignments: filters + pagination ----------
+    assignments_qs = ShiftAssignment.objects.filter(date__gte=today).select_related(
+        'staff', 'staff__staff_profile', 'shift'
+    ).order_by('date')
+
+    f_staff = request.GET.get('staff', '')
+    f_shift = request.GET.get('shift', '')
+    f_status = request.GET.get('status', '')
+    f_date_from = request.GET.get('date_from', '')
+    f_date_to = request.GET.get('date_to', '')
+
+    if f_staff:
+        assignments_qs = assignments_qs.filter(staff_id=f_staff)
+    if f_shift:
+        assignments_qs = assignments_qs.filter(shift_id=f_shift)
+    if f_status:
+        assignments_qs = assignments_qs.filter(status=f_status)
+    if f_date_from:
+        assignments_qs = assignments_qs.filter(date__gte=f_date_from)
+    if f_date_to:
+        assignments_qs = assignments_qs.filter(date__lte=f_date_to)
+
+    upcoming_page = Paginator(assignments_qs, 10).get_page(request.GET.get('page', 1))
+    upcoming_base_qs = _qs_without(request, 'page')
+    total_upcoming = ShiftAssignment.objects.filter(date__gte=today).count()
+
+    # ---------- Shift change requests: filters + pagination ----------
+    swap_status = request.GET.get('swap_status', 'pending')
+    swap_mode = request.GET.get('swap_mode', '')
+    swap_qs = ShiftSwapRequest.objects.select_related(
+        'requested_by', 'requested_by__staff_profile', 'requested_shift', 'trade_with'
+    ).order_by('-created_at')
+    if swap_status:
+        swap_qs = swap_qs.filter(status=swap_status)
+    if swap_mode:
+        swap_qs = swap_qs.filter(mode=swap_mode)
+
+    swap_page = Paginator(swap_qs, 6).get_page(request.GET.get('swap_page', 1))
+    swap_base_qs = _qs_without(request, 'swap_page')
+    swap_status_base_qs = _qs_without(request, 'swap_status', 'swap_page')
+    swap_mode_base_qs = _qs_without(request, 'swap_mode', 'swap_page')
+    pending_swap_count = ShiftSwapRequest.objects.filter(status='pending').count()
+
+    # ---------- Calendar month grid ----------
+    current_month_param = request.GET.get('month', '')
+    if current_month_param:
+        cal_year, cal_month = map(int, current_month_param.split('-'))
     else:
         cal_year, cal_month = today.year, today.month
 
@@ -2810,12 +2857,26 @@ def hrm_shift_calendar(request):
 
     prev_month = (cal_year - 1, 12) if cal_month == 1 else (cal_year, cal_month - 1)
     next_month = (cal_year + 1, 1) if cal_month == 12 else (cal_year, cal_month + 1)
+    month_base_qs = _qs_without(request, 'month')
+    calendar_day_link_qs = _qs_without(request, 'date_from', 'date_to', 'page')
 
     return render(request, 'dashboard/hrm_shift_calendar.html', {
-        'form': form, 'upcoming': upcoming, 'swap_requests': swap_requests,
+        'form': form,
+        'upcoming_page': upcoming_page, 'upcoming_base_qs': upcoming_base_qs, 'total_upcoming': total_upcoming,
+        'staff_options': User.objects.filter(is_staff=True).order_by('first_name'),
+        'shift_options': Shift.objects.all(),
+        'status_options': ShiftAssignment.STATUS_CHOICES,
+        'f_staff': f_staff, 'f_shift': f_shift, 'f_status': f_status,
+        'f_date_from': f_date_from, 'f_date_to': f_date_to,
+        'swap_page': swap_page, 'swap_base_qs': swap_base_qs,
+        'swap_status_base_qs': swap_status_base_qs, 'swap_mode_base_qs': swap_mode_base_qs,
+        'swap_status': swap_status, 'swap_mode': swap_mode, 'pending_swap_count': pending_swap_count,
         'weeks': weeks, 'cal_month_label': first_of_month.strftime('%B %Y'),
         'prev_month': f"{prev_month[0]}-{prev_month[1]:02d}",
         'next_month': f"{next_month[0]}-{next_month[1]:02d}",
+        'this_month_str': f"{today.year}-{today.month:02d}",
+        'current_month_param': current_month_param, 'month_base_qs': month_base_qs,
+        'calendar_day_link_qs': calendar_day_link_qs,
     })
 
 @hrm_manager_required
