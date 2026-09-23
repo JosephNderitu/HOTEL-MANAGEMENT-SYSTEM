@@ -1,41 +1,227 @@
 {% extends "dashboard/base_dashboard.html" %}
 {% block dashboard_content %}
 {% include "dashboard/_hrm_styles.html" %}
-<a href="{% url 'dashboard:hrm' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; HRM</a>
 
-<div class="flex items-center justify-between flex-wrap gap-3 mt-1 mb-6">
-    <h1 class="text-xl font-bold text-black flex items-center gap-2"><i class="fa-solid fa-calendar-week text-[#0B6B3A]"></i> My Shifts</h1>
-    <a href="{% url 'dashboard:hrm_request_swap' %}" class="inline-flex items-center gap-1.5 bg-[#0B6B3A] hover:bg-[#074726] transition-colors text-white text-sm font-semibold px-5 py-2.5 rounded-full">
-        <i class="fa-solid fa-repeat"></i> Request Shift Change
-    </a>
+<!-- Header & Action -->
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+    <div>
+        <a href="{% url 'dashboard:hrm' %}" class="inline-flex items-center text-[#0B6B3A] text-xs sm:text-sm font-semibold hover:underline mb-1">
+            <i class="fa-solid fa-arrow-left mr-1.5"></i> Back to HRM
+        </a>
+        <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2.5">
+            <i class="fa-solid fa-calendar-week text-[#0B6B3A]"></i> My Shifts
+        </h1>
+        <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Filter, view, and manage your assigned work shifts and schedule trades.</p>
+    </div>
+
+    <div>
+        <a href="{% url 'dashboard:hrm_request_swap' %}" class="inline-flex items-center gap-2 bg-[#0B6B3A] hover:bg-[#074726] transition-colors text-white text-xs sm:text-sm font-bold px-4 py-2.5 rounded-xl shadow-sm w-full sm:w-auto justify-center">
+            <i class="fa-solid fa-repeat"></i> Request Shift Change
+        </a>
+    </div>
 </div>
 
-<div class="grid lg:grid-cols-3 gap-6">
-    <div class="lg:col-span-2 space-y-2.5">
-        {% for a in assignments %}
-        <div class="hr-shift-card {% if a.status == 'cancelled' %}hr-off{% endif %} px-4 py-3 flex items-center justify-between flex-wrap gap-2">
-            <div>
-                <p class="font-bold text-black text-sm flex items-center gap-2"><i class="fa-regular fa-calendar text-[#0B6B3A] text-xs"></i>{{ a.date|date:"D, M d" }} — {{ a.shift.name }}</p>
-                <p class="text-xs text-gray-500 flex items-center gap-1.5 mt-0.5"><i class="fa-regular fa-clock"></i>{{ a.shift.start_time|time:"H:i" }}–{{ a.shift.end_time|time:"H:i" }}</p>
-            </div>
-            <span class="hr-badge {% if a.status == 'scheduled' %}bg-[#0B6B3A] text-white{% elif a.status == 'swapped' %}bg-[#C9A227] text-black{% elif a.status == 'cancelled' %}bg-gray-300 text-gray-600{% else %}bg-amber-100 text-amber-700{% endif %}">{{ a.get_status_display }}</span>
+<!-- Controls & Filter Toolbar -->
+<div class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-300 shadow-sm mb-6 space-y-4">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <!-- Time Frame Segmented Filters -->
+        <div class="hr-seg-group flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 overflow-x-auto">
+            <a href="?time_frame=all{% if status_filter %}&status={{ status_filter }}{% endif %}" class="px-3 py-1.5 text-xs font-bold rounded-lg whitespace-nowrap {% if time_frame == 'all' %}bg-white text-slate-900 shadow-sm{% else %}text-slate-600{% endif %}">All Time</a>
+            <a href="?time_frame=upcoming{% if status_filter %}&status={{ status_filter }}{% endif %}" class="px-3 py-1.5 text-xs font-bold rounded-lg whitespace-nowrap {% if time_frame == 'upcoming' %}bg-white text-slate-900 shadow-sm{% else %}text-slate-600{% endif %}">Upcoming</a>
+            <a href="?time_frame=this_week{% if status_filter %}&status={{ status_filter }}{% endif %}" class="px-3 py-1.5 text-xs font-bold rounded-lg whitespace-nowrap {% if time_frame == 'this_week' %}bg-white text-slate-900 shadow-sm{% else %}text-slate-600{% endif %}">This Week</a>
+            <a href="?time_frame=last_week{% if status_filter %}&status={{ status_filter }}{% endif %}" class="px-3 py-1.5 text-xs font-bold rounded-lg whitespace-nowrap {% if time_frame == 'last_week' %}bg-white text-slate-900 shadow-sm{% else %}text-slate-600{% endif %}">Last Week</a>
+            <a href="?time_frame=this_month{% if status_filter %}&status={{ status_filter }}{% endif %}" class="px-3 py-1.5 text-xs font-bold rounded-lg whitespace-nowrap {% if time_frame == 'this_month' %}bg-white text-slate-900 shadow-sm{% else %}text-slate-600{% endif %}">This Month</a>
         </div>
-        {% empty %}<p class="text-gray-400 text-center py-10">No upcoming shifts assigned.</p>{% endfor %}
+
+        <!-- Status Filter Chips -->
+        <div class="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+            <a href="?status=all{% if time_frame %}&time_frame={{ time_frame }}{% endif %}" class="px-3 py-1.5 rounded-full text-xs font-bold border border-slate-300 whitespace-nowrap {% if status_filter == 'all' %}bg-slate-900 text-white border-slate-900{% else %}bg-white text-slate-700{% endif %}">All Statuses</a>
+            <a href="?status=on_shift{% if time_frame %}&time_frame={{ time_frame }}{% endif %}" class="px-3 py-1.5 rounded-full text-xs font-bold border border-slate-300 whitespace-nowrap {% if status_filter == 'on_shift' %}bg-emerald-600 text-white border-emerald-600{% else %}bg-white text-slate-700{% endif %}"><i class="fa-solid fa-bolt mr-1"></i> On Shift</a>
+            <a href="?status=scheduled{% if time_frame %}&time_frame={{ time_frame }}{% endif %}" class="px-3 py-1.5 rounded-full text-xs font-bold border border-slate-300 whitespace-nowrap {% if status_filter == 'scheduled' %}bg-blue-600 text-white border-blue-600{% else %}bg-white text-slate-700{% endif %}"><i class="fa-regular fa-clock mr-1"></i> Scheduled</a>
+            <a href="?status=completed{% if time_frame %}&time_frame={{ time_frame }}{% endif %}" class="px-3 py-1.5 rounded-full text-xs font-bold border border-slate-300 whitespace-nowrap {% if status_filter == 'completed' %}bg-slate-700 text-white border-slate-700{% else %}bg-white text-slate-700{% endif %}"><i class="fa-solid fa-check mr-1"></i> Completed</a>
+        </div>
     </div>
 
-    <div class="hr-tile rounded-2xl p-5">
-        <h2 class="font-bold text-black text-sm mb-3 flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left text-[#0B6B3A]"></i> My Shift Change Requests</h2>
-        <div class="space-y-3 max-h-[420px] overflow-y-auto custom-scrollbar pr-1">
-        {% for s in my_swaps %}
-        <div class="border-b border-gray-100 pb-2.5 text-sm">
-            <p class="font-semibold text-black">{{ s.start_date|date:"M d" }}&ndash;{{ s.end_date|date:"M d" }}</p>
-            <p class="text-xs text-gray-500">
-                {% if s.mode == 'self' %}Move to {{ s.requested_shift.name }}{% else %}Trade with {{ s.trade_with.get_full_name|default:s.trade_with.username }}{% endif %}
-            </p>
-            <span class="hr-badge mt-1 {% if s.status == 'approved' %}bg-[#0B6B3A] text-white{% elif s.status == 'rejected' %}bg-red-500 text-white{% else %}bg-[#C9A227] text-black{% endif %}">{{ s.get_status_display }}</span>
+    <hr class="border-slate-200">
+
+    <!-- Custom Date Filter Form -->
+    <form method="get" class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {% if time_frame %}<input type="hidden" name="time_frame" value="{{ time_frame }}">{% endif %}
+        {% if status_filter %}<input type="hidden" name="status" value="{{ status_filter }}">{% endif %}
+        <div>
+            <label class="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1 block">From Date</label>
+            <input type="date" name="start_date" value="{{ start_date }}" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0B6B3A]/20 focus:border-[#0B6B3A]">
         </div>
-        {% empty %}<p class="text-gray-400 text-sm">No requests yet.</p>{% endfor %}
+        <div>
+            <label class="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1 block">To Date</label>
+            <input type="date" name="end_date" value="{{ end_date }}" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0B6B3A]/20 focus:border-[#0B6B3A]">
+        </div>
+        <div class="flex items-end gap-2">
+            <button type="submit" class="w-full bg-[#0B6B3A] hover:bg-[#074726] text-white font-bold py-2.5 px-4 rounded-xl text-xs transition-colors shadow-sm flex items-center justify-center gap-1.5">
+                <i class="fa-solid fa-filter"></i> Apply Filters
+            </button>
+            <a href="{% url 'dashboard:hrm_my_shifts' %}" class="bg-slate-100 border border-slate-300 hover:bg-slate-200 text-slate-600 font-semibold py-2.5 px-3 rounded-xl text-xs transition-colors flex items-center justify-center" title="Reset Filters">
+                <i class="fa-solid fa-rotate-right"></i>
+            </a>
+        </div>
+    </form>
+</div>
+
+<!-- Grid Layout -->
+<div class="grid lg:grid-cols-3 gap-6">
+    
+    <!-- Left Column: Shift Cards Stack (2 Cols) -->
+    <div class="lg:col-span-2 space-y-3">
+        <div class="flex items-center justify-between px-1 mb-1">
+            <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider">Assigned Shift Roster</h2>
+            <span class="text-xs font-semibold text-slate-500">Showing {{ page_obj.object_list|length }} of {{ paginator.count }}</span>
+        </div>
+
+        {% for a in page_obj %}
+        <div class="bg-white rounded-2xl p-4 border border-slate-300 shadow-sm flex items-center justify-between gap-3 transition-all hover:border-slate-400 {% if a.status == 'cancelled' %}opacity-60 bg-slate-50{% endif %}">
+            
+            <div class="flex items-center gap-3 sm:gap-4">
+                <!-- Date Badge -->
+                <div class="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200 text-slate-800 flex flex-col items-center justify-center shrink-0">
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 leading-none">{{ a.date|date:"M" }}</span>
+                    <span class="text-base font-black text-slate-900 leading-none mt-1">{{ a.date|date:"d" }}</span>
+                </div>
+
+                <div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <p class="font-bold text-slate-900 text-sm sm:text-base leading-snug">
+                            {{ a.shift.name }}
+                        </p>
+                        <span class="text-xs font-medium text-slate-500">({{ a.date|date:"D, M d, Y" }})</span>
+                    </div>
+
+                    <p class="text-xs font-medium text-slate-600 flex items-center gap-1.5 mt-1">
+                        <i class="fa-regular fa-clock text-slate-400"></i>
+                        {{ a.shift.start_time|time:"H:i" }} &ndash; {{ a.shift.end_time|time:"H:i" }}
+                    </p>
+                </div>
+            </div>
+
+            <!-- Dynamic Status Badges -->
+            <div class="shrink-0 text-right">
+                {% if a.date == today and is_currently_clocked_in %}
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 animate-pulse">
+                        <span class="w-2 h-2 rounded-full bg-emerald-600"></span> On Duty
+                    </span>
+                {% elif a.date == today %}
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-300">
+                        <i class="fa-solid fa-bolt text-emerald-600 text-[10px]"></i> Today's Shift
+                    </span>
+                {% elif a.date < today or a.status == 'completed' %}
+                    <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-300">
+                        <i class="fa-solid fa-check text-slate-500 text-[10px]"></i> Completed
+                    </span>
+                {% elif a.status == 'scheduled' %}
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-800 border border-blue-300">
+                        <i class="fa-regular fa-calendar-check text-blue-600 text-[10px]"></i> Scheduled
+                    </span>
+                {% elif a.status == 'swapped' %}
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-300">
+                        <i class="fa-solid fa-repeat text-amber-600 text-[10px]"></i> Swapped
+                    </span>
+                {% elif a.status == 'cancelled' %}
+                    <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-300">
+                        Cancelled
+                    </span>
+                {% else %}
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-300">
+                        {{ a.get_status_display }}
+                    </span>
+                {% endif %}
+            </div>
+        </div>
+        {% empty %}
+        <div class="bg-white rounded-2xl border border-slate-300 p-8 text-center shadow-sm">
+            <i class="fa-regular fa-calendar-xmark text-4xl text-slate-300 mb-2"></i>
+            <p class="font-bold text-slate-700 text-sm">No shifts match your filter criteria</p>
+            <p class="text-xs text-slate-400 mt-1">Try resetting your status or date filters above.</p>
+        </div>
+        {% endfor %}
+
+        <!-- Pagination Footer -->
+        {% if page_obj.has_other_pages %}
+        <div class="px-4 py-3 bg-white rounded-2xl border border-slate-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm mt-4">
+            <p class="text-xs text-slate-600 font-medium text-center sm:text-left">
+                Showing <span class="font-bold text-slate-900">{{ page_obj.start_index }}</span> to <span class="font-bold text-slate-900">{{ page_obj.end_index }}</span> of <span class="font-bold text-slate-900">{{ paginator.count }}</span> shifts
+            </p>
+            <div class="flex items-center justify-center gap-1">
+                {% if page_obj.has_previous %}
+                    <a href="?page={{ page_obj.previous_page_number }}{% if time_frame %}&time_frame={{ time_frame }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}" class="w-8 h-8 flex items-center justify-center bg-white border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-100">
+                        <i class="fa-solid fa-chevron-left text-xs"></i>
+                    </a>
+                {% else %}
+                    <span class="w-8 h-8 flex items-center justify-center bg-slate-100 border border-slate-200 rounded-lg text-slate-300"><i class="fa-solid fa-chevron-left text-xs"></i></span>
+                {% endif %}
+
+                {% for page_num in paginator.page_range %}
+                    {% if page_num == page_obj.number %}
+                        <span class="w-8 h-8 flex items-center justify-center bg-[#0B6B3A] text-white font-bold text-xs rounded-lg shadow-sm">{{ page_num }}</span>
+                    {% elif page_num > page_obj.number|add:'-3' and page_num < page_obj.number|add:'3' %}
+                        <a href="?page={{ page_num }}{% if time_frame %}&time_frame={{ time_frame }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}" class="w-8 h-8 flex items-center justify-center bg-white border border-slate-300 rounded-lg text-xs text-slate-700 font-medium hover:bg-slate-100">{{ page_num }}</a>
+                    {% endif %}
+                {% endfor %}
+
+                {% if page_obj.has_next %}
+                    <a href="?page={{ page_obj.next_page_number }}{% if time_frame %}&time_frame={{ time_frame }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}" class="w-8 h-8 flex items-center justify-center bg-white border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-100">
+                        <i class="fa-solid fa-chevron-right text-xs"></i>
+                    </a>
+                {% else %}
+                    <span class="w-8 h-8 flex items-center justify-center bg-slate-100 border border-slate-200 rounded-lg text-slate-300"><i class="fa-solid fa-chevron-right text-xs"></i></span>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Right Column: Shift Requests Sidebar (1 Col) -->
+    <div>
+        <div class="bg-white rounded-2xl p-5 border border-slate-300 shadow-sm sticky top-6">
+            <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-200">
+                <h2 class="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                    <i class="fa-solid fa-clock-rotate-left text-[#0B6B3A]"></i> Shift Requests
+                </h2>
+                <span class="text-[11px] font-bold bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full border border-slate-200">Recent 10</span>
+            </div>
+
+            <div class="space-y-3 max-h-[460px] overflow-y-auto scrollbar-thin pr-1">
+                {% for s in my_swaps %}
+                <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs hover:border-slate-300 transition-colors">
+                    <div class="flex items-center justify-between gap-2 mb-1">
+                        <p class="font-bold text-slate-900">
+                            {{ s.start_date|date:"M d" }} {% if s.start_date != s.end_date %}&ndash; {{ s.end_date|date:"M d" }}{% endif %}
+                        </p>
+                        
+                        {% if s.status == 'approved' %}
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">Approved</span>
+                        {% elif s.status == 'rejected' %}
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">Rejected</span>
+                        {% else %}
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">Pending</span>
+                        {% endif %}
+                    </div>
+
+                    <p class="text-slate-600 flex items-center gap-1 mt-1 font-medium">
+                        {% if s.mode == 'self' %}
+                            <i class="fa-solid fa-arrow-right-arrow-left text-[#0B6B3A] text-[10px]"></i> Move to <span class="font-bold text-slate-800">{{ s.requested_shift.name }}</span>
+                        {% else %}
+                            <i class="fa-solid fa-user-group text-[#C9A227] text-[10px]"></i> Trade with <span class="font-bold text-slate-800">{{ s.trade_with.get_full_name|default:s.trade_with.username }}</span>
+                        {% endif %}
+                    </p>
+                </div>
+                {% empty %}
+                <div class="text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                    <i class="fa-solid fa-inbox text-2xl text-slate-300 mb-1"></i>
+                    <p class="text-xs font-semibold text-slate-500">No shift change requests</p>
+                </div>
+                {% endfor %}
+            </div>
         </div>
     </div>
+
 </div>
 {% endblock %}

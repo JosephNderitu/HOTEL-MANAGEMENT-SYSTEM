@@ -2755,9 +2755,75 @@ def hrm_my_attendance(request):
 @login_required
 def hrm_my_shifts(request):
     today = timezone.localdate()
-    assignments = ShiftAssignment.objects.filter(staff=request.user, date__gte=today - timedelta(days=7)).select_related('shift').order_by('date')
+    now_time = timezone.localtime().time()
+
+    # Get query parameters
+    time_frame = request.GET.get('time_frame', 'all')
+    status_filter = request.GET.get('status', 'all')
+    start_date = request.GET.get('start_date', '')
+    end_date = request.GET.get('end_date', '')
+
+    # Base Queryset
+    assignments = ShiftAssignment.objects.filter(staff=request.user).select_related('shift')
+
+    # Time Frame Filtering
+    if start_date and end_date:
+        assignments = assignments.filter(date__range=[start_date, end_date])
+    elif time_frame == 'this_week':
+        start_of_week = today - timedelta(days=today.weekday())
+        assignments = assignments.filter(date__range=[start_of_week, start_of_week + timedelta(days=6)])
+    elif time_frame == 'last_week':
+        start_of_last_week = today - timedelta(days=today.weekday() + 7)
+        assignments = assignments.filter(date__range=[start_of_last_week, start_of_last_week + timedelta(days=6)])
+    elif time_frame == 'this_month':
+        assignments = assignments.filter(date__year=today.year, date__month=today.month)
+    elif time_frame == 'upcoming':
+        assignments = assignments.filter(date__gte=today)
+
+    # Check active attendance status for today
+    today_attendance = AttendanceRecord.objects.filter(staff=request.user, date=today).first()
+    is_currently_clocked_in = bool(today_attendance and today_attendance.clock_in_time and not today_attendance.clock_out_time)
+
+    # Status Filtering
+    if status_filter == 'on_shift':
+        # On Shift = active shift today OR currently clocked in today
+        assignments = assignments.filter(date=today).exclude(status='cancelled')
+    elif status_filter == 'scheduled':
+        assignments = assignments.filter(status='scheduled', date__gte=today)
+    elif status_filter == 'completed':
+        assignments = assignments.filter(
+            Q(status='completed') | Q(date__lt=today, status='scheduled')
+        )
+    elif status_filter == 'swapped':
+        assignments = assignments.filter(status='swapped')
+    elif status_filter == 'cancelled':
+        assignments = assignments.filter(status='cancelled')
+
+    # Ordering
+    assignments = assignments.order_by('-date', '-shift__start_time')
+
+    # Pagination
+    paginator = Paginator(assignments, 10)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    # Shift Swap Requests (Side widget)
     my_swaps = ShiftSwapRequest.objects.filter(requested_by=request.user).order_by('-created_at')[:10]
-    return render(request, 'dashboard/hrm_my_shifts.html', {'assignments': assignments, 'my_swaps': my_swaps})
+
+    context = {
+        'page_obj': page_obj,
+        'paginator': paginator,
+        'my_swaps': my_swaps,
+        'today': today,
+        'now_time': now_time,
+        'is_currently_clocked_in': is_currently_clocked_in,
+        'time_frame': time_frame,
+        'status_filter': status_filter,
+        'start_date': start_date,
+        'end_date': end_date,
+        'total_shifts': assignments.count(),
+    }
+    return render(request, 'dashboard/hrm_my_shifts.html', context)
 
 @login_required
 def hrm_request_swap(request):
