@@ -123,6 +123,7 @@ urlpatterns = [
     path('hrm/shift/<int:assignment_id>/edit/', views.hrm_shift_assignment_edit, name='hrm_shift_assignment_edit'),
     path('hrm/shift/<int:assignment_id>/delete/', views.hrm_shift_assignment_delete, name='hrm_shift_assignment_delete'),
     path('hrm/swap/conflict-check/', views.hrm_swap_conflict_check, name='hrm_swap_conflict_check'),
+    path('hrm/my-payslips/bulk-download/', views.hrm_payslips_bulk_download, name='hrm_payslips_bulk_download'),
     
     # Store Management URLs
     path('store/', views.store_view, name='store'),

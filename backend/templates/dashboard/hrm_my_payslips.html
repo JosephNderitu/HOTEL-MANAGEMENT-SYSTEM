@@ -1,14 +1,258 @@
 {% extends "dashboard/base_dashboard.html" %}
 {% block dashboard_content %}
 {% include "dashboard/_hrm_styles.html" %}
-<a href="{% url 'dashboard:hrm' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; HRM</a>
-<h1 class="text-xl font-bold text-black mt-1 mb-6">My Payslips</h1>
-<div class="space-y-2">
-{% for r in records %}
-<div class="hr-card flex items-center justify-between">
-    <div><p class="font-bold text-black">{{ r.period_month }}/{{ r.period_year }}</p><p class="text-xs text-gray-500">Net Pay: KSh {{ r.net_pay|floatformat:0 }}</p></div>
-    <a href="{% url 'dashboard:hrm_payslip_pdf' r.id %}" class="text-xs font-semibold bg-[#C9A227] text-black px-4 py-2 rounded-full">Download PDF</a>
+
+<div class="space-y-6">
+
+    <!-- Flash Messages -->
+    {% if messages %}
+    <div class="space-y-2">
+        {% for message in messages %}
+        <div class="p-4 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all shadow-sm
+            {% if message.tags == 'error' %}bg-rose-50 border-rose-200 text-rose-800
+            {% elif message.tags == 'success' %}bg-emerald-50 border-emerald-200 text-emerald-800
+            {% else %}bg-amber-50 border-amber-200 text-amber-800{% endif %}">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid {% if message.tags == 'error' %}fa-circle-xmark{% elif message.tags == 'success' %}fa-circle-check{% else %}fa-circle-info{% endif %} text-base"></i>
+                <span>{{ message }}</span>
+            </div>
+            <button onclick="this.parentElement.remove()" class="text-slate-400 hover:text-slate-600">
+                <i class="fa-solid fa-xmark text-sm"></i>
+            </button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Glassmorphism Hero Header -->
+    <div class="hr-hero-card rounded-2xl p-5 sm:p-8 text-white relative overflow-hidden">
+        <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div class="space-y-2">
+                <a href="{% url 'dashboard:hrm' %}" class="inline-flex items-center gap-1.5 text-xs font-bold text-amber-300 hover:text-amber-200 transition-colors uppercase tracking-wider">
+                    <i class="fa-solid fa-arrow-left"></i> Return to HRM
+                </a>
+                <h1 class="text-2xl sm:text-3xl font-black tracking-tight flex items-center gap-3">
+                    <i class="fa-solid fa-file-invoice-dollar text-[#C9A227]"></i> My Payslips
+                </h1>
+                <p class="text-xs sm:text-sm text-slate-200 max-w-xl font-medium">
+                    Access, review, and download your finalized official monthly payroll statements and Year To Date financial records.
+                </p>
+            </div>
+
+            <!-- Quick Metrics Pills -->
+            <div class="grid grid-cols-2 sm:flex sm:items-center gap-3 w-full sm:w-auto">
+                <div class="hr-stat-pill rounded-xl p-3 sm:p-4 border border-white/10">
+                    <p class="text-[10px] uppercase font-extrabold tracking-wider text-slate-300">Total Payslips</p>
+                    <p class="text-xl sm:text-2xl font-black text-white mt-0.5">{{ total_payslips_count }}</p>
+                </div>
+                <div class="hr-stat-pill rounded-xl p-3 sm:p-4 border border-white/10">
+                    <p class="text-[10px] uppercase font-extrabold tracking-wider text-slate-300">YTD Net Total</p>
+                    <p class="text-xl sm:text-2xl font-black text-[#C9A227] mt-0.5">KSh {{ ytd_net_pay|floatformat:0 }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter & Range Selection Section -->
+    <div class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm space-y-4">
+        
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+            <!-- Filter Options Form -->
+            <form method="get" class="grid grid-cols-2 sm:flex sm:items-center gap-3 w-full lg:w-auto">
+                <div class="w-full sm:w-auto min-w-[130px]">
+                    <label class="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1 block">Year</label>
+                    <select name="year" class="hr-filter-input font-semibold w-full" onchange="this.form.submit()">
+                        <option value="">All Years</option>
+                        {% for y in available_years %}
+                            <option value="{{ y }}" {% if selected_year == y|stringformat:"i" %}selected{% endif %}>{{ y }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="w-full sm:w-auto min-w-[130px]">
+                    <label class="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1 block">Month</label>
+                    <select name="month" class="hr-filter-input font-semibold w-full" onchange="this.form.submit()">
+                        <option value="">All Months</option>
+                        <option value="1" {% if selected_month == '1' %}selected{% endif %}>January</option>
+                        <option value="2" {% if selected_month == '2' %}selected{% endif %}>February</option>
+                        <option value="3" {% if selected_month == '3' %}selected{% endif %}>March</option>
+                        <option value="4" {% if selected_month == '4' %}selected{% endif %}>April</option>
+                        <option value="5" {% if selected_month == '5' %}selected{% endif %}>May</option>
+                        <option value="6" {% if selected_month == '6' %}selected{% endif %}>June</option>
+                        <option value="7" {% if selected_month == '7' %}selected{% endif %}>July</option>
+                        <option value="8" {% if selected_month == '8' %}selected{% endif %}>August</option>
+                        <option value="9" {% if selected_month == '9' %}selected{% endif %}>September</option>
+                        <option value="10" {% if selected_month == '10' %}selected{% endif %}>October</option>
+                        <option value="11" {% if selected_month == '11' %}selected{% endif %}>November</option>
+                        <option value="12" {% if selected_month == '12' %}selected{% endif %}>December</option>
+                    </select>
+                </div>
+
+                {% if selected_year or selected_month %}
+                <div class="col-span-2 sm:col-span-1 flex items-end self-end mt-1 sm:mt-0">
+                    <a href="{% url 'dashboard:hrm_my_payslips' %}" class="w-full sm:w-auto bg-slate-100 border border-slate-200 hover:bg-slate-200 text-slate-600 font-bold py-2 px-3 rounded-xl text-xs transition-colors flex items-center justify-center gap-1">
+                        <i class="fa-solid fa-rotate-right text-[10px]"></i> Reset
+                    </a>
+                </div>
+                {% endif %}
+            </form>
+
+            <!-- Bulk Range Export Action Form -->
+            <form method="post" action="{% url 'dashboard:hrm_payslips_bulk_download' %}" id="bulkDownloadForm" class="flex flex-col sm:flex-row sm:items-center gap-2.5 bg-slate-50 p-3 rounded-xl border border-slate-200 w-full lg:w-auto justify-between lg:justify-end">
+                {% csrf_token %}
+                <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <i class="fa-solid fa-file-pdf text-[#0B6B3A]"></i> Range Download:
+                </span>
+                
+                <div class="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto">
+                    <select name="months_range" class="hr-filter-input font-bold text-xs py-2 sm:py-1.5 px-2 bg-white w-full">
+                        <option value="2">Last 2 Months</option>
+                        <option value="3" selected>Last 3 Months</option>
+                        <option value="6">Last 6 Months</option>
+                        <option value="12">Last 1 Year</option>
+                    </select>
+
+                    <button type="submit" class="bg-[#0B6B3A] hover:bg-[#074726] text-white font-bold px-3.5 py-2 sm:py-1.5 rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5 shrink-0 shadow-sm">
+                        <i class="fa-solid fa-download text-[10px]"></i> Export PDF
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Payslips Mobile-Refined Grid List -->
+        <!-- Payslips Refined List -->
+        <div class="space-y-3">
+            {% for r in records %}
+            <div class="hr-tile bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-xs hover:border-slate-300 transition-all">
+                
+                <!-- TOP SECTION: Date Icon + Title + Status Badge -->
+                <div class="flex items-start justify-between gap-3 pb-3 border-b border-slate-100">
+                    <div class="flex items-center gap-3">
+                        <!-- Date Badge -->
+                        <div class="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-emerald-50 border border-emerald-100 text-[#0B6B3A] flex flex-col items-center justify-center shrink-0 font-black shadow-2xs">
+                            <span class="text-[9px] sm:text-[10px] uppercase tracking-wider leading-none">{{ r.period_month_name|slice:":3"|default:r.period_month }}</span>
+                            <span class="text-xs sm:text-sm leading-none mt-1 font-bold">{{ r.period_year }}</span>
+                        </div>
+
+                        <div>
+                            <h2 class="font-extrabold text-slate-900 text-sm sm:text-base leading-snug">
+                                Payslip for {{ r.period_month_name|default:r.period_month }} {{ r.period_year }}
+                            </h2>
+                            <p class="text-[11px] text-slate-400 font-medium sm:hidden">Official Monthly Statement</p>
+                        </div>
+                    </div>
+
+                    <span class="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full text-[10px] font-bold border border-emerald-200 shrink-0">
+                        <i class="fa-solid fa-check text-[9px]"></i> Finalized
+                    </span>
+                </div>
+
+                <!-- MIDDLE SECTION: Net & Gross Breakdown Grid -->
+                <div class="grid grid-cols-2 gap-3 my-3 bg-slate-50/80 p-3 rounded-xl border border-slate-100">
+                    <div class="space-y-0.5">
+                        <span class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">Net Pay</span>
+                        <p class="text-sm sm:text-base font-black text-[#0B6B3A]">KSh {{ r.calculated_net|floatformat:2 }}</p>
+                    </div>
+                    <div class="space-y-0.5 border-l border-slate-200 pl-3">
+                        <span class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">Gross Pay</span>
+                        <p class="text-xs sm:text-sm font-bold text-slate-700">KSh {{ r.calculated_gross|floatformat:2 }}</p>
+                    </div>
+                </div>
+
+                <!-- BOTTOM SECTION: Full-Width Mobile Action Buttons -->
+                <div class="grid grid-cols-2 gap-2 pt-1">
+                    <button type="button" 
+                        onclick="openPayslipPreview('{{ r.period_month_name|default:r.period_month }} {{ r.period_year }}', '{{ r.calculated_net|floatformat:2 }}', '{{ r.calculated_gross|floatformat:2 }}', '0.00', '{{ r.deductions_total|floatformat:2 }}', '{% url 'dashboard:hrm_payslip_pdf' r.id %}')"
+                        class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 px-3 rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 shrink-0">
+                        <i class="fa-solid fa-eye text-slate-500"></i> Preview
+                    </button>
+
+                    <a href="{% url 'dashboard:hrm_payslip_pdf' r.id %}" 
+                        class="w-full bg-[#C9A227] hover:bg-[#b08d1f] text-slate-950 font-bold py-2.5 px-2 rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap shadow-2xs">
+                        <i class="fa-solid fa-file-pdf text-slate-900"></i> Download PDF
+                    </a>
+                </div>
+
+            </div>
+            {% empty %}
+            <!-- Empty State -->
+            <div class="hr-empty-state bg-slate-50 rounded-2xl border border-dashed border-slate-200 py-12 px-4 text-center space-y-2">
+                <i class="fa-solid fa-file-circle-xmark text-3xl text-slate-300"></i>
+                <p class="font-extrabold text-slate-700 text-sm">No finalized payslips available</p>
+                <p class="text-xs text-slate-400 max-w-sm mx-auto">There are no payroll records matching your current filter criteria or no payrolls have been processed yet.</p>
+            </div>
+            {% endfor %}
+        </div>
+
+    </div>
 </div>
-{% empty %}<p class="text-gray-400 text-center py-10">No payslips available yet.</p>{% endfor %}
+
+<!-- Modal: Quick Payslip Breakdown Preview -->
+<div id="payslipPreviewModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden transition-all">
+        <!-- Modal Header -->
+        <div class="bg-slate-900 text-white p-5 flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+                <i class="fa-solid fa-receipt text-[#C9A227] text-lg"></i>
+                <div>
+                    <h3 class="font-bold text-sm" id="modalPeriodTitle">Payslip Details</h3>
+                    <p class="text-[11px] text-slate-400">Payroll Breakdown Summary</p>
+                </div>
+            </div>
+            <button onclick="closePayslipPreview()" class="text-slate-400 hover:text-white transition-colors p-1">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+
+        <!-- Modal Content Breakdown -->
+        <div class="p-5 space-y-4 text-xs">
+            <div class="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-2.5">
+                <div class="flex justify-between items-center text-slate-600">
+                    <span>Gross Earnings</span>
+                    <span class="font-bold text-slate-900" id="modalGrossPay">KSh 0.00</span>
+                </div>
+                <div class="flex justify-between items-center text-slate-600">
+                    <span>Tax Deductions (PAYE)</span>
+                    <span class="font-bold text-rose-600" id="modalTax">KSh 0.00</span>
+                </div>
+                <div class="flex justify-between items-center text-slate-600">
+                    <span>Other Deductions (NHIF/NSSF/Loans)</span>
+                    <span class="font-bold text-rose-600" id="modalDeductions">KSh 0.00</span>
+                </div>
+                <hr class="border-slate-200 my-1">
+                <div class="flex justify-between items-center text-sm font-extrabold text-slate-900 pt-1">
+                    <span>Net Payable Amount</span>
+                    <span class="text-[#0B6B3A]" id="modalNetPay">KSh 0.00</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal Footer Actions -->
+        <div class="bg-slate-50 px-5 py-3.5 border-t border-slate-200 flex items-center justify-end gap-2">
+            <button type="button" onclick="closePayslipPreview()" class="px-4 py-2 rounded-xl font-bold text-slate-600 hover:bg-slate-200 text-xs transition-colors">
+                Close
+            </button>
+            <a id="modalDownloadBtn" href="#" class="bg-[#C9A227] hover:bg-[#b08d1f] text-slate-950 font-bold px-4 py-2 rounded-xl text-xs transition-colors flex items-center gap-1.5">
+                <i class="fa-solid fa-file-pdf"></i> Download PDF
+            </a>
+        </div>
+    </div>
 </div>
+
+<script>
+    function openPayslipPreview(period, netPay, grossPay, tax, deductions, pdfUrl) {
+        document.getElementById('modalPeriodTitle').innerText = 'Payslip: ' + period;
+        document.getElementById('modalGrossPay').innerText = 'KSh ' + grossPay;
+        document.getElementById('modalTax').innerText = '- KSh ' + tax;
+        document.getElementById('modalDeductions').innerText = '- KSh ' + deductions;
+        document.getElementById('modalNetPay').innerText = 'KSh ' + netPay;
+        document.getElementById('modalDownloadBtn').href = pdfUrl;
+        
+        document.getElementById('payslipPreviewModal').classList.remove('hidden');
+    }
+
+    function closePayslipPreview() {
+        document.getElementById('payslipPreviewModal').classList.add('hidden');
+    }
+</script>
 {% endblock %}

@@ -1,23 +1,122 @@
 {% load static %}
-<!DOCTYPE html><html><head><meta charset="utf-8">
-<style>
-    body { font-family: 'Liberation Serif', serif; font-size: 12px; color: #111; }
-    .header { display: flex; align-items: center; gap: 14px; border-bottom: 2px solid #0B6B3A; padding-bottom: 12px; margin-bottom: 16px; }
-    .header img { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; }
-    h1 { font-size: 16px; color: #0B6B3A; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    td { padding: 6px 10px; border-bottom: 1px solid #eee; }
-    .total-row td { font-weight: bold; border-top: 2px solid #0B6B3A; font-size: 14px; }
-</style></head><body>
-    <div class="header"><img src="{% static 'img/queens_Garden_Logo.jpg' %}"><h1>Queens Garden Hotel — Payslip</h1></div>
-    <p>{{ record.staff.get_full_name|default:record.staff.username }} &middot; Period: {{ record.period_month }}/{{ record.period_year }}</p>
-    <table>
-        <tr><td>Basic Salary</td><td style="text-align:right;">KSh {{ record.basic_salary|floatformat:2 }}</td></tr>
-        <tr><td>Allowances ({{ record.allowances_notes|default:"—" }})</td><td style="text-align:right;">KSh {{ record.allowances_total|floatformat:2 }}</td></tr>
-        <tr><td>Overtime ({{ record.overtime_hours }} hrs @ KSh {{ record.overtime_rate|floatformat:0 }})</td><td style="text-align:right;">KSh {{ record.overtime_pay|floatformat:2 }}</td></tr>
-        <tr><td>Gross Pay</td><td style="text-align:right;">KSh {{ record.gross_pay|floatformat:2 }}</td></tr>
-        <tr><td>Deductions ({{ record.deductions_notes|default:"—" }})</td><td style="text-align:right;">-KSh {{ record.deductions_total|floatformat:2 }}</td></tr>
-        <tr class="total-row"><td>Net Pay</td><td style="text-align:right;">KSh {{ record.net_pay|floatformat:2 }}</td></tr>
-    </table>
-    <p style="font-size:10px;color:#888;margin-top:20px;">Generated {{ generated_at|date:"F j, Y H:i" }} — Confidential.</p>
-</body></html>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        @page {
+            size: A4;
+            margin: 20mm 15mm;
+            @bottom-right {
+                content: "Page " counter(page) " of " counter(pages);
+                font-family: 'Liberation Serif', 'Times New Roman', serif;
+                font-size: 10px;
+                color: #666;
+            }
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Liberation Serif', 'Times New Roman', serif; font-size: 12px; color: #111; }
+        
+        .payslip-page {
+            page-break-after: always;
+        }
+        .payslip-page:last-child {
+            page-break-after: avoid;
+        }
+
+        .header { display: flex; align-items: center; gap: 14px; border-bottom: 2px solid #0B6B3A; padding-bottom: 12px; margin-bottom: 12px; }
+        .header img { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; }
+        .header h1 { font-size: 16px; font-weight: bold; color: #0B6B3A; }
+        
+        .meta { font-size: 11px; color: #444; margin-bottom: 16px; border-bottom: 1px solid #eee; padding-bottom: 8px; }
+        .meta table { width: 100%; border: none; margin: 0; }
+        .meta td { padding: 2px 0; border: none; background: transparent !important; }
+
+        table.breakdown { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+        table.breakdown th { background: #0B6B3A; color: white; font-size: 12px; text-align: left; padding: 8px 10px; }
+        table.breakdown td { font-size: 11.5px; padding: 7px 10px; border-bottom: 1px solid #ddd; }
+        table.breakdown tr:nth-child(even) td { background: #f7f7f5; }
+        .right { text-align: right; }
+
+        .summary { width: 340px; margin-left: auto; margin-bottom: 24px; }
+        .summary table { width: 100%; border-collapse: collapse; }
+        .summary td { padding: 6px 10px; font-size: 12px; border-bottom: 1px solid #eee; }
+        .summary .total-row td { font-weight: bold; border-top: 2px solid #0B6B3A; font-size: 14px; color: #0B6B3A; }
+
+        .footer { font-size: 10px; color: #888; border-top: 1px solid #ddd; padding-top: 8px; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    {% for record in records %}
+    <div class="payslip-page">
+        <!-- Document Header -->
+        <div class="header">
+            <img src="{% static 'img/queens_Garden_Logo.jpg' %}">
+            <div>
+                <h1>Queens Garden Hotel — Official Payslip</h1>
+            </div>
+        </div>
+
+        <!-- Employee & Period Info -->
+        <div class="meta">
+            <table>
+                <tr>
+                    <td><strong>Employee:</strong> {{ record.staff.get_full_name|default:record.staff.username }}</td>
+                    <td class="right"><strong>Pay Period:</strong> {{ record.period_month_name|default:record.period_month }} / {{ record.period_year }}</td>
+                </tr>
+                <tr>
+                    <td><strong>Status:</strong> Finalized</td>
+                    <td class="right"><strong>Generated On:</strong> {{ generated_at|date:"F j, Y H:i" }}</td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- Earnings Breakdown Table -->
+        <table class="breakdown">
+            <thead>
+                <tr>
+                    <th>Earnings & Deductions Item</th>
+                    <th class="right">Amount (KSh)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Basic Salary</td>
+                    <td class="right">{{ record.basic_salary|floatformat:2 }}</td>
+                </tr>
+                <tr>
+                    <td>Allowances {% if record.allowances_notes %}({{ record.allowances_notes }}){% endif %}</td>
+                    <td class="right">{{ record.allowances_total|floatformat:2 }}</td>
+                </tr>
+                <tr>
+                    <td>Overtime Pay ({{ record.overtime_hours|default:0 }} hrs @ KSh {{ record.overtime_rate|default:0|floatformat:0 }}/hr)</td>
+                    <td class="right">{{ record.calculated_overtime|floatformat:2 }}</td>
+                </tr>
+                <tr style="font-weight: bold; background: #f0fdf4;">
+                    <td>Gross Earnings</td>
+                    <td class="right">{{ record.calculated_gross|floatformat:2 }}</td>
+                </tr>
+                <tr>
+                    <td>Total Deductions {% if record.deductions_notes %}({{ record.deductions_notes }}){% endif %}</td>
+                    <td class="right" style="color: #b91c1c;">- {{ record.deductions_total|floatformat:2 }}</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- Total Net Payable Summary -->
+        <div class="summary">
+            <table>
+                <tr class="total-row">
+                    <td>Net Payable Amount</td>
+                    <td class="right">KSh {{ record.calculated_net|floatformat:2 }}</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="footer">
+            Confidential — For internal use by Queens Garden Hotel management and employee only.
+        </div>
+    </div>
+    {% endfor %}
+</body>
+</html>

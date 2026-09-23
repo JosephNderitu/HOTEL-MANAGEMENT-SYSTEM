@@ -12,7 +12,7 @@ from .decorators import *
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.utils import timezone
-from django.db.models import Q, Sum
+from django.db.models import Q, F, Sum, ExpressionWrapper, DecimalField
 from .models import *
 from .forms import *
 from django.core.paginator import Paginator
@@ -2868,19 +2868,134 @@ def hrm_my_leave(request):
         'active_leave': active_leave, 'report_back': report_back,
     })
 
+import calendar
+
 @login_required
 def hrm_my_payslips(request):
-    records = PayrollRecord.objects.filter(staff=request.user, status='finalized').order_by('-period_year', '-period_month')
-    return render(request, 'dashboard/hrm_my_payslips.html', {'records': records})
+    selected_year = request.GET.get('year', '')
+    selected_month = request.GET.get('month', '')
+
+    records = PayrollRecord.objects.filter(staff=request.user, status='finalized')
+
+    # Apply filters
+    if selected_year:
+        records = records.filter(period_year=selected_year)
+    if selected_month:
+        records = records.filter(period_month=selected_month)
+
+    records = records.order_by('-period_year', '-period_month')
+
+    # Compute calculations per instance
+    for record in records:
+        if isinstance(record.period_month, int) or (isinstance(record.period_month, str) and str(record.period_month).isdigit()):
+            record.period_month_name = calendar.month_name[int(record.period_month)]
+        else:
+            record.period_month_name = record.period_month
+            
+        overtime_pay = (record.overtime_hours or 0) * (record.overtime_rate or 0)
+        record.calculated_gross = (record.basic_salary or 0) + (record.allowances_total or 0) + overtime_pay
+        record.calculated_net = record.calculated_gross - (record.deductions_total or 0)
+
+    # Summary Stats & YTD Aggregation
+    total_payslips_count = records.count()
+    current_year = timezone.now().year
+    
+    ytd_records = PayrollRecord.objects.filter(
+        staff=request.user, 
+        status='finalized', 
+        period_year=current_year
+    ).annotate(
+        net_calculated=ExpressionWrapper(
+            F('basic_salary') + F('allowances_total') + (F('overtime_hours') * F('overtime_rate')) - F('deductions_total'),
+            output_field=DecimalField(max_digits=12, decimal_places=2)
+        )
+    )
+    ytd_net_pay = ytd_records.aggregate(total=Sum('net_calculated'))['total'] or 0.0
+
+    # Distinct years dropdown
+    # Fetch only years that have actual finalized records for this staff member
+    available_years = list(
+        PayrollRecord.objects.filter(staff=request.user, status='finalized')
+        .values_list('period_year', flat=True)
+        .distinct()
+        .order_by('-period_year')
+    )
+
+    # Fallback: If it's a new employee with no finalized records yet, default to the current year
+    if not available_years:
+        available_years = [timezone.now().year]
+
+    context = {
+        'records': records,
+        'selected_year': selected_year,
+        'selected_month': selected_month,
+        'total_payslips_count': total_payslips_count,
+        'ytd_net_pay': ytd_net_pay,
+        'available_years': available_years,
+    }
+    return render(request, 'dashboard/hrm_my_payslips.html', context)
+
+def _prepare_record_calculations(record):
+    """Helper method to ensure monthly calculations exist on the instance."""
+    if isinstance(record.period_month, int) or (isinstance(record.period_month, str) and str(record.period_month).isdigit()):
+        record.period_month_name = calendar.month_name[int(record.period_month)]
+    else:
+        record.period_month_name = record.period_month
+
+    record.calculated_overtime = (record.overtime_hours or 0) * (record.overtime_rate or 0)
+    record.calculated_gross = (record.basic_salary or 0) + (record.allowances_total or 0) + record.calculated_overtime
+    record.calculated_net = record.calculated_gross - (record.deductions_total or 0)
+    return record
 
 @login_required
 def hrm_payslip_pdf(request, record_id):
+    """Single payslip PDF view."""
     record = get_object_or_404(PayrollRecord, id=record_id, staff=request.user, status='finalized')
-    html_string = render_to_string('dashboard/hrm_payslip_pdf.html', {'record': record, 'generated_at': timezone.now()})
+    record = _prepare_record_calculations(record)
+
+    html_string = render_to_string('dashboard/hrm_payslip_pdf.html', {
+        'records': [record],  # Pass as a 1-item list to reuse the template loop
+        'generated_at': timezone.now()
+    })
+    
     pdf_file = HTML(string=html_string, base_url=request.build_absolute_uri('/')).write_pdf()
+    
     response = HttpResponse(pdf_file, content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="payslip_{record.period_month}_{record.period_year}.pdf"'
     return response
+
+@login_required
+def hrm_payslips_bulk_download(request):
+    """Bulk range payslip PDF bundle export view."""
+    if request.method == 'POST':
+        try:
+            months_count = int(request.POST.get('months_range', 3))
+        except ValueError:
+            months_count = 3
+
+        records_qs = PayrollRecord.objects.filter(
+            staff=request.user, 
+            status='finalized'
+        ).order_by('-period_year', '-period_month')[:months_count]
+
+        if not records_qs.exists():
+            messages.error(request, "No finalized payslips found for the selected date range.")
+            return redirect('dashboard:hrm_my_payslips')
+
+        records = [_prepare_record_calculations(r) for r in records_qs]
+
+        html_string = render_to_string('dashboard/hrm_payslip_pdf.html', {
+            'records': records,
+            'generated_at': timezone.now()
+        })
+        
+        pdf_file = HTML(string=html_string, base_url=request.build_absolute_uri('/')).write_pdf()
+
+        response = HttpResponse(pdf_file, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="payslips_last_{months_count}_months.pdf"'
+        return response
+
+    return redirect('dashboard:hrm_my_payslips')
 
 @login_required
 def hrm_my_reviews(request):

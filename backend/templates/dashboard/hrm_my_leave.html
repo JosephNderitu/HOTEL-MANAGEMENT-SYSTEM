@@ -1,124 +1,564 @@
 {% extends "dashboard/base_dashboard.html" %}
 {% block dashboard_content %}
 {% include "dashboard/_hrm_styles.html" %}
-<a href="{% url 'dashboard:hrm' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; HRM</a>
-<h1 class="text-xl font-bold text-black mt-1 mb-6 flex items-center gap-2"><i class="fa-solid fa-plane-departure text-[#0B6B3A]"></i> My Leave</h1>
 
-{% if messages %}{% for message in messages %}<div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>{% endfor %}{% endif %}
+<style>
+    /* Explicit CSS overrides to guarantee clear border lines on all form fields & inputs */
+    .hr-form-card input[type="text"],
+    .hr-form-card input[type="number"],
+    .hr-form-card input[type="date"],
+    .hr-form-card select,
+    .hr-form-card textarea,
+    .hr-filter-control select,
+    .hr-filter-control input {
+        width: 100%;
+        border: 1px solid #cbd5e1 !important; /* Tailwind border-slate-300 */
+        background-color: #ffffff !important;
+        border-radius: 0.75rem !important;
+        padding: 0.5rem 0.75rem !important;
+        font-size: 0.8125rem !important;
+        font-weight: 600 !important;
+        color: #0f172a !important;
+        outline: none !important;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+    }
 
+    .hr-form-card input:focus,
+    .hr-form-card select:focus,
+    .hr-form-card textarea:focus,
+    .hr-filter-control select:focus {
+        border-color: #0B6B3A !important;
+        box-shadow: 0 0 0 3px rgba(11, 107, 58, 0.15) !important;
+    }
+</style>
+
+<div class="space-y-6">
+
+    <!-- Flash Messages -->
+    {% if messages %}
+    <div class="space-y-2">
+        {% for message in messages %}
+        <div class="p-4 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all shadow-xs
+            {% if message.tags == 'error' %}bg-rose-50 border-rose-300 text-rose-800
+            {% elif message.tags == 'success' %}bg-emerald-50 border-emerald-300 text-emerald-800
+            {% else %}bg-amber-50 border-amber-300 text-amber-800{% endif %}">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid {% if message.tags == 'error' %}fa-circle-xmark{% elif message.tags == 'success' %}fa-circle-check{% else %}fa-circle-info{% endif %} text-base"></i>
+                <span>{{ message }}</span>
+            </div>
+            <button onclick="this.parentElement.remove()" class="text-slate-400 hover:text-slate-600">
+                <i class="fa-solid fa-xmark text-sm"></i>
+            </button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Glassmorphism Hero Header -->
+    <div class="hr-hero-card rounded-2xl p-5 sm:p-8 text-white relative overflow-hidden border border-emerald-800">
+        <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div class="space-y-2">
+                <a href="{% url 'dashboard:hrm' %}" class="inline-flex items-center gap-1.5 text-xs font-bold text-amber-300 hover:text-amber-200 transition-colors uppercase tracking-wider">
+                    <i class="fa-solid fa-arrow-left"></i> Return to HRM
+                </a>
+                <h1 class="text-2xl sm:text-3xl font-black tracking-tight flex items-center gap-3">
+                    <i class="fa-solid fa-plane-departure text-[#C9A227]"></i> My Leave Portal
+                </h1>
+                <p class="text-xs sm:text-sm text-slate-200 max-w-xl font-medium">
+                    Track your leave entitlements, apply for time off, and monitor pending approvals in real-time.
+                </p>
+            </div>
+
+            {% if active_leave %}
+            <!-- Active Leave Countdown Section -->
+            <div class="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/20 flex flex-col items-center sm:items-end text-center sm:text-right shrink-0">
+                <p class="text-[10px] uppercase font-extrabold tracking-wider text-amber-300 mb-2 flex items-center gap-1.5">
+                    <i class="fa-solid fa-umbrella-beach"></i> Currently on {{ active_leave.leave_type.name }}
+                </p>
+                <div class="flex gap-2" id="countdown-wrap" data-report-back="{{ report_back|date:'c' }}">
+                    <div class="hr-countdown-box min-w-[55px] p-2 bg-black/30 rounded-xl border border-white/20 text-center">
+                        <p class="hr-countdown-num text-lg font-black text-white" id="cd-days">--</p>
+                        <p class="hr-countdown-label text-[9px] uppercase font-bold text-slate-300">Days</p>
+                    </div>
+                    <div class="hr-countdown-box min-w-[55px] p-2 bg-black/30 rounded-xl border border-white/20 text-center">
+                        <p class="hr-countdown-num text-lg font-black text-white" id="cd-hours">--</p>
+                        <p class="hr-countdown-label text-[9px] uppercase font-bold text-slate-300">Hours</p>
+                    </div>
+                    <div class="hr-countdown-box min-w-[55px] p-2 bg-black/30 rounded-xl border border-white/20 text-center">
+                        <p class="hr-countdown-num text-lg font-black text-white" id="cd-mins">--</p>
+                        <p class="hr-countdown-label text-[9px] uppercase font-bold text-slate-300">Mins</p>
+                    </div>
+                    <div class="hr-countdown-box min-w-[55px] p-2 bg-black/30 rounded-xl border border-white/20 text-center">
+                        <p class="hr-countdown-num text-lg font-black text-white" id="cd-secs">--</p>
+                        <p class="hr-countdown-label text-[9px] uppercase font-bold text-slate-300">Secs</p>
+                    </div>
+                </div>
+                <p class="text-[11px] text-slate-200 mt-2 font-medium">
+                    Resume Duty: <span class="font-extrabold text-white">{{ report_back|date:"D, M d, Y" }}</span>
+                </p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Main Content Grid -->
+    <div class="grid lg:grid-cols-12 gap-6 items-start">
+        
+        <!-- LEFT COLUMN: Balances Overview & Application Form (7 Cols) -->
+        <div class="lg:col-span-7 space-y-6">
+
+            <!-- Leave Balances Cards -->
+            <div class="bg-white rounded-2xl p-5 border border-slate-300 shadow-xs space-y-4">
+                <div class="flex items-center justify-between pb-3 border-b border-slate-300">
+                    <h2 class="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                        <i class="fa-solid fa-wallet text-[#0B6B3A]"></i> Leave Balances
+                    </h2>
+                    <span class="text-[10px] uppercase font-extrabold text-slate-500 tracking-wider">Annual Allocation</span>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {% for b in balances %}
+                    <div class="p-3.5 rounded-xl border border-slate-300 bg-slate-50/80 hover:bg-white hover:border-slate-400 hover:shadow-xs transition-all space-y-2.5">
+                        <div class="flex items-center justify-between">
+                            <span class="font-extrabold text-slate-800 text-xs">{{ b.leave_type.name }}</span>
+                            <span class="hr-balance-chip border border-slate-300 {% if b.remaining_days <= 2 %}hr-balance-low border-rose-300{% endif %}">
+                                {{ b.remaining_days }} / {{ b.allocated_days }} Days
+                            </span>
+                        </div>
+                        
+                        <!-- Progress Bar Tube with Centered Embedded Percentage -->
+                        <div class="relative w-full bg-slate-200 h-4 rounded-full overflow-hidden border border-slate-300 flex items-center">
+                            <div class="bg-[#0B6B3A] h-full transition-all duration-500 rounded-r-full"
+                                 style="width: {% widthratio b.remaining_days b.allocated_days 100 %}%;"></div>
+                            
+                            <span class="absolute inset-0 flex items-center justify-center text-[10px] font-black tracking-tight drop-shadow-xs
+                                {% widthratio b.remaining_days b.allocated_days 100 as pct %}{% if pct|add:0 > 45 %}text-white{% else %}text-slate-800{% endif %}">
+                                {% widthratio b.remaining_days b.allocated_days 100 %}% Remaining
+                            </span>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="col-span-2 py-6 text-center text-slate-500 text-xs font-semibold bg-slate-50 rounded-xl border border-dashed border-slate-300">
+                        No leave balance records configured. Please contact HR.
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Leave Application Form Card -->
+            <div class="hr-form-card bg-white rounded-2xl p-5 border border-slate-300 shadow-xs space-y-4">
+                <div class="pb-3 border-b border-slate-300">
+                    <h2 class="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                        <i class="fa-solid fa-paper-plane text-[#0B6B3A]"></i> Request Time Off
+                    </h2>
+                    <p class="text-xs text-slate-500 mt-0.5">Submit your request for supervisory review and approval.</p>
+                </div>
+
+                <form method="post" class="space-y-4">
+                    {% csrf_token %}
+                    
+                    <div>
+                        <label class="text-[10px] font-extrabold text-slate-700 uppercase tracking-wider mb-1 block">
+                            {{ form.leave_type.label }}
+                        </label>
+                        <div class="relative">
+                            {{ form.leave_type }}
+                        </div>
+                        <p class="text-[11px] font-bold text-[#0B6B3A] mt-1 flex items-center gap-1" id="remaining-hint"></p>
+                        {% if form.leave_type.errors %}
+                            <p class="text-rose-600 text-xs mt-1 font-semibold">{{ form.leave_type.errors.0 }}</p>
+                        {% endif %}
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-[10px] font-extrabold text-slate-700 uppercase tracking-wider mb-1 block">
+                                {{ form.start_date.label }}
+                            </label>
+                            {{ form.start_date }}
+                            {% if form.start_date.errors %}
+                                <p class="text-rose-600 text-xs mt-1 font-semibold">{{ form.start_date.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label class="text-[10px] font-extrabold text-slate-700 uppercase tracking-wider mb-1 block">
+                                Number of Days
+                            </label>
+                            {{ form.days_requested }}
+                            {% if form.days_requested.errors %}
+                                <p class="text-rose-600 text-xs mt-1 font-semibold">{{ form.days_requested.errors.0 }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div id="end-date-preview-wrapper" class="hidden bg-emerald-50 border border-emerald-300 rounded-xl p-3 text-xs text-emerald-950 flex items-center gap-2.5">
+                        <i class="fa-solid fa-calendar-check text-[#0B6B3A] text-base shrink-0"></i>
+                        <div>
+                            <span class="font-bold block text-slate-600">Estimated Return Date</span>
+                            <span id="end-date-preview" class="font-extrabold text-[#0B6B3A]"></span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="text-[10px] font-extrabold text-slate-700 uppercase tracking-wider mb-1 block">
+                            {{ form.reason.label }}
+                        </label>
+                        {{ form.reason }}
+                        {% if form.reason.errors %}
+                            <p class="text-rose-600 text-xs mt-1 font-semibold">{{ form.reason.errors.0 }}</p>
+                        {% endif %}
+                    </div>
+
+                    {% if form.non_field_errors %}
+                    <div class="p-3 bg-rose-50 border border-rose-300 rounded-xl text-rose-800 text-xs font-semibold">
+                        {{ form.non_field_errors.0 }}
+                    </div>
+                    {% endif %}
+
+                    <button type="submit" 
+                        class="w-full bg-[#0B6B3A] hover:bg-[#074726] text-white font-extrabold py-3 rounded-xl text-xs transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer border border-[#074726]">
+                        <i class="fa-solid fa-paper-plane"></i> Submit Leave Request
+                    </button>
+                </form>
+            </div>
+
+        </div>
+
+        <!-- RIGHT COLUMN: Request History with Filtering & Pagination (5 Cols) -->
+        <div class="lg:col-span-5 bg-white rounded-2xl p-5 border border-slate-300 shadow-xs space-y-4">
+            
+            <!-- Header Section -->
+            <div class="flex items-center justify-between pb-3 border-b border-slate-300">
+                <h2 class="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                    <i class="fa-solid fa-clock-rotate-left text-[#0B6B3A]"></i> Request History
+                </h2>
+                <span id="history-total-badge" class="text-[10px] font-extrabold text-slate-600 bg-slate-100 border border-slate-300 px-2.5 py-0.5 rounded-full">
+                    {{ requests|length }} total
+                </span>
+            </div>
+
+            <!-- Filters Section (Status & Year) -->
+            <form method="get" id="history-filter-form" class="hr-filter-control grid grid-cols-2 gap-2">
+                <div>
+                    <label class="text-[9px] font-black uppercase text-slate-500 tracking-wider mb-1 block">Status</label>
+                    <select name="status" id="filter-status" class="w-full">
+                        <option value="all" {% if request.GET.status == 'all' or not request.GET.status %}selected{% endif %}>All Statuses</option>
+                        <option value="pending" {% if request.GET.status == 'pending' %}selected{% endif %}>Pending</option>
+                        <option value="approved" {% if request.GET.status == 'approved' %}selected{% endif %}>Approved</option>
+                        <option value="rejected" {% if request.GET.status == 'rejected' %}selected{% endif %}>Rejected</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="text-[9px] font-black uppercase text-slate-500 tracking-wider mb-1 block">Year</label>
+                    <select name="year" id="filter-year" class="w-full">
+                        <option value="all" {% if request.GET.year == 'all' or not request.GET.year %}selected{% endif %}>All Years</option>
+                        <option value="2026" {% if request.GET.year == '2026' %}selected{% endif %}>2026</option>
+                        <option value="2025" {% if request.GET.year == '2025' %}selected{% endif %}>2025</option>
+                        <option value="2024" {% if request.GET.year == '2024' %}selected{% endif %}>2024</option>
+                    </select>
+                </div>
+            </form>
+
+            <!-- List Container -->
+            <div id="history-list-container" class="min-h-[360px] space-y-3">
+                {% for r in requests %}
+                <div class="history-item p-3.5 rounded-xl border border-slate-300 bg-white hover:border-slate-400 transition-all space-y-2 shadow-2xs"
+                     data-status="{{ r.status|lower }}"
+                     data-year="{{ r.start_date|date:'Y' }}">
+                    
+                    <!-- Header: Type & Status Badge -->
+                    <div class="flex items-start justify-between gap-2">
+                        <div>
+                            <h3 class="font-extrabold text-slate-900 text-sm leading-tight">
+                                {{ r.leave_type.name }}
+                            </h3>
+                            <p class="text-[11px] text-slate-500 font-medium mt-0.5">
+                                {{ r.start_date|date:"M d" }} — {{ r.end_date|date:"M d, Y" }}
+                                <span class="font-extrabold text-slate-800">({{ r.days_count }} day{% if r.days_count > 1 %}s{% endif %})</span>
+                            </p>
+                        </div>
+
+                        <!-- Status Badge -->
+                        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold shrink-0 border
+                            {% if r.status == 'approved' %}bg-emerald-50 text-emerald-800 border-emerald-300
+                            {% elif r.status == 'rejected' %}bg-rose-50 text-rose-800 border-rose-300
+                            {% else %}bg-amber-50 text-amber-800 border-amber-300{% endif %}">
+                            <i class="fa-solid {% if r.status == 'approved' %}fa-circle-check{% elif r.status == 'rejected' %}fa-circle-xmark{% else %}fa-clock{% endif %} text-[9px]"></i>
+                            {{ r.get_status_display }}
+                        </span>
+                    </div>
+
+                    <!-- Rejection Reason Callout -->
+                    {% if r.status == 'rejected' and r.rejection_reason %}
+                    <div class="p-2.5 bg-rose-50/80 border border-rose-300 rounded-lg text-[11px] text-rose-800 space-y-0.5">
+                        <span class="font-bold block uppercase tracking-wider text-[9px] text-rose-600">HR Note:</span>
+                        <p class="italic">"{{ r.rejection_reason }}"</p>
+                    </div>
+                    {% endif %}
+                </div>
+                {% empty %}
+                <div class="hr-empty-state bg-slate-50 rounded-xl border border-dashed border-slate-300 py-10 px-4 text-center space-y-2">
+                    <i class="fa-solid fa-folder-open text-2xl text-slate-400"></i>
+                    <p class="font-extrabold text-slate-700 text-xs">No leave requests found</p>
+                    <p class="text-[11px] text-slate-500">Applications you submit will be tracked and displayed here.</p>
+                </div>
+                {% endfor %}
+
+                <!-- JavaScript No-Results Notice (Hidden by default) -->
+                <div id="no-filtered-results" class="hidden bg-slate-50 rounded-xl border border-dashed border-slate-300 py-8 px-4 text-center space-y-1">
+                    <i class="fa-solid fa-filter-circle-xmark text-xl text-slate-400"></i>
+                    <p class="font-extrabold text-slate-700 text-xs">No matching requests</p>
+                    <p class="text-[11px] text-slate-500">Try adjusting your status or year filter.</p>
+                </div>
+            </div>
+
+            <!-- Pagination Bar -->
+            {% if is_paginated %}
+            <!-- Server-Side Django Pagination Controls -->
+            <div class="flex items-center justify-between pt-3 border-t border-slate-300 text-xs">
+                <p class="text-slate-500 font-semibold text-[11px]">
+                    Page <span class="font-bold text-slate-800">{{ page_obj.number }}</span> of <span class="font-bold text-slate-800">{{ page_obj.paginator.num_pages }}</span>
+                </p>
+                <div class="flex items-center gap-1.5">
+                    {% if page_obj.has_previous %}
+                    <a href="?page={{ page_obj.previous_page_number }}&status={{ request.GET.status|default:'all' }}&year={{ request.GET.year|default:'all' }}"
+                       class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-bold text-slate-700 transition-all flex items-center gap-1">
+                        <i class="fa-solid fa-chevron-left text-[10px]"></i> Prev
+                    </a>
+                    {% endif %}
+
+                    {% if page_obj.has_next %}
+                    <a href="?page={{ page_obj.next_page_number }}&status={{ request.GET.status|default:'all' }}&year={{ request.GET.year|default:'all' }}"
+                       class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-bold text-slate-700 transition-all flex items-center gap-1">
+                        Next <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+            {% else %}
+            <!-- Client-Side Instant JS Pagination Controls -->
+            <div id="js-pagination-controls" class="flex items-center justify-between pt-3 border-t border-slate-300 text-xs">
+                <p class="text-slate-500 font-semibold text-[11px]">
+                    Showing <span id="js-page-info" class="font-extrabold text-slate-800">1-5</span> of <span id="js-total-info" class="font-extrabold text-slate-800">{{ requests|length }}</span>
+                </p>
+                <div class="flex items-center gap-1.5">
+                    <button type="button" id="js-prev-btn" class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-bold text-slate-700 transition-all flex items-center gap-1 cursor-pointer">
+                        <i class="fa-solid fa-chevron-left text-[10px]"></i> Prev
+                    </button>
+                    <button type="button" id="js-next-btn" class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-bold text-slate-700 transition-all flex items-center gap-1 cursor-pointer">
+                        Next <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                    </button>
+                </div>
+            </div>
+            {% endif %}
+
+        </div>
+
+    </div>
+
+</div>
+
+<!-- JSON Script Data -->
 {{ balances_map|json_script:"balances-map-data" }}
-
-{% if active_leave %}
-<div class="hr-hero-card rounded-2xl p-6 md:p-8 text-white mb-6">
-    <p class="text-xs uppercase tracking-wide text-white/70 mb-3 flex items-center gap-2">
-        <i class="fa-solid fa-umbrella-beach text-[#C9A227]"></i> You're currently on {{ active_leave.leave_type.name }}
-    </p>
-    <div class="flex gap-3 flex-wrap" id="countdown-wrap" data-report-back="{{ report_back|date:'c' }}">
-        <div class="hr-countdown-box"><p class="hr-countdown-num" id="cd-days">--</p><p class="hr-countdown-label">Days</p></div>
-        <div class="hr-countdown-box"><p class="hr-countdown-num" id="cd-hours">--</p><p class="hr-countdown-label">Hours</p></div>
-        <div class="hr-countdown-box"><p class="hr-countdown-num" id="cd-mins">--</p><p class="hr-countdown-label">Mins</p></div>
-        <div class="hr-countdown-box"><p class="hr-countdown-num" id="cd-secs">--</p><p class="hr-countdown-label">Secs</p></div>
-    </div>
-    <p class="text-xs text-white/70 mt-3">Expected back on {{ report_back|date:"D, M d, Y" }}</p>
-</div>
-{% endif %}
-
-<div class="grid lg:grid-cols-3 gap-6">
-    <div class="hr-tile rounded-2xl p-5">
-        <h2 class="font-bold text-black text-sm mb-4 flex items-center gap-2"><i class="fa-solid fa-wallet text-[#0B6B3A]"></i> Balances</h2>
-        {% for b in balances %}
-        <div class="flex justify-between items-center text-sm mb-2.5">
-            <span>{{ b.leave_type.name }}</span>
-            <span class="hr-balance-chip {% if b.remaining_days <= 2 %}hr-balance-low{% endif %}">{{ b.remaining_days }} / {{ b.allocated_days }} days</span>
-        </div>
-        {% empty %}<p class="text-gray-400 text-sm">No balance set yet, contact HR.</p>{% endfor %}
-    </div>
-
-    <div class="hr-tile rounded-2xl p-5">
-        <h2 class="font-bold text-black text-sm mb-4 flex items-center gap-2"><i class="fa-solid fa-paper-plane text-[#0B6B3A]"></i> Request Leave</h2>
-        <form method="post" class="space-y-3">
-            {% csrf_token %}
-            <div>
-                <label class="text-xs font-semibold text-gray-600 mb-1 block">{{ form.leave_type.label }}</label>
-                {{ form.leave_type }}
-                <p class="text-xs text-[#0B6B3A] mt-1" id="remaining-hint"></p>
-                {% if form.leave_type.errors %}<p class="text-red-600 text-xs mt-1">{{ form.leave_type.errors.0 }}</p>{% endif %}
-            </div>
-            <div>
-                <label class="text-xs font-semibold text-gray-600 mb-1 block">{{ form.start_date.label }}</label>
-                {{ form.start_date }}
-                {% if form.start_date.errors %}<p class="text-red-600 text-xs mt-1">{{ form.start_date.errors.0 }}</p>{% endif %}
-            </div>
-            <div>
-                <label class="text-xs font-semibold text-gray-600 mb-1 block">Number of days</label>
-                {{ form.days_requested }}
-                <p class="text-xs text-gray-500 mt-1" id="end-date-preview"></p>
-                {% if form.days_requested.errors %}<p class="text-red-600 text-xs mt-1">{{ form.days_requested.errors.0 }}</p>{% endif %}
-            </div>
-            <div>
-                <label class="text-xs font-semibold text-gray-600 mb-1 block">{{ form.reason.label }}</label>
-                {{ form.reason }}
-                {% if form.reason.errors %}<p class="text-red-600 text-xs mt-1">{{ form.reason.errors.0 }}</p>{% endif %}
-            </div>
-            {% if form.non_field_errors %}<p class="text-red-600 text-xs">{{ form.non_field_errors.0 }}</p>{% endif %}
-            <button type="submit" class="w-full bg-[#0B6B3A] hover:bg-[#074726] transition-colors text-white font-bold py-2.5 rounded-full flex items-center justify-center gap-2"><i class="fa-solid fa-check"></i> Submit Request</button>
-        </form>
-    </div>
-
-    <div class="hr-tile rounded-2xl p-5">
-        <h2 class="font-bold text-black text-sm mb-4 flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left text-[#0B6B3A]"></i> My Requests</h2>
-        <div class="max-h-[420px] overflow-y-auto custom-scrollbar pr-1">
-        {% for r in requests %}
-        <div class="border-b border-gray-100 py-2.5 text-sm">
-            <p class="font-semibold">{{ r.leave_type.name }} — {{ r.start_date|date:"M d" }} to {{ r.end_date|date:"M d, Y" }} ({{ r.days_count }}d)</p>
-            <span class="hr-badge {% if r.status == 'approved' %}bg-[#0B6B3A] text-white{% elif r.status == 'rejected' %}bg-red-500 text-white{% else %}bg-[#C9A227] text-black{% endif %}">{{ r.get_status_display }}</span>
-            {% if r.status == 'rejected' and r.rejection_reason %}<p class="text-xs text-red-500 mt-1.5">"{{ r.rejection_reason }}"</p>{% endif %}
-        </div>
-        {% empty %}<p class="text-gray-400 text-sm">No requests yet.</p>{% endfor %}
-        </div>
-    </div>
-</div>
 
 <script>
 (function () {
+    // Countdown Timer Logic
     var wrap = document.getElementById('countdown-wrap');
-    if (!wrap) return;
-    var target = new Date(wrap.dataset.reportBack).getTime();
-    function tick() {
-        var diff = Math.max(target - Date.now(), 0);
-        document.getElementById('cd-days').textContent = Math.floor(diff / 86400000);
-        document.getElementById('cd-hours').textContent = Math.floor((diff % 86400000) / 3600000);
-        document.getElementById('cd-mins').textContent = Math.floor((diff % 3600000) / 60000);
-        document.getElementById('cd-secs').textContent = Math.floor((diff % 60000) / 1000);
+    if (wrap && wrap.dataset.reportBack) {
+        var target = new Date(wrap.dataset.reportBack).getTime();
+        function tick() {
+            var diff = Math.max(target - Date.now(), 0);
+            var d = Math.floor(diff / 86400000);
+            var h = Math.floor((diff % 86400000) / 3600000);
+            var m = Math.floor((diff % 3600000) / 60000);
+            var s = Math.floor((diff % 60000) / 1000);
+
+            var elD = document.getElementById('cd-days');
+            var elH = document.getElementById('cd-hours');
+            var elM = document.getElementById('cd-mins');
+            var elS = document.getElementById('cd-secs');
+
+            if (elD) elD.textContent = d < 10 ? '0' + d : d;
+            if (elH) elH.textContent = h < 10 ? '0' + h : h;
+            if (elM) elM.textContent = m < 10 ? '0' + m : m;
+            if (elS) elS.textContent = s < 10 ? '0' + s : s;
+        }
+        tick();
+        setInterval(tick, 1000);
     }
-    tick();
-    setInterval(tick, 1000);
+
+    // Dynamic Form Enhancements
+    var balancesMapElement = document.getElementById('balances-map-data');
+    var balancesMap = balancesMapElement ? JSON.parse(balancesMapElement.textContent) : {};
+
+    function updateRemainingHint() {
+        var leaveTypeInput = document.getElementById('id_leave_type');
+        var daysInput = document.getElementById('id_days_requested');
+        var hint = document.getElementById('remaining-hint');
+        
+        if (!leaveTypeInput || !hint) return;
+
+        var typeId = leaveTypeInput.value;
+        var remaining = balancesMap[typeId];
+
+        if (remaining !== undefined) {
+            hint.innerHTML = '<i class="fa-solid fa-circle-info text-[10px]"></i> You have ' + remaining + ' day(s) remaining for this type.';
+            if (daysInput) daysInput.max = remaining;
+        } else {
+            hint.textContent = '';
+            if (daysInput) daysInput.removeAttribute('max');
+        }
+    }
+
+    function updatePreview() {
+        var startInput = document.getElementById('id_start_date');
+        var daysInput = document.getElementById('id_days_requested');
+        var preview = document.getElementById('end-date-preview');
+        var wrapper = document.getElementById('end-date-preview-wrapper');
+
+        if (!startInput || !daysInput || !preview || !wrapper) return;
+
+        var start = startInput.value;
+        var days = parseInt(daysInput.value || '0', 10);
+
+        if (start && days > 0) {
+            var d = new Date(start);
+            d.setDate(d.getDate() + days - 1);
+            preview.textContent = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+            wrapper.classList.remove('hidden');
+        } else {
+            preview.textContent = '';
+            wrapper.classList.add('hidden');
+        }
+    }
+
+    var leaveTypeSelect = document.getElementById('id_leave_type');
+    var daysRequestedInput = document.getElementById('id_days_requested');
+    var startDateInput = document.getElementById('id_start_date');
+
+    if (leaveTypeSelect) leaveTypeSelect.addEventListener('change', updateRemainingHint);
+    if (daysRequestedInput) daysRequestedInput.addEventListener('input', updatePreview);
+    if (startDateInput) startDateInput.addEventListener('change', updatePreview);
+
+    updateRemainingHint();
+    updatePreview();
+
+    // Client-Side Pagination & Filtering Logic
+    var currentPage = 1;
+    var itemsPerPage = 5;
+
+    function applyHistoryFiltersAndPagination() {
+        var statusFilter = document.getElementById('filter-status').value.toLowerCase();
+        var yearFilter = document.getElementById('filter-year').value;
+        var items = Array.from(document.querySelectorAll('.history-item'));
+        var noResults = document.getElementById('no-filtered-results');
+        var totalBadge = document.getElementById('history-total-badge');
+
+        // Filter items
+        var visibleItems = items.filter(function(item) {
+            var itemStatus = item.getAttribute('data-status') || '';
+            var itemYear = item.getAttribute('data-year') || '';
+
+            var matchStatus = (statusFilter === 'all' || itemStatus === statusFilter);
+            var matchYear = (yearFilter === 'all' || itemYear === yearFilter);
+
+            return matchStatus && matchYear;
+        });
+
+        // Hide all initially
+        items.forEach(function(item) { item.style.display = 'none'; });
+
+        // Total count badge update
+        if (totalBadge) totalBadge.textContent = visibleItems.length + ' total';
+
+        if (visibleItems.length === 0) {
+            if (noResults) noResults.classList.remove('hidden');
+            updatePaginationUI(0, 0, 0);
+            return;
+        } else {
+            if (noResults) noResults.classList.add('hidden');
+        }
+
+        // Calculate pages
+        var totalPages = Math.ceil(visibleItems.length / itemsPerPage);
+        if (currentPage > totalPages) currentPage = totalPages;
+        if (currentPage < 1) currentPage = 1;
+
+        var startIdx = (currentPage - 1) * itemsPerPage;
+        var endIdx = startIdx + itemsPerPage;
+        var pageItems = visibleItems.slice(startIdx, endIdx);
+
+        pageItems.forEach(function(item) {
+            item.style.display = 'block';
+        });
+
+        updatePaginationUI(visibleItems.length, startIdx + 1, Math.min(endIdx, visibleItems.length));
+    }
+
+    function updatePaginationUI(total, start, end) {
+        var pageInfo = document.getElementById('js-page-info');
+        var totalInfo = document.getElementById('js-total-info');
+        var prevBtn = document.getElementById('js-prev-btn');
+        var nextBtn = document.getElementById('js-next-btn');
+
+        if (!pageInfo || !totalInfo) return;
+
+        if (total === 0) {
+            pageInfo.textContent = '0';
+            totalInfo.textContent = '0';
+            if (prevBtn) prevBtn.disabled = true;
+            if (nextBtn) nextBtn.disabled = true;
+            return;
+        }
+
+        pageInfo.textContent = start + '-' + end;
+        totalInfo.textContent = total;
+
+        var totalPages = Math.ceil(total / itemsPerPage);
+        if (prevBtn) prevBtn.disabled = (currentPage <= 1);
+        if (nextBtn) nextBtn.disabled = (currentPage >= totalPages);
+    }
+
+    var statusSelect = document.getElementById('filter-status');
+    var yearSelect = document.getElementById('filter-year');
+    var prevBtn = document.getElementById('js-prev-btn');
+    var nextBtn = document.getElementById('js-next-btn');
+
+    if (statusSelect) {
+        statusSelect.addEventListener('change', function() {
+            currentPage = 1;
+            applyHistoryFiltersAndPagination();
+        });
+    }
+
+    if (yearSelect) {
+        yearSelect.addEventListener('change', function() {
+            currentPage = 1;
+            applyHistoryFiltersAndPagination();
+        });
+    }
+
+    if (prevBtn) {
+        prevBtn.addEventListener('click', function() {
+            if (currentPage > 1) {
+                currentPage--;
+                applyHistoryFiltersAndPagination();
+            }
+        });
+    }
+
+    if (nextBtn) {
+        nextBtn.addEventListener('click', function() {
+            currentPage++;
+            applyHistoryFiltersAndPagination();
+        });
+    }
+
+    // Initial render
+    applyHistoryFiltersAndPagination();
 })();
-
-var balancesMap = JSON.parse(document.getElementById('balances-map-data').textContent);
-
-function updateRemainingHint() {
-    var typeId = document.getElementById('id_leave_type').value;
-    var remaining = balancesMap[typeId];
-    var hint = document.getElementById('remaining-hint');
-    hint.textContent = remaining !== undefined ? ('You have ' + remaining + ' day(s) remaining.') : '';
-    document.getElementById('id_days_requested').max = remaining !== undefined ? remaining : '';
-}
-function updatePreview() {
-    var start = document.getElementById('id_start_date').value;
-    var days = parseInt(document.getElementById('id_days_requested').value || '0', 10);
-    var preview = document.getElementById('end-date-preview');
-    if (start && days > 0) {
-        var d = new Date(start);
-        d.setDate(d.getDate() + days - 1);
-        preview.textContent = 'Returning: ' + d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-    } else {
-        preview.textContent = '';
-    }
-}
-document.getElementById('id_leave_type').addEventListener('change', updateRemainingHint);
-document.getElementById('id_days_requested').addEventListener('input', updatePreview);
-document.getElementById('id_start_date').addEventListener('change', updatePreview);
-updateRemainingHint();
 </script>
 {% endblock %}
