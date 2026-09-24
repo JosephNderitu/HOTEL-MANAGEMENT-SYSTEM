@@ -1,22 +1,164 @@
 {% extends "dashboard/base_dashboard.html" %}
 {% block dashboard_content %}
 {% include "dashboard/_hrm_styles.html" %}
-<a href="{% url 'dashboard:hrm' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; HRM</a>
-<h1 class="text-xl font-bold text-black mt-1 mb-6">Staff Directory</h1>
-<div class="hr-card overflow-x-auto">
-    <table class="hr-table w-full">
-        <thead><tr><th>Name</th><th>Position</th><th>Department</th><th>Status</th><th></th></tr></thead>
-        <tbody>
-        {% for p in profiles %}
-        <tr>
-            <td data-label="Name">{{ p.user.get_full_name|default:p.user.username }}</td>
-            <td data-label="Position">{{ p.position|default:"—" }}</td>
-            <td data-label="Department">{{ p.get_department_display|default:"—" }}</td>
-            <td data-label="Status"><span class="hr-badge {% if p.employment_status == 'active' %}bg-[#0B6B3A] text-white{% else %}bg-gray-200 text-gray-600{% endif %}">{{ p.get_employment_status_display }}</span></td>
-            <td data-label=""><a href="{% url 'dashboard:hrm_staff_detail' p.user.id %}" class="text-[#0B6B3A] text-xs font-semibold hover:underline">View</a></td>
-        </tr>
-        {% empty %}<tr><td colspan="5" class="text-center text-gray-400 py-8">No staff profiles yet.</td></tr>{% endfor %}
-        </tbody>
-    </table>
+
+<!-- Top Header & Hero -->
+<div class="flex items-center justify-between mb-4">
+    <a href="{% url 'dashboard:hrm' %}" class="inline-flex items-center gap-2 text-[#0B6B3A] hover:text-[#074726] text-sm font-semibold transition-colors">
+        <i class="fa-solid fa-arrow-left text-xs"></i> HRM Overview
+    </a>
+</div>
+
+<div class="hr-hero-card rounded-2xl p-6 mb-6 text-white flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-md">
+    <div class="relative z-10">
+        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-white/10 text-[#C9A227] border border-white/15 mb-3 backdrop-blur-md">
+            <i class="fa-solid fa-building-user text-[11px]"></i> Human Resource Directory
+        </span>
+        <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight flex items-center gap-3">
+            <i class="fa-solid fa-users text-[#C9A227]"></i> Staff Directory
+        </h1>
+        <p class="text-white/80 text-sm mt-1 max-w-xl">Manage organization members, assign roles, and monitor employment status.</p>
+    </div>
+    <div class="relative z-10 flex items-center gap-3">
+        <div class="hr-stat-pill px-4 py-2 rounded-xl text-center min-w-[100px]">
+            <span class="block text-[10px] text-white/70 font-medium uppercase">Total Staff</span>
+            <span class="text-xl font-black text-white">{{ total_staff }}</span>
+        </div>
+        <a href="{% url 'dashboard:hrm_staff_create' %}" class="inline-flex items-center justify-center gap-2 bg-[#C9A227] hover:bg-[#b08d1f] text-slate-900 font-bold text-sm px-5 py-3 rounded-xl transition-all shadow-md active:scale-[0.98]">
+            <i class="fa-solid fa-user-plus text-xs"></i> Hire New Staff
+        </a>
+    </div>
+</div>
+
+<!-- Django Messages -->
+{% if messages %}
+    {% for message in messages %}
+        <div class="mb-4 flex items-center gap-3 border text-sm rounded-xl px-4 py-3 shadow-sm {% if message.tags == 'error' %}bg-red-50 border-red-200 text-red-800{% else %}bg-[#0B6B3A]/10 border-[#0B6B3A]/30 text-[#0B6B3A]{% endif %}">
+            <i class="fa-solid {% if message.tags == 'error' %}fa-circle-exclamation text-red-500{% else %}fa-circle-check text-[#0B6B3A]{% endif %}"></i>
+            <span class="font-medium">{{ message }}</span>
+        </div>
+    {% endfor %}
+{% endif %}
+
+<!-- Filters & Directory Table -->
+<div class="hr-tile rounded-2xl p-5 shadow-sm">
+    <form method="get" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 mb-6">
+        <div class="lg:col-span-4 relative flex items-center">
+            <i class="fa-solid fa-magnifying-glass absolute left-3 z-10 text-gray-400 text-xs pointer-events-none"></i>
+            <input type="text" name="q" value="{{ query }}" placeholder="Search by name, username..." class="hr-filter-input !pl-9">
+        </div>
+        <div class="lg:col-span-3">
+            <select name="department" class="hr-filter-input">
+                <option value="">All Departments</option>
+                {% for val, label in department_options %}
+                    <option value="{{ val }}" {% if dept == val %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="lg:col-span-3">
+            <select name="status" class="hr-filter-input">
+                <option value="">All Statuses</option>
+                {% for val, label in status_options %}
+                    <option value="{{ val }}" {% if status == val %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="lg:col-span-2 flex items-center gap-2">
+            <button type="submit" class="flex-1 bg-[#0B6B3A] hover:bg-[#074726] text-white text-xs font-bold py-2.5 px-3 rounded-xl transition-all flex items-center justify-center gap-1.5">
+                <i class="fa-solid fa-filter"></i> Filter
+            </button>
+            <a href="{% url 'dashboard:hrm_staff_list' %}" class="px-3.5 py-2.5 rounded-xl border border-gray-200 text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-colors" title="Reset">
+                <i class="fa-solid fa-rotate-left text-xs"></i>
+            </a>
+        </div>
+    </form>
+
+    <!-- Unified Table (Responsive Design) -->
+    <div class="overflow-x-auto custom-scrollbar rounded-xl border border-gray-100">
+        <table class="w-full text-left border-collapse min-w-[600px]">
+            <thead>
+                <tr class="bg-slate-50/80 border-b border-gray-100 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    <th class="py-3.5 px-4">Staff Member</th>
+                    <th class="py-3.5 px-4">Role / Group(s)</th>
+                    <th class="py-3.5 px-4">Department</th>
+                    <th class="py-3.5 px-4">Status</th>
+                    <th class="py-3.5 px-4 text-right">Action</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 text-sm">
+                {% for u in page_obj %}
+                <tr class="hover:bg-slate-50/60 transition-colors group">
+                    <td class="py-3 px-4">
+                        <div class="flex items-center gap-3">
+                            <div class="hr-avatar {% if u.is_superuser %}hr-rank-owner{% endif %}">
+                                {{ u.get_full_name|default:u.username|slice:":2"|upper }}
+                            </div>
+                            <div class="min-w-0">
+                                <p class="font-bold text-slate-900 group-hover:text-[#0B6B3A] transition-colors flex items-center gap-1.5 truncate">
+                                    {{ u.get_full_name|default:u.username }}
+                                    {% if u.is_superuser %}<i class="fa-solid fa-crown text-[#C9A227] text-xs" title="Superuser"></i>{% endif %}
+                                </p>
+                                <p class="text-xs text-slate-400 truncate">{{ u.staff_profile.position|default:"No position" }}</p>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="py-3 px-4">
+                        <div class="flex flex-wrap gap-1">
+                            {% for g in u.groups.all %}
+                                <span class="hr-role-pill">{{ g.name }}</span>
+                            {% empty %}
+                                <span class="text-xs text-slate-400 italic">None</span>
+                            {% endfor %}
+                        </div>
+                    </td>
+                    <td class="py-3 px-4 font-medium text-slate-700">
+                        {{ u.staff_profile.get_department_display|default:"—" }}
+                    </td>
+                    <td class="py-3 px-4">
+                        {% if u.staff_profile %}
+                            {% if u.staff_profile.employment_status == 'active' %}
+                                <span class="inline-flex items-center text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/60 status-pulse-active">Active</span>
+                            {% elif u.staff_profile.employment_status == 'on_leave' %}
+                                <span class="inline-flex items-center text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200/60">On Leave</span>
+                            {% elif u.staff_profile.employment_status == 'suspended' %}
+                                <span class="inline-flex items-center text-xs font-semibold px-2.5 py-0.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200/60">Suspended</span>
+                            {% else %}
+                                <span class="inline-flex items-center text-xs font-semibold px-2.5 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200/60">{{ u.staff_profile.get_employment_status_display }}</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="inline-flex items-center text-xs text-slate-400">No Profile</span>
+                        {% endif %}
+                    </td>
+                    <td class="py-3 px-4 text-right">
+                        <a href="{% url 'dashboard:hrm_staff_detail' u.id %}" class="inline-flex items-center gap-1.5 text-xs font-bold text-[#0B6B3A] hover:text-[#074726] bg-[#0B6B3A]/10 hover:bg-[#0B6B3A]/20 px-3 py-1.5 rounded-lg transition-all">
+                            View <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" class="py-12 text-center">
+                        <div class="hr-empty-state">
+                            <i class="fa-solid fa-users-slash text-2xl text-slate-300 mb-2"></i>
+                            <p class="font-semibold text-slate-700">No staff members found</p>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if page_obj.paginator.num_pages > 1 %}
+    <div class="flex items-center justify-between gap-3 mt-5 pt-3 border-t border-gray-100 text-xs">
+        <p class="text-slate-500">Showing <b>{{ page_obj.start_index }}</b> to <b>{{ page_obj.end_index }}</b> of <b>{{ page_obj.paginator.count }}</b></p>
+        <div class="flex items-center gap-1">
+            <a href="?q={{ query }}&department={{ dept }}&status={{ status }}&page={{ page_obj.previous_page_number }}" class="hr-page-btn {% if not page_obj.has_previous %}hr-page-disabled{% endif %}"><i class="fa-solid fa-chevron-left text-[10px]"></i></a>
+            <span class="hr-page-btn hr-page-active">{{ page_obj.number }}</span>
+            <a href="?q={{ query }}&department={{ dept }}&status={{ status }}&page={{ page_obj.next_page_number }}" class="hr-page-btn {% if not page_obj.has_next %}hr-page-disabled{% endif %}"><i class="fa-solid fa-chevron-right text-[10px]"></i></a>
+        </div>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}

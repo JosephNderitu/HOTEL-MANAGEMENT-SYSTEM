@@ -68,6 +68,32 @@ class StaffProfile(models.Model):
     def __str__(self):
         return f"{self.user.get_full_name() or self.user.username} ({self.national_id})"
     
+class EmploymentAction(models.Model):
+    ACTION_CHOICES = [
+        ('hired', 'Hired'),
+        ('promoted', 'Promoted'),
+        ('demoted', 'Demoted'),
+        ('suspended', 'Suspended'),
+        ('reinstated', 'Reinstated'),
+        ('terminated', 'Terminated'),
+        ('updated', 'Details Updated'),
+    ]
+    staff = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='employment_actions')
+    action = models.CharField(max_length=15, choices=ACTION_CHOICES)
+    previous_position = models.CharField(max_length=100, blank=True)
+    new_position = models.CharField(max_length=100, blank=True)
+    previous_department = models.CharField(max_length=20, blank=True)
+    new_department = models.CharField(max_length=20, blank=True)
+    note = models.TextField(blank=True)
+    performed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='employment_actions_performed')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.staff} — {self.get_action_display()} on {self.created_at:%Y-%m-%d}"
+
 class GateLog(models.Model):
     STATUS_CHOICES = [
         ('inside', 'Inside'),

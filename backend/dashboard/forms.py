@@ -1,9 +1,12 @@
 from django import forms
 from .models import GateLog
 from public_site.models import *
-from .models import Payment
-from django.contrib.auth.models import User
+from .models import *
+from django.contrib.auth.models import User, Group
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from hrm.models import *
+from .permissions import has_full_access, FULL_ACCESS_GROUPS
 
 FIELD_CLASS = 'w-full border border-[#0B6B3A] rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B6B3A]/20'
 
@@ -254,8 +257,6 @@ class ShiftSwapRequestForm(forms.ModelForm):
         if start and end and end < start:
             raise forms.ValidationError("End date can't be before start date.")
         return cleaned
-    
-from django import forms
 
 def _normalize_id(s):
     return ''.join(ch for ch in (s or '') if ch.isalnum()).lower()
@@ -299,3 +300,96 @@ class ClockVerifyForm(forms.Form):
                 or _normalize_id(phone) != _normalize_id(profile.phone):
             raise forms.ValidationError("Your ID number or phone number doesn't match our records. Please check and try again.")
         return cleaned
+    
+##################################################################
+########## HRM MANAGEMENT #####################
+class StaffHireForm(forms.Form):
+    first_name = forms.CharField(max_length=150, widget=forms.TextInput(attrs={'class': FIELD_CLASS}))
+    last_name = forms.CharField(max_length=150, widget=forms.TextInput(attrs={'class': FIELD_CLASS}))
+    username = forms.CharField(max_length=150, widget=forms.TextInput(attrs={'class': FIELD_CLASS, 'placeholder': 'Login username'}))
+    email = forms.EmailField(required=False, widget=forms.EmailInput(attrs={'class': FIELD_CLASS}))
+    password1 = forms.CharField(widget=forms.PasswordInput(attrs={'class': FIELD_CLASS}), label='Set Password')
+    password2 = forms.CharField(widget=forms.PasswordInput(attrs={'class': FIELD_CLASS}), label='Confirm Password')
+    groups = forms.ModelMultipleChoiceField(
+        queryset=Group.objects.none(), widget=forms.CheckboxSelectMultiple, required=True, label='Role(s)'
+    )
+    national_id = forms.CharField(max_length=20, widget=forms.TextInput(attrs={'class': FIELD_CLASS}))
+    phone = forms.CharField(max_length=20, widget=forms.TextInput(attrs={'class': FIELD_CLASS}))
+    position = forms.CharField(max_length=100, required=False, widget=forms.TextInput(attrs={'class': FIELD_CLASS}))
+    department = forms.ChoiceField(choices=StaffProfile.DEPARTMENT_CHOICES, required=False, widget=forms.Select(attrs={'class': FIELD_CLASS}))
+    department_note = forms.CharField(max_length=100, required=False, widget=forms.TextInput(attrs={'class': FIELD_CLASS}))
+    date_joined_role = forms.DateField(widget=forms.DateInput(attrs={'class': FIELD_CLASS, 'type': 'date'}))
+    pay_type = forms.ChoiceField(choices=StaffProfile.PAY_TYPE_CHOICES, widget=forms.Select(attrs={'class': FIELD_CLASS}))
+    pay_rate = forms.DecimalField(max_digits=10, decimal_places=2, widget=forms.NumberInput(attrs={'class': FIELD_CLASS, 'step': '0.01'}))
+    emergency_contact_name = forms.CharField(max_length=150, required=False, widget=forms.TextInput(attrs={'class': FIELD_CLASS}))
+    emergency_contact_phone = forms.CharField(max_length=20, required=False, widget=forms.TextInput(attrs={'class': FIELD_CLASS}))
+
+    def __init__(self, *args, requesting_user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        qs = Group.objects.all().order_by('name')
+        if not has_full_access(requesting_user):
+            qs = qs.exclude(name__in=FULL_ACCESS_GROUPS)
+        self.fields['groups'].queryset = qs
+
+    def clean_username(self):
+        username = self.cleaned_data['username'].strip()
+        if User.objects.filter(username__iexact=username).exists():
+            raise forms.ValidationError("That username is already taken.")
+        return username
+
+    def clean_national_id(self):
+        nid = self.cleaned_data['national_id'].strip()
+        if StaffProfile.objects.filter(national_id__iexact=nid).exists():
+            raise forms.ValidationError("A staff member with this National ID already exists.")
+        return nid
+
+    def clean(self):
+        cleaned = super().clean()
+        p1, p2 = cleaned.get('password1'), cleaned.get('password2')
+        if p1 and p2 and p1 != p2:
+            self.add_error('password2', "Passwords don't match.")
+        elif p1:
+            try:
+                validate_password(p1)
+            except DjangoValidationError as e:
+                self.add_error('password1', e)
+        return cleaned
+
+    def save(self, created_by):
+        data = self.cleaned_data
+        user = User.objects.create_user(
+            username=data['username'], email=data.get('email', ''),
+            first_name=data['first_name'], last_name=data['last_name'],
+            password=data['password1'], is_staff=True, is_active=True,
+        )
+        user.groups.set(data['groups'])
+        profile = StaffProfile.objects.create(
+            user=user, national_id=data['national_id'], phone=data['phone'],
+            position=data.get('position', ''), department=data.get('department', ''),
+            department_note=data.get('department_note', ''), date_joined_role=data['date_joined_role'],
+            pay_type=data['pay_type'], pay_rate=data['pay_rate'],
+            emergency_contact_name=data.get('emergency_contact_name', ''),
+            emergency_contact_phone=data.get('emergency_contact_phone', ''),
+        )
+        EmploymentAction.objects.create(
+            staff=user, action='hired', new_position=profile.position, new_department=profile.department,
+            note=f"Hired as {profile.position or 'staff'}", performed_by=created_by,
+        )
+        return user, profile
+
+class StaffRoleUpdateForm(forms.Form):
+    position = forms.CharField(max_length=100, required=False, widget=forms.TextInput(attrs={'class': FIELD_CLASS}))
+    department = forms.ChoiceField(choices=StaffProfile.DEPARTMENT_CHOICES, required=False, widget=forms.Select(attrs={'class': FIELD_CLASS}))
+    department_note = forms.CharField(max_length=100, required=False, widget=forms.TextInput(attrs={'class': FIELD_CLASS}))
+    pay_type = forms.ChoiceField(choices=StaffProfile.PAY_TYPE_CHOICES, widget=forms.Select(attrs={'class': FIELD_CLASS}))
+    pay_rate = forms.DecimalField(max_digits=10, decimal_places=2, widget=forms.NumberInput(attrs={'class': FIELD_CLASS, 'step': '0.01'}))
+    groups = forms.ModelMultipleChoiceField(queryset=Group.objects.none(), widget=forms.CheckboxSelectMultiple, required=True, label='Role(s)')
+    note = forms.CharField(widget=forms.Textarea(attrs={'class': FIELD_CLASS, 'rows': 2, 'placeholder': 'Reason for this change (kept in their history)'}))
+
+    def __init__(self, *args, requesting_user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        qs = Group.objects.all().order_by('name')
+        if not has_full_access(requesting_user):
+            qs = qs.exclude(name__in=FULL_ACCESS_GROUPS)
+        self.fields['groups'].queryset = qs
+        

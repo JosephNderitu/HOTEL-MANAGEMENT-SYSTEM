@@ -5,14 +5,12 @@ import io
 import qrcode
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
-from django.shortcuts import render
-from .permissions import MODULES, get_allowed_modules, has_full_access
 from .decorators import *
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.utils import timezone
-from django.db.models import Q, F, Sum, ExpressionWrapper, DecimalField
+from django.db.models import Q, F, Sum, ExpressionWrapper, DecimalField, Count, Sum as DjangoSum
 from .models import *
 from .forms import *
 from django.core.paginator import Paginator
@@ -37,13 +35,9 @@ from django.urls import reverse
 from datetime import timedelta, datetime, time
 from .permissions import *
 
-from django.http import HttpResponse
-from django.template.loader import render_to_string
-from django.utils import timezone
 from django.utils.dateparse import parse_date
-from django.db.models import Count, Sum as DjangoSum
 
-from django.contrib.auth.models import User
+from django.contrib.auth.models import User, Group
 from hrm.models import *
 from hrm.services import is_within_geofence
 import calendar as cal_module
@@ -3006,22 +3000,141 @@ def hrm_my_reviews(request):
 
 @hrm_manager_required
 def hrm_staff_list(request):
-    profiles = StaffProfile.objects.select_related('user').order_by('department', 'user__first_name')
-    return render(request, 'dashboard/hrm_staff_list.html', {'profiles': profiles})
+    query = request.GET.get('q', '').strip()
+    dept = request.GET.get('department', '')
+    status = request.GET.get('status', '')
+
+    users_qs = User.objects.filter(is_staff=True).select_related('staff_profile').prefetch_related('groups')
+    if query:
+        users_qs = users_qs.filter(
+            Q(first_name__icontains=query) | Q(last_name__icontains=query) |
+            Q(username__icontains=query) | Q(staff_profile__national_id__icontains=query)
+        )
+    if dept:
+        users_qs = users_qs.filter(staff_profile__department=dept)
+    if status:
+        users_qs = users_qs.filter(staff_profile__employment_status=status)
+
+    staff_list = sorted(users_qs, key=lambda u: (get_role_rank(u), (u.first_name or u.username).lower()))
+    page_obj = Paginator(staff_list, 12).get_page(request.GET.get('page', 1))
+
+    return render(request, 'dashboard/hrm_staff_list.html', {
+        'page_obj': page_obj, 'query': query, 'dept': dept, 'status': status,
+        'department_options': StaffProfile.DEPARTMENT_CHOICES,
+        'status_options': StaffProfile.EMPLOYMENT_STATUS_CHOICES,
+        'total_staff': User.objects.filter(is_staff=True).count(),
+    })
+
+@hrm_manager_required
+def hrm_staff_create(request):
+    if request.method == 'POST':
+        form = StaffHireForm(request.POST, requesting_user=request.user)
+        if form.is_valid():
+            user, profile = form.save(created_by=request.user)
+            messages.success(request, f"{user.get_full_name() or user.username} has been hired and their login created.")
+            return redirect('dashboard:hrm_staff_detail', user_id=user.id)
+    else:
+        form = StaffHireForm(requesting_user=request.user)
+    return render(request, 'dashboard/hrm_staff_create.html', {'form': form})
 
 @hrm_manager_required
 def hrm_staff_detail(request, user_id):
-    staff_user = get_object_or_404(User, id=user_id)
+    staff_user = get_object_or_404(User.objects.select_related('staff_profile').prefetch_related('groups'), id=user_id)
     profile = getattr(staff_user, 'staff_profile', None)
     attendance = AttendanceRecord.objects.filter(staff=staff_user).order_by('-date')[:30]
     leave_requests = LeaveRequest.objects.filter(staff=staff_user).select_related('leave_type').order_by('-created_at')[:10]
     balances = LeaveBalance.objects.filter(staff=staff_user, year=timezone.localdate().year).select_related('leave_type')
     payroll = PayrollRecord.objects.filter(staff=staff_user).order_by('-period_year', '-period_month')[:6]
     reviews = PerformanceReview.objects.filter(staff=staff_user).order_by('-created_at')[:5]
+    history = EmploymentAction.objects.filter(staff=staff_user).select_related('performed_by')[:20]
     return render(request, 'dashboard/hrm_staff_detail.html', {
         'staff_user': staff_user, 'profile': profile, 'attendance': attendance,
         'leave_requests': leave_requests, 'balances': balances, 'payroll': payroll, 'reviews': reviews,
+        'history': history, 'can_manage_target_user': can_manage_target(request.user, staff_user),
     })
+
+@hrm_manager_required
+def hrm_staff_role_update(request, user_id):
+    staff_user = get_object_or_404(User.objects.select_related('staff_profile'), id=user_id)
+    profile = getattr(staff_user, 'staff_profile', None)
+    if not profile:
+        messages.error(request, "This user has no staff profile yet.")
+        return redirect('dashboard:hrm_staff_detail', user_id=user_id)
+    if not can_manage_target(request.user, staff_user):
+        messages.error(request, "You don't have permission to change this staff member's role.")
+        return redirect('dashboard:hrm_staff_detail', user_id=user_id)
+
+    old_rank = get_role_rank(staff_user)
+    old_position, old_department = profile.position, profile.department
+
+    if request.method == 'POST':
+        form = StaffRoleUpdateForm(request.POST, requesting_user=request.user)
+        if form.is_valid():
+            data = form.cleaned_data
+            profile.position = data['position']
+            profile.department = data['department']
+            profile.department_note = data['department_note']
+            profile.pay_type = data['pay_type']
+            profile.pay_rate = data['pay_rate']
+            profile.save()
+            staff_user.groups.set(data['groups'])
+
+            new_rank = get_role_rank(staff_user)
+            action = 'promoted' if new_rank < old_rank else 'demoted' if new_rank > old_rank else 'updated'
+            EmploymentAction.objects.create(
+                staff=staff_user, action=action,
+                previous_position=old_position, new_position=profile.position,
+                previous_department=old_department, new_department=profile.department,
+                note=data['note'], performed_by=request.user,
+            )
+            messages.success(request, f"{staff_user.get_full_name() or staff_user.username}'s role has been updated.")
+            return redirect('dashboard:hrm_staff_detail', user_id=user_id)
+    else:
+        form = StaffRoleUpdateForm(requesting_user=request.user, initial={
+            'position': profile.position, 'department': profile.department,
+            'department_note': profile.department_note, 'pay_type': profile.pay_type,
+            'pay_rate': profile.pay_rate, 'groups': staff_user.groups.all(),
+        })
+    return render(request, 'dashboard/hrm_staff_role_update.html', {'form': form, 'staff_user': staff_user})
+
+@hrm_manager_required
+def hrm_staff_status_action(request, user_id, action):
+    if request.method != 'POST' or action not in ('suspend', 'terminate', 'reinstate'):
+        return redirect('dashboard:hrm_staff_detail', user_id=user_id)
+    staff_user = get_object_or_404(User.objects.select_related('staff_profile'), id=user_id)
+    profile = getattr(staff_user, 'staff_profile', None)
+    if not profile:
+        messages.error(request, "This user has no staff profile yet.")
+        return redirect('dashboard:hrm_staff_detail', user_id=user_id)
+    if not can_manage_target(request.user, staff_user):
+        messages.error(request, "You don't have permission to change this staff member's employment status.")
+        return redirect('dashboard:hrm_staff_detail', user_id=user_id)
+
+    note = request.POST.get('note', '').strip()
+    if action in ('suspend', 'terminate') and not note:
+        messages.error(request, "Please provide a reason.")
+        return redirect('dashboard:hrm_staff_detail', user_id=user_id)
+
+    if action == 'suspend':
+        profile.employment_status = 'suspended'
+        staff_user.is_active = False
+        log_action = 'suspended'
+    elif action == 'terminate':
+        profile.employment_status = 'terminated'
+        profile.is_active_staff = False
+        staff_user.is_active = False
+        log_action = 'terminated'
+    else:
+        profile.employment_status = 'active'
+        profile.is_active_staff = True
+        staff_user.is_active = True
+        log_action = 'reinstated'
+
+    profile.save()
+    staff_user.save(update_fields=['is_active'])
+    EmploymentAction.objects.create(staff=staff_user, action=log_action, note=note, performed_by=request.user)
+    messages.success(request, f"{staff_user.get_full_name() or staff_user.username} has been {log_action}.")
+    return redirect('dashboard:hrm_staff_detail', user_id=user_id)
 
 @hrm_manager_required
 def hrm_attendance_report(request):

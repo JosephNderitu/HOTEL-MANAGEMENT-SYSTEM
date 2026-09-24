@@ -1,29 +1,297 @@
 {% extends "dashboard/base_dashboard.html" %}
 {% block dashboard_content %}
 {% include "dashboard/_hrm_styles.html" %}
-<a href="{% url 'dashboard:hrm_staff_list' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; Staff Directory</a>
-<h1 class="text-xl font-bold text-black mt-1 mb-1">{{ staff_user.get_full_name|default:staff_user.username }}</h1>
-<p class="text-gray-500 text-sm mb-6">{{ profile.position|default:"—" }} &middot; {{ profile.get_department_display|default:"—" }} &middot; ID: {{ staff_user.staff_profile.national_id|default:"—" }}</p>
 
-<div class="grid lg:grid-cols-2 gap-6 mb-6">
-    <div class="hr-card">
-        <h2 class="font-bold text-black text-sm mb-3">Recent Attendance</h2>
-        {% for a in attendance|slice:":10" %}<div class="flex justify-between text-sm border-b border-gray-50 py-1.5"><span>{{ a.date }}</span><span>{{ a.clock_in_time|date:"H:i"|default:"—" }} – {{ a.clock_out_time|date:"H:i"|default:"—" }}{% if a.is_late %} <span class="hr-badge bg-[#C9A227] text-black">late</span>{% endif %}</span></div>{% empty %}<p class="text-gray-400 text-sm">No records.</p>{% endfor %}
+<!-- SweetAlert2 Library CDN -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<!-- Top Navigation -->
+<div class="mb-5 flex items-center justify-between">
+    <a href="{% url 'dashboard:hrm_staff_list' %}" class="inline-flex items-center gap-2 text-xs font-bold text-[#0B6B3A] hover:text-[#074726] bg-[#0B6B3A]/10 hover:bg-[#0B6B3A]/20 px-3.5 py-2 rounded-xl transition-all">
+        <i class="fa-solid fa-arrow-left text-[11px]"></i> Back to Staff Directory
+    </a>
+</div>
+
+<!-- Hero Section / Staff Overview -->
+<div class="hr-hero-card rounded-2xl p-6 md:p-8 mb-6 text-white shadow-lg relative overflow-hidden">
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+        <div class="flex items-start md:items-center gap-5">
+            <div class="hr-avatar relative flex-shrink-0 text-white font-black rounded-2xl shadow-inner flex items-center justify-center border-2 border-white/20 {% if staff_user.is_superuser %}hr-rank-owner{% endif %}" style="width:68px; height:68px; font-size:22px;">
+                {{ staff_user.get_full_name|default:staff_user.username|slice:":2"|upper }}
+            </div>
+            <div class="space-y-1">
+                <div class="flex flex-wrap items-center gap-2.5">
+                    <h1 class="text-2xl font-extrabold tracking-tight text-white flex items-center gap-2">
+                        {{ staff_user.get_full_name|default:staff_user.username }}
+                    </h1>
+                    {% if staff_user.is_superuser %}
+                        <span class="inline-flex items-center gap-1 bg-[#C9A227]/20 border border-[#C9A227]/40 text-[#C9A227] text-xs font-bold px-2.5 py-0.5 rounded-full backdrop-blur-md" title="Owner / Superuser">
+                            <i class="fa-solid fa-crown text-[10px]"></i> Superuser
+                        </span>
+                    {% endif %}
+                </div>
+                <p class="text-sm font-medium text-white/80 flex items-center gap-2 flex-wrap">
+                    <span><i class="fa-solid fa-briefcase text-xs text-[#C9A227] mr-1"></i> {{ profile.position|default:"No Position Assigned" }}</span>
+                    <span class="text-white/40">&middot;</span>
+                    <span><i class="fa-solid fa-sitemap text-xs text-[#C9A227] mr-1"></i> {{ profile.get_department_display|default:"Unassigned" }}</span>
+                </p>
+                <p class="text-xs text-white/60 flex items-center gap-3 pt-0.5 flex-wrap">
+                    <span><i class="fa-solid fa-id-card text-[11px] mr-1"></i> {{ profile.national_id|default:"ID: N/A" }}</span>
+                    <span><i class="fa-solid fa-phone text-[11px] mr-1"></i> {{ profile.phone|default:"Phone: N/A" }}</span>
+                </p>
+                <div class="flex flex-wrap gap-1.5 pt-2">
+                    {% for g in staff_user.groups.all %}
+                        <span class="hr-role-pill bg-white/10 text-white border border-white/15 px-2.5 py-0.5 text-[11px] font-semibold rounded-lg backdrop-blur-sm">{{ g.name }}</span>
+                    {% empty %}
+                        <span class="text-xs text-white/40 italic">No Groups Assigned</span>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="flex flex-col items-start md:items-end justify-between gap-4">
+            {% if profile %}
+                <span class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-bold tracking-wide uppercase shadow-sm border {% if profile.employment_status == 'active' %}bg-emerald-500/20 text-emerald-200 border-emerald-400/30 status-pulse-active{% elif profile.employment_status == 'on_leave' %}bg-amber-500/20 text-amber-200 border-amber-400/30{% elif profile.employment_status == 'suspended' %}bg-orange-500/20 text-orange-200 border-orange-400/30{% else %}bg-red-500/20 text-red-200 border-red-400/30{% endif %}">
+                    <span class="w-2 h-2 rounded-full {% if profile.employment_status == 'active' %}bg-emerald-400{% elif profile.employment_status == 'on_leave' %}bg-amber-400{% elif profile.employment_status == 'suspended' %}bg-orange-400{% else %}bg-red-400{% endif %}"></span>
+                    {{ profile.get_employment_status_display }}
+                </span>
+            {% endif %}
+        </div>
     </div>
-    <div class="hr-card">
-        <h2 class="font-bold text-black text-sm mb-3">Leave Balances</h2>
-        {% for b in balances %}<div class="flex justify-between text-sm mb-2"><span>{{ b.leave_type.name }}</span><strong>{{ b.remaining_days }}/{{ b.allocated_days }}</strong></div>{% empty %}<p class="text-gray-400 text-sm">None set.</p>{% endfor %}
+
+    <!-- Actions Toolbar -->
+    {% if can_manage_target_user and profile %}
+    <div class="flex flex-wrap items-center gap-2.5 mt-6 pt-5 border-t border-white/10 relative z-10">
+        <a href="{% url 'dashboard:hrm_staff_role_update' staff_user.id %}" class="text-xs font-bold bg-white/15 hover:bg-white/25 text-white px-4 py-2.5 rounded-xl transition-all shadow-sm active:scale-95 inline-flex items-center gap-2 border border-white/10">
+            <i class="fa-solid fa-user-gear text-xs"></i> Edit Role / Position
+        </a>
+        {% if profile.employment_status != 'suspended' and profile.employment_status != 'terminated' %}
+            <button type="button" data-action="status-action" data-target-action="suspend" data-user-id="{{ staff_user.id }}" class="text-xs font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/30 px-4 py-2.5 rounded-xl transition-all active:scale-95 inline-flex items-center gap-2">
+                <i class="fa-solid fa-circle-pause text-xs"></i> Suspend
+            </button>
+        {% endif %}
+        {% if profile.employment_status == 'suspended' or profile.employment_status == 'terminated' %}
+            <button type="button" data-action="status-action" data-target-action="reinstate" data-user-id="{{ staff_user.id }}" class="text-xs font-bold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/30 px-4 py-2.5 rounded-xl transition-all active:scale-95 inline-flex items-center gap-2">
+                <i class="fa-solid fa-rotate-left text-xs"></i> Reinstate
+            </button>
+        {% endif %}
+        {% if profile.employment_status != 'terminated' %}
+            <button type="button" data-action="status-action" data-target-action="terminate" data-user-id="{{ staff_user.id }}" class="text-xs font-bold bg-red-500/20 hover:bg-red-500/30 text-red-200 border border-red-400/30 px-4 py-2.5 rounded-xl transition-all active:scale-95 inline-flex items-center gap-2">
+                <i class="fa-solid fa-user-xmark text-xs"></i> Terminate
+            </button>
+        {% endif %}
+    </div>
+    <form id="status-action-form" method="post" class="hidden">
+        {% csrf_token %}
+        <input type="hidden" name="note" id="status-action-note">
+    </form>
+    {% endif %}
+</div>
+
+<!-- Attendance & Leave Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <div class="hr-tile rounded-2xl p-5 border border-slate-100 shadow-sm bg-white">
+        <h2 class="font-bold text-slate-900 text-sm mb-4 flex items-center gap-2 border-b border-slate-100 pb-3">
+            <i class="fa-solid fa-clock-rotate-left text-[#0B6B3A]"></i> Recent Attendance Logs
+        </h2>
+        <div class="space-y-2">
+            {% for a in attendance|slice:":10" %}
+                <div class="flex items-center justify-between text-xs py-2 px-3 rounded-xl hover:bg-slate-50 transition-colors border border-slate-50">
+                    <span class="font-semibold text-slate-700 flex items-center gap-2">
+                        <i class="fa-regular fa-calendar-check text-slate-400"></i> {{ a.date }}
+                    </span>
+                    <span class="font-medium text-slate-600 flex items-center gap-2">
+                        {{ a.clock_in_time|date:"H:i"|default:"—" }} – {{ a.clock_out_time|date:"H:i"|default:"—" }}
+                        {% if a.is_late %}
+                            <span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-50 text-amber-700 border border-amber-200/60">Late</span>
+                        {% endif %}
+                    </span>
+                </div>
+            {% empty %}
+                <div class="py-8 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
+                    <i class="fa-solid fa-calendar-xmark text-2xl text-slate-300"></i>
+                    <span>No attendance records logged yet.</span>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="hr-tile rounded-2xl p-5 border border-slate-100 shadow-sm bg-white">
+        <h2 class="font-bold text-slate-900 text-sm mb-4 flex items-center gap-2 border-b border-slate-100 pb-3">
+            <i class="fa-solid fa-plane-departure text-[#0B6B3A]"></i> Leave Balances
+        </h2>
+        <div class="space-y-3">
+            {% for b in balances %}
+                <div class="p-3 rounded-xl border border-slate-100 bg-slate-50/50">
+                    <div class="flex justify-between items-center text-xs mb-1.5">
+                        <span class="font-bold text-slate-800">{{ b.leave_type.name }}</span>
+                        <span class="font-bold text-[#0B6B3A]">{{ b.remaining_days }} <span class="text-slate-400 font-normal">/ {{ b.allocated_days }} days remaining</span></span>
+                    </div>
+                </div>
+            {% empty %}
+                <div class="py-8 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
+                    <i class="fa-solid fa-folder-open text-2xl text-slate-300"></i>
+                    <span>No leave entitlements assigned.</span>
+                </div>
+            {% endfor %}
+        </div>
     </div>
 </div>
 
-<div class="grid lg:grid-cols-2 gap-6">
-    <div class="hr-card">
-        <div class="flex justify-between items-center mb-3"><h2 class="font-bold text-black text-sm">Payroll History</h2><a href="{% url 'dashboard:hrm_payroll_create' staff_user.id %}" class="text-xs font-semibold text-[#0B6B3A] hover:underline">+ New</a></div>
-        {% for p in payroll %}<div class="flex justify-between text-sm border-b border-gray-50 py-1.5"><span>{{ p.period_month }}/{{ p.period_year }}</span><span>KSh {{ p.net_pay|floatformat:0 }} <span class="hr-badge {% if p.status == 'finalized' %}bg-[#0B6B3A] text-white{% else %}bg-[#C9A227] text-black{% endif %}">{{ p.get_status_display }}</span></span></div>{% empty %}<p class="text-gray-400 text-sm">None yet.</p>{% endfor %}
+<!-- Payroll & Performance Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <div class="hr-tile rounded-2xl p-5 border border-slate-100 shadow-sm bg-white">
+        <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+            <h2 class="font-bold text-slate-900 text-sm flex items-center gap-2">
+                <i class="fa-solid fa-wallet text-[#0B6B3A]"></i> Payroll Records
+            </h2>
+            <a href="{% url 'dashboard:hrm_payroll_create' staff_user.id %}" class="text-xs font-bold text-[#0B6B3A] hover:text-[#074726] bg-[#0B6B3A]/10 hover:bg-[#0B6B3A]/20 px-2.5 py-1 rounded-lg transition-all flex items-center gap-1">
+                <i class="fa-solid fa-plus text-[10px]"></i> Process Payroll
+            </a>
+        </div>
+        <div class="space-y-2">
+            {% for p in payroll %}
+                <div class="flex items-center justify-between text-xs py-2 px-3 rounded-xl hover:bg-slate-50 transition-colors border border-slate-50">
+                    <span class="font-bold text-slate-700">{{ p.period_month }}/{{ p.period_year }}</span>
+                    <div class="flex items-center gap-2">
+                        <span class="font-extrabold text-slate-900">KSh {{ p.net_pay|floatformat:0 }}</span>
+                        <span class="px-2 py-0.5 text-[10px] font-bold rounded-full {% if p.status == 'finalized' %}bg-emerald-50 text-emerald-700 border border-emerald-200/60{% else %}bg-amber-50 text-amber-700 border border-amber-200/60{% endif %}">
+                            {{ p.get_status_display }}
+                        </span>
+                    </div>
+                </div>
+            {% empty %}
+                <div class="py-8 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
+                    <i class="fa-solid fa-receipt text-2xl text-slate-300"></i>
+                    <span>No payroll history found.</span>
+                </div>
+            {% endfor %}
+        </div>
     </div>
-    <div class="hr-card">
-        <div class="flex justify-between items-center mb-3"><h2 class="font-bold text-black text-sm">Performance Reviews</h2><a href="{% url 'dashboard:hrm_performance_create' staff_user.id %}" class="text-xs font-semibold text-[#0B6B3A] hover:underline">+ New</a></div>
-        {% for r in reviews %}<div class="flex justify-between text-sm border-b border-gray-50 py-1.5"><span>{{ r.review_period }}</span><span>{{ r.overall_rating }}/5 <span class="hr-badge {% if r.status == 'finalized' %}bg-[#0B6B3A] text-white{% else %}bg-[#C9A227] text-black{% endif %}">{{ r.get_status_display }}</span></span></div>{% empty %}<p class="text-gray-400 text-sm">None yet.</p>{% endfor %}
+
+    <div class="hr-tile rounded-2xl p-5 border border-slate-100 shadow-sm bg-white">
+        <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+            <h2 class="font-bold text-slate-900 text-sm flex items-center gap-2">
+                <i class="fa-solid fa-award text-[#0B6B3A]"></i> Performance Reviews
+            </h2>
+            <a href="{% url 'dashboard:hrm_performance_create' staff_user.id %}" class="text-xs font-bold text-[#0B6B3A] hover:text-[#074726] bg-[#0B6B3A]/10 hover:bg-[#0B6B3A]/20 px-2.5 py-1 rounded-lg transition-all flex items-center gap-1">
+                <i class="fa-solid fa-plus text-[10px]"></i> New Review
+            </a>
+        </div>
+        <div class="space-y-2">
+            {% for r in reviews %}
+                <div class="flex items-center justify-between text-xs py-2 px-3 rounded-xl hover:bg-slate-50 transition-colors border border-slate-50">
+                    <span class="font-bold text-slate-700">{{ r.review_period }}</span>
+                    <div class="flex items-center gap-2">
+                        <span class="font-extrabold text-[#C9A227] flex items-center gap-1">
+                            <i class="fa-solid fa-star text-[10px]"></i> {{ r.overall_rating }}/5
+                        </span>
+                        <span class="px-2 py-0.5 text-[10px] font-bold rounded-full {% if r.status == 'finalized' %}bg-emerald-50 text-emerald-700 border border-emerald-200/60{% else %}bg-amber-50 text-amber-700 border border-amber-200/60{% endif %}">
+                            {{ r.get_status_display }}
+                        </span>
+                    </div>
+                </div>
+            {% empty %}
+                <div class="py-8 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
+                    <i class="fa-solid fa-chart-line text-2xl text-slate-300"></i>
+                    <span>No performance evaluations recorded.</span>
+                </div>
+            {% endfor %}
+        </div>
     </div>
 </div>
+
+<!-- Timeline History -->
+<div class="hr-tile rounded-2xl p-5 border border-slate-100 shadow-sm bg-white">
+    <h2 class="font-bold text-slate-900 text-sm mb-4 flex items-center gap-2 border-b border-slate-100 pb-3">
+        <i class="fa-solid fa-timeline text-[#0B6B3A]"></i> Employment Activity & Audit Trail
+    </h2>
+    <div class="hr-timeline space-y-4 pl-2">
+        {% for h in history %}
+            <div class="hr-timeline-item relative pl-6 border-l-2 border-slate-200 pb-3 {% if h.action in 'demoted,suspended,terminated' %}hr-timeline-negative border-l-red-400{% else %}border-l-[#0B6B3A]{% endif %}">
+                <p class="text-xs font-bold text-slate-900">{{ h.get_action_display }}</p>
+                <p class="text-[11px] text-slate-500 mt-0.5">
+                    {{ h.created_at|date:"M d, Y · H:i" }} by <span class="font-semibold text-slate-700">{{ h.performed_by.get_full_name|default:h.performed_by.username|default:"System" }}</span>
+                    {% if h.previous_position or h.new_position %}
+                        &middot; <span class="text-slate-400">{{ h.previous_position|default:"—" }}</span> &rarr; <span class="font-semibold text-slate-700">{{ h.new_position|default:"—" }}</span>
+                    {% endif %}
+                </p>
+                {% if h.note %}
+                    <p class="text-xs text-slate-600 bg-slate-50 border border-slate-100 p-2 rounded-lg mt-2 italic">"{{ h.note }}"</p>
+                {% endif %}
+            </div>
+        {% empty %}
+            <div class="py-8 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
+                <i class="fa-solid fa-clock-rotate-left text-2xl text-slate-300"></i>
+                <span>No audit trail or historical changes logged yet.</span>
+            </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- SweetAlert2 Trigger Scripts -->
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    // Render Django Flash Messages via SweetAlert2 Toast
+    {% if messages %}
+        {% for message in messages %}
+            Swal.fire({
+                toast: true,
+                position: 'top-end',
+                icon: "{% if message.tags == 'error' %}error{% elif message.tags == 'warning' %}warning{% else %}success{% endif %}",
+                title: "{{ message|escapejs }}",
+                showConfirmButton: false,
+                timer: 4000,
+                timerProgressBar: true,
+                customClass: { popup: 'rounded-xl shadow-lg border border-slate-100 font-sans text-xs' }
+            });
+        {% endfor %}
+    {% endif %}
+
+    // Handle Action Buttons with SweetAlert2 Modal
+    document.querySelectorAll('[data-action="status-action"]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var userId = btn.dataset.userId;
+            var action = btn.dataset.targetAction;
+            var isDestructive = (action === 'suspend' || action === 'terminate');
+            var actionTitle = action.charAt(0).toUpperCase() + action.slice(1);
+
+            var swalConfig = {
+                title: actionTitle + ' Staff Member',
+                text: 'Are you sure you want to ' + action + ' this employee?',
+                icon: isDestructive ? 'warning' : 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Yes, ' + actionTitle,
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: isDestructive ? '#dc2626' : '#0B6B3A',
+                cancelButtonColor: '#64748b',
+                customClass: {
+                    popup: 'rounded-2xl p-6 font-sans',
+                    confirmButton: 'rounded-xl px-4 py-2 font-bold text-xs',
+                    cancelButton: 'rounded-xl px-4 py-2 font-bold text-xs'
+                }
+            };
+
+            if (action !== 'reinstate') {
+                swalConfig.input = 'textarea';
+                swalConfig.inputPlaceholder = 'Please specify a reason or note for this action...';
+                swalConfig.inputValidator = function (value) {
+                    if (!value.trim()) {
+                        return 'A reason is required to proceed.';
+                    }
+                };
+            }
+
+            Swal.fire(swalConfig).then(function (result) {
+                if (result.isConfirmed) {
+                    var form = document.getElementById('status-action-form');
+                    form.action = '/staff/hrm/staff/' + userId + '/status/' + action + '/';
+                    document.getElementById('status-action-note').value = result.value || '';
+                    form.submit();
+                }
+            });
+        });
+    });
+});
+</script>
 {% endblock %}
