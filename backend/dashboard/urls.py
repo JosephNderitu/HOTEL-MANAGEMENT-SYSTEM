@@ -112,6 +112,7 @@ urlpatterns = [
     path('hrm/staff/<int:user_id>/role/', views.hrm_staff_role_update, name='hrm_staff_role_update'),
     path('hrm/staff/<int:user_id>/status/<str:action>/', views.hrm_staff_status_action, name='hrm_staff_status_action'),
     path('hrm/attendance-report/', views.hrm_attendance_report, name='hrm_attendance_report'),
+    path('hrm/attendance-report/pdf/', views.hrm_attendance_report_pdf, name='hrm_attendance_report_pdf'),
     path('hrm/shift-calendar/', views.hrm_shift_calendar, name='hrm_shift_calendar'),
     path('hrm/shift-swap/<int:swap_id>/<str:action>/', views.hrm_shift_swap_review, name='hrm_shift_swap_review'),
     path('hrm/leave-requests/', views.hrm_leave_requests, name='hrm_leave_requests'),

@@ -3141,23 +3141,244 @@ def hrm_staff_status_action(request, user_id, action):
 def hrm_attendance_report(request):
     today = timezone.localdate()
     days = int(request.GET.get('days', 30))
-    date_from = today - timedelta(days=days)
-    records = list(AttendanceRecord.objects.filter(date__gte=date_from, date__lte=today).select_related('staff'))
+    date_from = today - timedelta(days=days - 1)
 
+    all_active_profiles = list(
+        StaffProfile.objects.filter(employment_status__in=['active', 'on_leave']).select_related('user')
+    )
+    all_staff_ids = [p.user_id for p in all_active_profiles]
+
+    # ============ Daily Roster ============
+    roster_date_str = request.GET.get('roster_date', '')
+    try:
+        roster_date = datetime.strptime(roster_date_str, '%Y-%m-%d').date() if roster_date_str else today
+    except ValueError:
+        roster_date = today
+
+    roster_status_filter = request.GET.get('roster_status', '')
+    roster_q = request.GET.get('roster_q', '').strip()
+
+    roster_profiles = all_active_profiles
+    if roster_q:
+        ql = roster_q.lower()
+        roster_profiles = [p for p in roster_profiles if ql in (p.user.get_full_name() or p.user.username).lower()]
+
+    weekday = roster_date.weekday()
+    roster_ids = [p.user_id for p in roster_profiles]
+    off_staff_ids = set(
+        StaffWeeklyOff.objects.filter(staff_id__in=roster_ids, weekdays__contains=[weekday])
+        .values_list('staff_id', flat=True)
+    )
+    leave_map = {
+        lr.staff_id: lr for lr in LeaveRequest.objects.filter(
+            staff_id__in=roster_ids, status='approved', start_date__lte=roster_date, end_date__gte=roster_date
+        ).select_related('leave_type')
+    }
+    assignment_map = {
+        a.staff_id: a for a in ShiftAssignment.objects.filter(staff_id__in=roster_ids, date=roster_date).select_related('shift')
+    }
+    attendance_map = {
+        rec.staff_id: rec for rec in AttendanceRecord.objects.filter(staff_id__in=roster_ids, date=roster_date)
+    }
+
+    now = timezone.now()
+    all_rows = []
+    for profile in roster_profiles:
+        uid = profile.user_id
+        row = {'profile': profile, 'user': profile.user, 'shift': None, 'clock_in': None, 'clock_out': None, 'detail': ''}
+        if uid in leave_map:
+            row['status'], row['label'] = 'on_leave', 'On Leave'
+            row['detail'] = leave_map[uid].leave_type.name
+        elif uid in off_staff_ids:
+            row['status'], row['label'] = 'weekly_off', 'Weekly Off'
+        elif uid not in assignment_map:
+            row['status'], row['label'] = 'not_scheduled', 'No Shift Scheduled'
+        else:
+            assignment = assignment_map[uid]
+            record = attendance_map.get(uid)
+            row['shift'] = assignment.shift
+            if record and record.clock_in_time:
+                row['clock_in'], row['clock_out'] = record.clock_in_time, record.clock_out_time
+                if record.is_late:
+                    row['status'], row['label'] = 'late', f"Late ({record.late_minutes}m)"
+                else:
+                    row['status'], row['label'] = 'on_time', 'On Time'
+                if not record.clock_out_time:
+                    row['detail'] = 'Currently on duty'
+            else:
+                shift_start = timezone.make_aware(datetime.combine(roster_date, assignment.shift.start_time))
+                grace_end = shift_start + timedelta(minutes=assignment.shift.grace_minutes)
+                if roster_date < today or (roster_date == today and now > grace_end):
+                    row['status'], row['label'] = 'absent', 'Absent'
+                else:
+                    row['status'], row['label'] = 'not_due', 'Not Due Yet'
+        all_rows.append(row)
+
+    status_counts = {}
+    for r in all_rows:
+        status_counts[r['status']] = status_counts.get(r['status'], 0) + 1
+
+    filtered_rows = [r for r in all_rows if not roster_status_filter or r['status'] == roster_status_filter]
+    roster_page = Paginator(filtered_rows, 15).get_page(request.GET.get('roster_page', 1))
+    roster_base_qs = _qs_without(request, 'roster_page')
+
+    # ============ Comparative per-employee stats across the day range ============
+    chart_dept = request.GET.get('chart_dept', '')
     chart_days = [(date_from + timedelta(days=i)) for i in range((today - date_from).days + 1)]
-    late_counts, total_counts = [], []
-    for day in chart_days:
-        day_records = [r for r in records if r.date == day]
-        total_counts.append(len(day_records))
-        late_counts.append(sum(1 for r in day_records if r.is_late))
 
+    weekoff_by_staff = {off.staff_id: set(off.weekdays) for off in StaffWeeklyOff.objects.filter(staff_id__in=all_staff_ids)}
+    leaves_by_staff = {}
+    for lr in LeaveRequest.objects.filter(staff_id__in=all_staff_ids, status='approved', end_date__gte=date_from, start_date__lte=today):
+        leaves_by_staff.setdefault(lr.staff_id, []).append((lr.start_date, lr.end_date))
+    assignments_by_day = {}
+    for a in ShiftAssignment.objects.filter(staff_id__in=all_staff_ids, date__gte=date_from, date__lte=today).select_related('shift'):
+        assignments_by_day.setdefault(a.date, {})[a.staff_id] = a
+    attendance_by_day = {}
+    for rec in AttendanceRecord.objects.filter(staff_id__in=all_staff_ids, date__gte=date_from, date__lte=today):
+        attendance_by_day.setdefault(rec.date, {})[rec.staff_id] = rec
+
+    emp_totals = {uid: {'on_time': 0, 'late': 0, 'absent': 0, 'off_leave': 0} for uid in all_staff_ids}
+    for day in chart_days:
+        wd = day.weekday()
+        day_assignments = assignments_by_day.get(day, {})
+        day_attendance = attendance_by_day.get(day, {})
+        for uid in all_staff_ids:
+            on_leave = any(s <= day <= e for s, e in leaves_by_staff.get(uid, []))
+            is_off = wd in weekoff_by_staff.get(uid, set())
+            if on_leave or is_off:
+                emp_totals[uid]['off_leave'] += 1
+                continue
+            assignment = day_assignments.get(uid)
+            if not assignment:
+                continue
+            record = day_attendance.get(uid)
+            if record and record.clock_in_time:
+                emp_totals[uid]['late' if record.is_late else 'on_time'] += 1
+            else:
+                shift_start = timezone.make_aware(datetime.combine(day, assignment.shift.start_time))
+                grace_end = shift_start + timedelta(minutes=assignment.shift.grace_minutes)
+                if day < today or (day == today and now > grace_end):
+                    emp_totals[uid]['absent'] += 1
+
+    employee_stats = []
+    for profile in all_active_profiles:
+        if chart_dept and profile.department != chart_dept:
+            continue
+        totals = emp_totals[profile.user_id]
+        scheduled = totals['on_time'] + totals['late'] + totals['absent']
+        rate = round((totals['on_time'] + totals['late']) / scheduled * 100) if scheduled else None
+        employee_stats.append({
+            'name': profile.user.get_full_name() or profile.user.username,
+            'department': profile.get_department_display() or 'Unassigned',
+            'on_time': totals['on_time'], 'late': totals['late'],
+            'absent': totals['absent'], 'off_leave': totals['off_leave'],
+            'total_scheduled': scheduled, 'rate': rate,
+        })
+    employee_stats.sort(key=lambda e: (e['department'], e['name']))
+    chart_height = max(320, len(employee_stats) * 46)
+
+    records = list(AttendanceRecord.objects.filter(date__gte=date_from, date__lte=today).select_related('staff'))
     flagged = [r for r in records if not r.clock_in_within_geofence or (r.clock_out_time and not r.clock_out_within_geofence)]
 
     return render(request, 'dashboard/hrm_attendance_report.html', {
-        'chart_labels': json.dumps([d.strftime('%b %d') for d in chart_days]),
-        'chart_late': json.dumps(late_counts), 'chart_total': json.dumps(total_counts),
+        'roster_page': roster_page, 'roster_base_qs': roster_base_qs, 'roster_date': roster_date,
+        'roster_prev': roster_date - timedelta(days=1), 'roster_next': roster_date + timedelta(days=1),
+        'roster_today': today, 'roster_status_filter': roster_status_filter, 'roster_q': roster_q,
+        'status_counts': status_counts, 'total_active': len(all_rows),
+        'employee_stats': employee_stats, 'employee_stats_json': json.dumps(employee_stats),
+        'chart_height': chart_height, 'chart_dept': chart_dept,
+        'department_options': StaffProfile.DEPARTMENT_CHOICES,
         'flagged': flagged[:20], 'days': days,
     })
+
+
+@hrm_manager_required
+def hrm_attendance_report_pdf(request):
+    today = timezone.localdate()
+    start_str = request.GET.get('start_date', '')
+    end_str = request.GET.get('end_date', '')
+    dept = request.GET.get('dept', '')
+
+    try:
+        start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
+        end_date = datetime.strptime(end_str, '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        messages.error(request, "Please choose a valid date range.")
+        return redirect('dashboard:hrm_attendance_report')
+
+    if end_date < start_date:
+        messages.error(request, "End date can't be before start date.")
+        return redirect('dashboard:hrm_attendance_report')
+
+    span_days = (end_date - start_date).days + 1
+    if span_days > 30:
+        messages.error(request, "Reports are limited to 30 days at a time — please narrow your range.")
+        return redirect('dashboard:hrm_attendance_report')
+
+    profiles = list(StaffProfile.objects.filter(employment_status__in=['active', 'on_leave']).select_related('user'))
+    if dept:
+        profiles = [p for p in profiles if p.department == dept]
+    staff_ids = [p.user_id for p in profiles]
+    report_days = [(start_date + timedelta(days=i)) for i in range(span_days)]
+
+    weekoff_by_staff = {off.staff_id: set(off.weekdays) for off in StaffWeeklyOff.objects.filter(staff_id__in=staff_ids)}
+    leaves_by_staff = {}
+    for lr in LeaveRequest.objects.filter(staff_id__in=staff_ids, status='approved', end_date__gte=start_date, start_date__lte=end_date):
+        leaves_by_staff.setdefault(lr.staff_id, []).append((lr.start_date, lr.end_date))
+    assignments_by_day = {}
+    for a in ShiftAssignment.objects.filter(staff_id__in=staff_ids, date__gte=start_date, date__lte=end_date).select_related('shift'):
+        assignments_by_day.setdefault(a.date, {})[a.staff_id] = a
+    attendance_by_day = {}
+    for rec in AttendanceRecord.objects.filter(staff_id__in=staff_ids, date__gte=start_date, date__lte=end_date):
+        attendance_by_day.setdefault(rec.date, {})[rec.staff_id] = rec
+
+    now = timezone.now()
+    emp_totals = {uid: {'on_time': 0, 'late': 0, 'absent': 0, 'off_leave': 0} for uid in staff_ids}
+    for day in report_days:
+        wd = day.weekday()
+        day_assignments = assignments_by_day.get(day, {})
+        day_attendance = attendance_by_day.get(day, {})
+        for uid in staff_ids:
+            on_leave = any(s <= day <= e for s, e in leaves_by_staff.get(uid, []))
+            is_off = wd in weekoff_by_staff.get(uid, set())
+            if on_leave or is_off:
+                emp_totals[uid]['off_leave'] += 1
+                continue
+            assignment = day_assignments.get(uid)
+            if not assignment:
+                continue
+            record = day_attendance.get(uid)
+            if record and record.clock_in_time:
+                emp_totals[uid]['late' if record.is_late else 'on_time'] += 1
+            else:
+                shift_start = timezone.make_aware(datetime.combine(day, assignment.shift.start_time))
+                grace_end = shift_start + timedelta(minutes=assignment.shift.grace_minutes)
+                if day < today or (day == today and now > grace_end):
+                    emp_totals[uid]['absent'] += 1
+
+    rows = []
+    for profile in profiles:
+        totals = emp_totals[profile.user_id]
+        scheduled = totals['on_time'] + totals['late'] + totals['absent']
+        rate = round((totals['on_time'] + totals['late']) / scheduled * 100) if scheduled else None
+        rows.append({
+            'name': profile.user.get_full_name() or profile.user.username,
+            'department': profile.get_department_display() or 'Unassigned',
+            'on_time': totals['on_time'], 'late': totals['late'],
+            'absent': totals['absent'], 'off_leave': totals['off_leave'],
+            'scheduled': scheduled, 'rate': rate,
+        })
+    rows.sort(key=lambda r: (r['department'], r['name']))
+
+    html_string = render_to_string('dashboard/hrm_attendance_report_pdf.html', {
+        'rows': rows, 'start_date': start_date, 'end_date': end_date,
+        'dept_label': dict(StaffProfile.DEPARTMENT_CHOICES).get(dept, 'All Departments') if dept else 'All Departments',
+        'generated_at': timezone.now(), 'generated_by': request.user,
+    })
+    pdf_file = HTML(string=html_string, base_url=request.build_absolute_uri('/')).write_pdf()
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="attendance_report_{start_date}_{end_date}.pdf"'
+    return response
 
 @hrm_manager_required
 def hrm_shift_calendar(request):
