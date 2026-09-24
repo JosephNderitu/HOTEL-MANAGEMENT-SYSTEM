@@ -1,21 +1,357 @@
 {% extends "dashboard/base_dashboard.html" %}
+
 {% block dashboard_content %}
 {% include "dashboard/_hrm_styles.html" %}
-<a href="{% url 'dashboard:hrm' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; HRM</a>
-<h1 class="text-xl font-bold text-black mt-1 mb-6">Payroll — {{ period_month }}/{{ period_year }}</h1>
-{% if messages %}{% for message in messages %}<div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>{% endfor %}{% endif %}
 
-<div class="hr-card mb-6 overflow-x-auto">
-    <h2 class="font-bold text-black text-sm mb-3">Generated Records</h2>
-    <table class="hr-table w-full"><thead><tr><th>Staff</th><th>Net Pay</th><th>Status</th><th></th></tr></thead><tbody>
-    {% for r in records %}<tr><td data-label="Staff">{{ r.staff.get_full_name|default:r.staff.username }}</td><td data-label="Net Pay">KSh {{ r.net_pay|floatformat:0 }}</td><td data-label="Status"><span class="hr-badge {% if r.status == 'finalized' %}bg-[#0B6B3A] text-white{% else %}bg-[#C9A227] text-black{% endif %}">{{ r.get_status_display }}</span></td>
-        <td data-label="">{% if r.status == 'draft' %}<form method="post" action="{% url 'dashboard:hrm_payroll_finalize' r.id %}">{% csrf_token %}<button class="text-xs font-semibold bg-[#0B6B3A] text-white px-3 py-1.5 rounded-full">Finalize</button></form>{% endif %}</td>
-    </tr>{% empty %}<tr><td colspan="4" class="text-center text-gray-400 py-6">None yet.</td></tr>{% endfor %}
-    </tbody></table>
+<style>
+    .hr-tile {
+        background-color: #ffffff !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 1rem !important;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
+    }
+
+    .hr-filter-select {
+        background-color: #ffffff !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 0.75rem !important;
+        padding: 0.625rem 0.875rem !important;
+        font-size: 0.875rem !important;
+        color: #0f172a !important;
+        outline: none !important;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar { height: 6px; width: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+
+    .hr-page-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.375rem 0.75rem;
+        border-radius: 0.5rem;
+        border: 1px solid #cbd5e1;
+        background-color: #ffffff;
+        color: #334155;
+        font-weight: 600;
+        font-size: 0.75rem;
+    }
+    .hr-page-btn:hover:not(.hr-page-disabled) { background-color: #f8fafc; color: #0B6B3A; }
+    .hr-page-btn.hr-page-active { background-color: #0B6B3A; border-color: #0B6B3A; color: #ffffff; }
+    .hr-page-btn.hr-page-disabled { opacity: 0.4; pointer-events: none; }
+</style>
+
+<div class="space-y-6">
+    <!-- Navigation Link -->
+    <div>
+        <a href="{% url 'dashboard:hrm' %}" class="inline-flex items-center gap-2 text-[#0B6B3A] hover:text-[#074726] text-xs font-bold uppercase tracking-wider">
+            <i class="fa-solid fa-arrow-left text-xs"></i> Back to HRM Overview
+        </a>
+    </div>
+
+    <!-- Hero Card with Metrics -->
+    <div class="hr-hero-card rounded-2xl p-6 text-white flex flex-col md:flex-row md:items-center justify-between gap-6 bg-gradient-to-r from-[#0B6B3A] to-[#074726]">
+        <div>
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-white/10 text-[#C9A227] border border-white/15 mb-3">
+                <i class="fa-solid fa-file-invoice-dollar text-[11px]"></i> Payroll Management
+            </span>
+            <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight flex items-center gap-3">
+                <i class="fa-solid fa-calculator text-[#C9A227]"></i> Payroll Summary
+            </h1>
+            <p class="text-white/80 text-sm mt-1">
+                Processing cycle for <span class="font-bold text-white uppercase">{{ period_month }}/{{ period_year }}</span>.
+            </p>
+        </div>
+        
+        <div class="flex items-center gap-3">
+            <div class="bg-white/10 border border-white/15 px-4 py-2.5 rounded-xl text-center min-w-[110px]">
+                <span class="block text-[10px] text-white/70 font-bold uppercase">Processed</span>
+                <span class="text-xl font-black text-white">{{ records_page.paginator.count }}</span>
+            </div>
+            <div class="bg-white/10 border border-white/15 px-4 py-2.5 rounded-xl text-center min-w-[110px]">
+                <span class="block text-[10px] text-white/70 font-bold uppercase">Pending</span>
+                <span class="text-xl font-black text-[#C9A227]">{{ pending_page.paginator.count }}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Django Messages -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="flex items-center gap-3 border text-xs font-semibold rounded-xl p-4 {% if message.tags == 'error' %}bg-red-50 border-red-200 text-red-800{% else %}bg-emerald-50 border-emerald-200 text-emerald-800{% endif %}">
+                <i class="fa-solid {% if message.tags == 'error' %}fa-circle-exclamation text-red-500{% else %}fa-circle-check text-emerald-600{% endif %}"></i>
+                <span>{{ message }}</span>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <!-- Period Filter Toolbar -->
+    <div class="hr-tile rounded-2xl p-4">
+        <form method="get" class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-calendar-days text-[#0B6B3A]"></i>
+                <span class="text-sm font-bold text-slate-800">Select Processing Period:</span>
+            </div>
+            
+            <div class="flex items-center gap-3">
+                <select name="month" class="hr-filter-select min-w-[130px]">
+                    <option value="1" {% if period_month == 1 %}selected{% endif %}>January</option>
+                    <option value="2" {% if period_month == 2 %}selected{% endif %}>February</option>
+                    <option value="3" {% if period_month == 3 %}selected{% endif %}>March</option>
+                    <option value="4" {% if period_month == 4 %}selected{% endif %}>April</option>
+                    <option value="5" {% if period_month == 5 %}selected{% endif %}>May</option>
+                    <option value="6" {% if period_month == 6 %}selected{% endif %}>June</option>
+                    <option value="7" {% if period_month == 7 %}selected{% endif %}>July</option>
+                    <option value="8" {% if period_month == 8 %}selected{% endif %}>August</option>
+                    <option value="9" {% if period_month == 9 %}selected{% endif %}>September</option>
+                    <option value="10" {% if period_month == 10 %}selected{% endif %}>October</option>
+                    <option value="11" {% if period_month == 11 %}selected{% endif %}>November</option>
+                    <option value="12" {% if period_month == 12 %}selected{% endif %}>December</option>
+                </select>
+
+                <select name="year" class="hr-filter-select min-w-[100px]">
+                    <option value="2025" {% if period_year == 2025 %}selected{% endif %}>2025</option>
+                    <option value="2026" {% if period_year == 2026 %}selected{% endif %}>2026</option>
+                    <option value="2027" {% if period_year == 2027 %}selected{% endif %}>2027</option>
+                </select>
+
+                <button type="submit" class="bg-[#0B6B3A] hover:bg-[#074726] text-white text-xs font-bold py-2.5 px-4 rounded-xl transition-all cursor-pointer">
+                    <i class="fa-solid fa-filter"></i> Apply
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- 1. Generated Payroll Records -->
+    <div class="hr-tile rounded-2xl p-5">
+        <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
+            <h2 class="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                <i class="fa-solid fa-receipt text-[#0B6B3A]"></i> Generated Payroll Records
+            </h2>
+            <span class="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">{{ records_page.paginator.count }} Records</span>
+        </div>
+
+        <div class="overflow-x-auto custom-scrollbar rounded-xl border border-slate-200">
+            <table class="w-full text-left border-collapse min-w-[650px]">
+                <thead>
+                    <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase">
+                        <th class="py-3 px-4">Staff Member</th>
+                        <th class="py-3 px-4">Net Salary</th>
+                        <th class="py-3 px-4">Status</th>
+                        <th class="py-3 px-4 text-right">Action</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 text-sm">
+                    {% for r in records_page %}
+                    <tr class="hover:bg-slate-50 transition-colors">
+                        <td class="py-3 px-4">
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-full bg-slate-100 text-[#0B6B3A] border border-slate-200 font-bold text-xs flex items-center justify-center">
+                                    {{ r.staff.get_full_name|default:r.staff.username|slice:":2"|upper }}
+                                </div>
+                                <div>
+                                    <p class="font-bold text-slate-900">{{ r.staff.get_full_name|default:r.staff.username }}</p>
+                                    <p class="text-xs text-slate-400">@{{ r.staff.username }}</p>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="py-3 px-4 font-black text-slate-900">KSh {{ r.net_pay|floatformat:0 }}</td>
+                        <td class="py-3 px-4">
+                            {% if r.status == 'finalized' %}
+                                <span class="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    <i class="fa-solid fa-circle-check text-[10px]"></i> Finalized
+                                </span>
+                            {% else %}
+                                <span class="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                                    <i class="fa-solid fa-clock text-[10px]"></i> Draft
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td class="py-3 px-4 text-right">
+                            {% if r.status == 'draft' %}
+                                <div class="inline-flex items-center gap-2">
+                                    <!-- Edit Draft Button -->
+                                    <a href="{% url 'dashboard:hrm_payroll_edit' r.id %}" 
+                                       class="text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 px-3 py-1.5 rounded-lg transition-all">
+                                        <i class="fa-solid fa-pen-to-square text-[10px]"></i> Edit
+                                    </a>
+
+                                    <!-- Finalize Button -->
+                                    <form method="post" action="{% url 'dashboard:hrm_payroll_finalize' r.id %}" class="inline-block" onsubmit="return confirm('Are you sure you want to finalize this payroll? Once finalized, it cannot be modified.');">
+                                        {% csrf_token %}
+                                        <button type="submit" class="text-xs font-bold bg-[#0B6B3A] hover:bg-[#074726] text-white px-3 py-1.5 rounded-lg transition-all">
+                                            <i class="fa-solid fa-check text-[10px]"></i> Finalize
+                                        </button>
+                                    </form>
+                                </div>
+                            {% else %}
+                                <div class="inline-flex items-center gap-2">
+                                    <button type="button" 
+                                            onclick="openPayrollPreview('{{ r.staff.get_full_name|default:r.staff.username }}', '{{ r.staff.staff_profile.position|default:"Staff" }}', '{{ period_month }}/{{ period_year }}', '{{ r.basic_salary|floatformat:0|default:"0" }}', '{{ r.allowances_total|floatformat:0|default:"0" }}', '{{ r.deductions_total|floatformat:0|default:"0" }}', '{{ r.net_pay|floatformat:0 }}')"
+                                            class="text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-3 py-1.5 rounded-lg transition-all">
+                                        <i class="fa-solid fa-eye text-[#0B6B3A] text-[10px]"></i> Preview
+                                    </button>
+                                    <span class="text-xs text-slate-400 font-medium"><i class="fa-solid fa-lock text-[10px]"></i> Locked</span>
+                                </div>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" class="py-8 text-center text-xs text-slate-500">No payroll records generated for this cycle.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Generated Records Pagination -->
+        {% if records_page.paginator.num_pages > 1 %}
+        <div class="flex items-center justify-between gap-3 mt-4 pt-3 border-t border-slate-100 text-xs">
+            <p class="text-slate-500">Showing <b>{{ records_page.start_index }}</b> to <b>{{ records_page.end_index }}</b> of <b>{{ records_page.paginator.count }}</b></p>
+            <div class="flex items-center gap-1">
+                <a href="?month={{ period_month }}&year={{ period_year }}&records_page={{ records_page.previous_page_number }}&pending_page={{ pending_page.number }}" 
+                   class="hr-page-btn {% if not records_page.has_previous %}hr-page-disabled{% endif %}"><i class="fa-solid fa-chevron-left text-[10px]"></i></a>
+                <span class="hr-page-btn hr-page-active">{{ records_page.number }}</span>
+                <a href="?month={{ period_month }}&year={{ period_year }}&records_page={{ records_page.next_page_number }}&pending_page={{ pending_page.number }}" 
+                   class="hr-page-btn {% if not records_page.has_next %}hr-page-disabled{% endif %}"><i class="fa-solid fa-chevron-right text-[10px]"></i></a>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- 2. Staff Without Records This Period -->
+    <div class="hr-tile rounded-2xl p-5">
+        <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
+            <h2 class="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                <i class="fa-solid fa-user-clock text-[#C9A227]"></i> Staff Without Records This Period
+            </h2>
+            <span class="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">{{ pending_page.paginator.count }} Pending</span>
+        </div>
+
+        <div class="overflow-x-auto custom-scrollbar rounded-xl border border-slate-200">
+            <table class="w-full text-left border-collapse min-w-[650px]">
+                <thead>
+                    <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase">
+                        <th class="py-3 px-4">Staff Member</th>
+                        <th class="py-3 px-4">Position</th>
+                        <th class="py-3 px-4">Status</th>
+                        <th class="py-3 px-4 text-right">Action</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 text-sm">
+                    {% for p in pending_page %}
+                    <tr class="hover:bg-slate-50 transition-colors">
+                        <td class="py-3 px-4">
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-full bg-slate-100 text-slate-700 border border-slate-200 font-bold text-xs flex items-center justify-center">
+                                    {{ p.user.get_full_name|default:p.user.username|slice:":2"|upper }}
+                                </div>
+                                <div>
+                                    <p class="font-bold text-slate-900">{{ p.user.get_full_name|default:p.user.username }}</p>
+                                    <p class="text-xs text-slate-400">@{{ p.user.username }}</p>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="py-3 px-4 text-xs font-semibold text-slate-600">{{ p.position|default:"No position assigned" }}</td>
+                        <td class="py-3 px-4">
+                            <span class="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                                Unprocessed
+                            </span>
+                        </td>
+                        <td class="py-3 px-4 text-right">
+                            <a href="{% url 'dashboard:hrm_payroll_create' p.user.id %}" class="text-xs font-bold bg-[#C9A227] hover:bg-[#b08d1f] text-slate-900 px-3 py-1.5 rounded-lg transition-all">
+                                <i class="fa-solid fa-plus text-[10px]"></i> Generate
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" class="py-8 text-center text-xs text-slate-500">Every active staff member has a generated payroll record for this period.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pending Staff Pagination -->
+        {% if pending_page.paginator.num_pages > 1 %}
+        <div class="flex items-center justify-between gap-3 mt-4 pt-3 border-t border-slate-100 text-xs">
+            <p class="text-slate-500">Showing <b>{{ pending_page.start_index }}</b> to <b>{{ pending_page.end_index }}</b> of <b>{{ pending_page.paginator.count }}</b></p>
+            <div class="flex items-center gap-1">
+                <a href="?month={{ period_month }}&year={{ period_year }}&records_page={{ records_page.number }}&pending_page={{ pending_page.previous_page_number }}" 
+                   class="hr-page-btn {% if not pending_page.has_previous %}hr-page-disabled{% endif %}"><i class="fa-solid fa-chevron-left text-[10px]"></i></a>
+                <span class="hr-page-btn hr-page-active">{{ pending_page.number }}</span>
+                <a href="?month={{ period_month }}&year={{ period_year }}&records_page={{ records_page.number }}&pending_page={{ pending_page.next_page_number }}" 
+                   class="hr-page-btn {% if not pending_page.has_next %}hr-page-disabled{% endif %}"><i class="fa-solid fa-chevron-right text-[10px]"></i></a>
+            </div>
+        </div>
+        {% endif %}
+    </div>
 </div>
 
-<div class="hr-card">
-    <h2 class="font-bold text-black text-sm mb-3">Staff Without a Record This Period</h2>
-    {% for p in staff_without %}<div class="flex justify-between items-center border-b border-gray-50 py-2 text-sm"><span>{{ p.user.get_full_name|default:p.user.username }}</span><a href="{% url 'dashboard:hrm_payroll_create' p.user.id %}" class="text-xs font-semibold bg-[#C9A227] text-black px-3 py-1.5 rounded-full">Generate</a></div>{% empty %}<p class="text-gray-400 text-sm">Everyone's done.</p>{% endfor %}
+<!-- Preview Modal -->
+<div id="payrollPreviewModal" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div>
+                <h3 class="text-base font-extrabold text-slate-900">Payroll Preview</h3>
+                <p class="text-xs text-slate-400" id="previewPeriod">Period: --</p>
+            </div>
+            <button type="button" onclick="closePayrollPreview()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+
+        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center gap-3">
+            <div class="w-9 h-9 rounded-full bg-[#0B6B3A] text-white font-bold text-xs flex items-center justify-center" id="previewAvatar">--</div>
+            <div>
+                <p class="font-bold text-slate-900 text-sm" id="previewStaffName">--</p>
+                <p class="text-xs text-slate-500" id="previewPosition">--</p>
+            </div>
+        </div>
+
+        <div class="space-y-2 text-xs">
+            <div class="flex justify-between py-1 border-b border-slate-100">
+                <span class="text-slate-500">Basic / Gross Pay</span>
+                <span class="font-bold text-slate-800" id="previewGross">KSh 0</span>
+            </div>
+            <div class="flex justify-between py-1 border-b border-slate-100">
+                <span class="text-slate-500">Allowances</span>
+                <span class="font-bold text-emerald-600" id="previewAllowances">+ KSh 0</span>
+            </div>
+            <div class="flex justify-between py-1 border-b border-slate-100">
+                <span class="text-slate-500">Deductions</span>
+                <span class="font-bold text-red-500" id="previewDeductions">- KSh 0</span>
+            </div>
+            <div class="flex justify-between p-3 rounded-xl bg-emerald-50 border border-emerald-200 mt-2">
+                <span class="text-emerald-900 font-bold uppercase text-[11px]">Net Take-Home Pay</span>
+                <span class="font-black text-emerald-700 text-sm" id="previewNet">KSh 0</span>
+            </div>
+        </div>
+
+        <button type="button" onclick="closePayrollPreview()" class="w-full bg-slate-900 text-white text-xs font-bold py-2.5 rounded-xl">
+            Close Preview
+        </button>
+    </div>
 </div>
+
+<script>
+    function openPayrollPreview(name, position, period, gross, allowances, deductions, net) {
+        document.getElementById('previewStaffName').innerText = name;
+        document.getElementById('previewPosition').innerText = position;
+        document.getElementById('previewPeriod').innerText = 'Period: ' + period;
+        document.getElementById('previewAvatar').innerText = name.substring(0, 2).toUpperCase();
+        document.getElementById('previewGross').innerText = 'KSh ' + gross;
+        document.getElementById('previewAllowances').innerText = '+ KSh ' + allowances;
+        document.getElementById('previewDeductions').innerText = '- KSh ' + deductions;
+        document.getElementById('previewNet').innerText = 'KSh ' + net;
+        document.getElementById('payrollPreviewModal').classList.remove('hidden');
+    }
+
+    function closePayrollPreview() {
+        document.getElementById('payrollPreviewModal').classList.add('hidden');
+    }
+</script>
 {% endblock %}

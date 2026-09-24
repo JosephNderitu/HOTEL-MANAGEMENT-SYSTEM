@@ -1,0 +1,287 @@
+{% extends "dashboard/base_dashboard.html" %}
+
+{% block dashboard_content %}
+{% include "dashboard/_hrm_styles.html" %}
+
+<style>
+    /* 1. Card Styles Override */
+    .hr-tile {
+        background-color: #ffffff !important;
+        border: 1px solid #cbd5e1 !important; /* Crisp slate-300 border */
+        border-radius: 1rem !important; /* rounded-2xl */
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
+        transition: all 0.2s ease-in-out !important;
+    }
+
+    .hr-tile:hover {
+        border-color: #94a3b8 !important; /* Hover border slate-400 */
+        box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.08) !important;
+    }
+
+    /* 2. Form Input Fields Border & Radius Enforcement */
+    form input[type="text"],
+    form input[type="password"],
+    form input[type="email"],
+    form input[type="number"],
+    form input[type="date"],
+    form select,
+    form textarea,
+    .hr-filter-input {
+        background-color: #ffffff !important;
+        border: 1px solid #cbd5e1 !important; /* Visible slate-300 border */
+        border-radius: 0.75rem !important; /* rounded-xl (12px) */
+        padding: 0.625rem 0.875rem !important;
+        font-size: 0.875rem !important;
+        line-height: 1.25rem !important;
+        color: #0f172a !important;
+        width: 100% !important;
+        outline: none !important;
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03) !important;
+        transition: all 0.15s ease-in-out !important;
+    }
+
+    /* Input Focus State */
+    form input[type="text"]:focus,
+    form input[type="password"]:focus,
+    form input[type="email"]:focus,
+    form input[type="number"]:focus,
+    form input[type="date"]:focus,
+    form select:focus,
+    form textarea:focus,
+    .hr-filter-input:focus {
+        border-color: #0B6B3A !important; /* Brand accent green */
+        box-shadow: 0 0 0 3px rgba(11, 107, 58, 0.15) !important;
+    }
+
+    /* Input Hover State */
+    form input[type="text"]:hover,
+    form input[type="password"]:hover,
+    form input[type="email"]:hover,
+    form input[type="number"]:hover,
+    form input[type="date"]:hover,
+    form select:hover,
+    form textarea:hover,
+    .hr-filter-input:hover {
+        border-color: #94a3b8 !important;
+    }
+</style>
+
+<div class="max-w-7xl mx-auto space-y-6">
+    <!-- Navigation & Header Hero -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+            <a href="{% url 'dashboard:hrm_staff_list' %}" class="inline-flex items-center gap-1.5 text-[#0B6B3A] text-xs font-bold uppercase tracking-wider hover:underline mb-2">
+                <i class="fa-solid fa-arrow-left text-xs"></i> Staff Directory
+            </a>
+            <h1 class="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
+                <i class="fa-solid fa-user-plus text-[#0B6B3A]"></i> Hire New Staff
+            </h1>
+            <p class="text-xs text-slate-500 mt-1">Create a new employee profile, configure roles, and set up compensation.</p>
+        </div>
+    </div>
+
+    <!-- Global Alerts -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-xl p-4 flex items-center gap-3">
+                <i class="fa-solid fa-circle-exclamation text-base"></i>
+                <span>{{ message }}</span>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    {% if form.non_field_errors %}
+        <div class="bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-xl p-4 flex items-center gap-3">
+            <i class="fa-solid fa-triangle-exclamation text-base"></i>
+            <span>{{ form.non_field_errors.0 }}</span>
+        </div>
+    {% endif %}
+
+    <form method="post" class="space-y-6">
+        {% csrf_token %}
+
+        <!-- Two Column Responsive Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+            <!-- Left Column: Personal, Credentials & Access -->
+            <div class="lg:col-span-6 space-y-6">
+                <!-- Personal & Account Information -->
+                <div class="hr-tile p-6">
+                    <div class="flex items-center justify-between pb-4 mb-5 border-b border-slate-100">
+                        <h2 class="font-bold text-slate-900 text-sm flex items-center gap-2">
+                            <i class="fa-solid fa-id-card text-[#0B6B3A]"></i> Personal & Account Info
+                        </h2>
+                        <span class="hr-role-pill">Step 1</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-xs font-semibold text-slate-600 mb-1.5 block">First Name <span class="text-red-500">*</span></label>
+                            {{ form.first_name }}
+                            {% if form.first_name.errors %}<p class="text-red-600 text-xs mt-1 font-medium">{{ form.first_name.errors.0 }}</p>{% endif %}
+                        </div>
+
+                        <div>
+                            <label class="text-xs font-semibold text-slate-600 mb-1.5 block">Last Name <span class="text-red-500">*</span></label>
+                            {{ form.last_name }}
+                            {% if form.last_name.errors %}<p class="text-red-600 text-xs mt-1 font-medium">{{ form.last_name.errors.0 }}</p>{% endif %}
+                        </div>
+
+                        <div class="sm:col-span-2">
+                            <label class="text-xs font-semibold text-slate-600 mb-1.5 block">Username (Login ID) <span class="text-red-500">*</span></label>
+                            {{ form.username }}
+                            {% if form.username.errors %}<p class="text-red-600 text-xs mt-1 font-medium">{{ form.username.errors.0 }}</p>{% endif %}
+                        </div>
+
+                        <div class="sm:col-span-2">
+                            <label class="text-xs font-semibold text-slate-600 mb-1.5 block">Email Address <span class="text-slate-400 font-normal">(Optional)</span></label>
+                            {{ form.email }}
+                            {% if form.email.errors %}<p class="text-red-600 text-xs mt-1 font-medium">{{ form.email.errors.0 }}</p>{% endif %}
+                        </div>
+
+                        <div>
+                            <label class="text-xs font-semibold text-slate-600 mb-1.5 block">Password <span class="text-red-500">*</span></label>
+                            {{ form.password1 }}
+                            {% if form.password1.errors %}<p class="text-red-600 text-xs mt-1 font-medium">{{ form.password1.errors.0 }}</p>{% endif %}
+                        </div>
+
+                        <div>
+                            <label class="text-xs font-semibold text-slate-600 mb-1.5 block">Confirm Password <span class="text-red-500">*</span></label>
+                            {{ form.password2 }}
+                            {% if form.password2.errors %}<p class="text-red-600 text-xs mt-1 font-medium">{{ form.password2.errors.0 }}</p>{% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Role & Permissions Selector -->
+                <div class="hr-tile p-6">
+                    <div class="pb-3 mb-4 border-b border-slate-100">
+                        <h2 class="font-bold text-slate-900 text-sm flex items-center gap-2">
+                            <i class="fa-solid fa-user-shield text-[#0B6B3A]"></i> Access Control & Roles
+                        </h2>
+                        <p class="text-[11px] text-slate-500 mt-0.5">Assign system permissions and access groups to this user.</p>
+                    </div>
+
+                    <div>
+                        <div class="flex flex-wrap gap-2">
+                            {% for checkbox in form.groups %}
+                                <label class="hr-day-chip">
+                                    {{ checkbox.tag }}
+                                    <span><i class="fa-solid fa-check text-[10px] mr-1 hidden check-icon"></i>{{ checkbox.choice_label }}</span>
+                                </label>
+                            {% endfor %}
+                        </div>
+                        {% if form.groups.errors %}<p class="text-red-600 text-xs mt-2 font-medium">{{ form.groups.errors.0 }}</p>{% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Employment Details & Contact -->
+            <div class="lg:col-span-6 space-y-6">
+                <!-- Employment Details Card -->
+                <div class="hr-tile p-6">
+                    <div class="flex items-center justify-between pb-4 mb-5 border-b border-slate-100">
+                        <h2 class="font-bold text-slate-900 text-sm flex items-center gap-2">
+                            <i class="fa-solid fa-briefcase text-[#0B6B3A]"></i> Employment Details
+                        </h2>
+                        <span class="hr-role-pill">Step 2</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-xs font-semibold text-slate-600 mb-1.5 block">National ID / Passport</label>
+                            {{ form.national_id }}
+                            {% if form.national_id.errors %}<p class="text-red-600 text-xs mt-1 font-medium">{{ form.national_id.errors.0 }}</p>{% endif %}
+                        </div>
+
+                        <div>
+                            <label class="text-xs font-semibold text-slate-600 mb-1.5 block">Phone Number</label>
+                            {{ form.phone }}
+                            {% if form.phone.errors %}<p class="text-red-600 text-xs mt-1 font-medium">{{ form.phone.errors.0 }}</p>{% endif %}
+                        </div>
+
+                        <div>
+                            <label class="text-xs font-semibold text-slate-600 mb-1.5 block">Position / Title</label>
+                            {{ form.position }}
+                            {% if form.position.errors %}<p class="text-red-600 text-xs mt-1 font-medium">{{ form.position.errors.0 }}</p>{% endif %}
+                        </div>
+
+                        <div>
+                            <label class="text-xs font-semibold text-slate-600 mb-1.5 block">Department</label>
+                            {{ form.department }}
+                            {% if form.department.errors %}<p class="text-red-600 text-xs mt-1 font-medium">{{ form.department.errors.0 }}</p>{% endif %}
+                        </div>
+
+                        <div class="sm:col-span-2">
+                            <label class="text-xs font-semibold text-slate-600 mb-1.5 block">Department Note / Deployment</label>
+                            {{ form.department_note }}
+                            {% if form.department_note.errors %}<p class="text-red-600 text-xs mt-1 font-medium">{{ form.department_note.errors.0 }}</p>{% endif %}
+                        </div>
+
+                        <div>
+                            <label class="text-xs font-semibold text-slate-600 mb-1.5 block">Date Joined Role</label>
+                            {{ form.date_joined_role }}
+                            {% if form.date_joined_role.errors %}<p class="text-red-600 text-xs mt-1 font-medium">{{ form.date_joined_role.errors.0 }}</p>{% endif %}
+                        </div>
+
+                        <div>
+                            <label class="text-xs font-semibold text-slate-600 mb-1.5 block">Pay Type</label>
+                            {{ form.pay_type }}
+                            {% if form.pay_type.errors %}<p class="text-red-600 text-xs mt-1 font-medium">{{ form.pay_type.errors.0 }}</p>{% endif %}
+                        </div>
+
+                        <div class="sm:col-span-2">
+                            <label class="text-xs font-semibold text-slate-600 mb-1.5 block">Pay Rate (KSh)</label>
+                            {{ form.pay_rate }}
+                            {% if form.pay_rate.errors %}<p class="text-red-600 text-xs mt-1 font-medium">{{ form.pay_rate.errors.0 }}</p>{% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Emergency Contact Card -->
+                <div class="hr-tile p-6">
+                    <div class="pb-3 mb-4 border-b border-slate-100">
+                        <h2 class="font-bold text-slate-900 text-sm flex items-center gap-2">
+                            <i class="fa-solid fa-phone-volume text-[#0B6B3A]"></i> Emergency Contact
+                        </h2>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-xs font-semibold text-slate-600 mb-1.5 block">Contact Name</label>
+                            {{ form.emergency_contact_name }}
+                            {% if form.emergency_contact_name.errors %}<p class="text-red-600 text-xs mt-1 font-medium">{{ form.emergency_contact_name.errors.0 }}</p>{% endif %}
+                        </div>
+
+                        <div>
+                            <label class="text-xs font-semibold text-slate-600 mb-1.5 block">Contact Phone</label>
+                            {{ form.emergency_contact_phone }}
+                            {% if form.emergency_contact_phone.errors %}<p class="text-red-600 text-xs mt-1 font-medium">{{ form.emergency_contact_phone.errors.0 }}</p>{% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Submit Action Bar -->
+                <div class="pt-2">
+                    <button type="submit" class="w-full bg-[#0B6B3A] hover:bg-[#074726] text-white font-bold py-3.5 px-6 rounded-2xl shadow-lg shadow-[#0B6B3A]/20 transition-all duration-200 hover:-translate-y-0.5 flex items-center justify-center gap-2 text-sm cursor-pointer">
+                        <i class="fa-solid fa-user-plus"></i> Create Staff Account
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </form>
+</div>
+
+<!-- Inline Form Field Styling Script -->
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const inputs = document.querySelectorAll('form input:not([type="checkbox"]):not([type="radio"]), form select, form textarea');
+        inputs.forEach(input => {
+            if (!input.classList.contains('hr-filter-input')) {
+                input.classList.add('hr-filter-input');
+            }
+        });
+    });
+</script>
+{% endblock %}

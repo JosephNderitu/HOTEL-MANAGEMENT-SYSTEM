@@ -173,20 +173,27 @@ class ShiftAssignmentForm(forms.ModelForm):
         self.fields['staff'].queryset = User.objects.filter(is_staff=True).order_by('first_name')
 
 
+FIELD_CLASS = 'hr-input'
+
 class PayrollForm(forms.ModelForm):
     class Meta:
         model = PayrollRecord
-        fields = ['period_month', 'period_year', 'basic_salary', 'allowances_total', 'allowances_notes', 'deductions_total', 'deductions_notes', 'overtime_hours', 'overtime_rate']
+        fields = [
+            'period_month', 'period_year', 'basic_salary', 
+            'allowances_total', 'allowances_notes', 
+            'deductions_total', 'deductions_notes', 
+            'overtime_hours', 'overtime_rate'
+        ]
         widgets = {
-            'period_month': forms.NumberInput(attrs={'class': FIELD_CLASS, 'min': 1, 'max': 12}),
-            'period_year': forms.NumberInput(attrs={'class': FIELD_CLASS}),
-            'basic_salary': forms.NumberInput(attrs={'class': FIELD_CLASS, 'step': '0.01'}),
-            'allowances_total': forms.NumberInput(attrs={'class': FIELD_CLASS, 'step': '0.01'}),
+            'period_month': forms.NumberInput(attrs={'class': FIELD_CLASS, 'min': 1, 'max': 12, 'id': 'id_period_month'}),
+            'period_year': forms.NumberInput(attrs={'class': FIELD_CLASS, 'id': 'id_period_year'}),
+            'basic_salary': forms.NumberInput(attrs={'class': FIELD_CLASS, 'step': '0.01', 'id': 'id_basic_salary'}),
+            'allowances_total': forms.NumberInput(attrs={'class': FIELD_CLASS, 'step': '0.01', 'id': 'id_allowances_total'}),
             'allowances_notes': forms.TextInput(attrs={'class': FIELD_CLASS, 'placeholder': 'e.g. Housing, transport'}),
-            'deductions_total': forms.NumberInput(attrs={'class': FIELD_CLASS, 'step': '0.01'}),
+            'deductions_total': forms.NumberInput(attrs={'class': FIELD_CLASS, 'step': '0.01', 'id': 'id_deductions_total'}),
             'deductions_notes': forms.TextInput(attrs={'class': FIELD_CLASS, 'placeholder': 'e.g. NHIF, NSSF, PAYE'}),
-            'overtime_hours': forms.NumberInput(attrs={'class': FIELD_CLASS, 'step': '0.01'}),
-            'overtime_rate': forms.NumberInput(attrs={'class': FIELD_CLASS, 'step': '0.01'}),
+            'overtime_hours': forms.NumberInput(attrs={'class': FIELD_CLASS, 'step': '0.01', 'id': 'id_overtime_hours'}),
+            'overtime_rate': forms.NumberInput(attrs={'class': FIELD_CLASS, 'step': '0.01', 'id': 'id_overtime_rate'}),
         }
 
 

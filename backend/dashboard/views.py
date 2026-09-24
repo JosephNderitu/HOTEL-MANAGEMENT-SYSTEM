@@ -3376,39 +3376,93 @@ def hrm_leave_review(request, leave_id, action):
 def hrm_payroll_list(request):
     period_month = int(request.GET.get('month', timezone.localdate().month))
     period_year = int(request.GET.get('year', timezone.localdate().year))
-    records = PayrollRecord.objects.filter(period_month=period_month, period_year=period_year).select_related('staff')
-    already = set(records.values_list('staff_id', flat=True))
-    staff_without = StaffProfile.objects.exclude(user_id__in=already).select_related('user')
+
+    # Updated related lookup: 'staff__staff_profile'
+    records_qs = PayrollRecord.objects.filter(
+        period_month=period_month, 
+        period_year=period_year
+    ).select_related('staff', 'staff__staff_profile').order_by('-generated_at')
+
+    # Exclude already generated staff
+    already_processed_ids = records_qs.values_list('staff_id', flat=True)
+    pending_qs = StaffProfile.objects.exclude(
+        user_id__in=already_processed_ids
+    ).select_related('user').order_by('user__first_name')
+
+    # Paginate both sets
+    records_page = Paginator(records_qs, 10).get_page(request.GET.get('records_page', 1))
+    pending_page = Paginator(pending_qs, 10).get_page(request.GET.get('pending_page', 1))
+
     return render(request, 'dashboard/hrm_payroll_list.html', {
-        'records': records, 'staff_without': staff_without, 'period_month': period_month, 'period_year': period_year,
+        'records_page': records_page,
+        'pending_page': pending_page,
+        'period_month': period_month,
+        'period_year': period_year,
     })
 
 @hrm_manager_required
 def hrm_payroll_create(request, user_id):
     staff_user = get_object_or_404(User, id=user_id)
     profile = getattr(staff_user, 'staff_profile', None)
+    
     if request.method == 'POST':
         form = PayrollForm(request.POST)
         if form.is_valid():
             record = form.save(commit=False)
             record.staff = staff_user
             record.generated_by = request.user
+            record.status = 'draft'  # Explicitly maintain draft status
             record.save()
-            messages.success(request, f"Payroll record created for {staff_user.get_full_name() or staff_user.username}.")
+            messages.success(request, f"Payroll draft created for {staff_user.get_full_name() or staff_user.username}.")
             return redirect('dashboard:hrm_payroll_list')
     else:
         today = timezone.localdate()
-        form = PayrollForm(initial={'period_month': today.month, 'period_year': today.year, 'basic_salary': profile.pay_rate if profile else 0})
-    return render(request, 'dashboard/hrm_payroll_create.html', {'form': form, 'staff_user': staff_user})
+        form = PayrollForm(initial={
+            'period_month': today.month, 
+            'period_year': today.year, 
+            'basic_salary': profile.pay_rate if profile else 0
+        })
+        
+    return render(request, 'dashboard/hrm_payroll_create.html', {
+        'form': form, 
+        'staff_user': staff_user,
+        'is_edit': False,
+    })
+
+@hrm_manager_required
+def hrm_payroll_edit(request, record_id):
+    # Only allow editing if status is still 'draft'
+    record = get_object_or_404(PayrollRecord, id=record_id, status='draft')
+    staff_user = record.staff
+
+    if request.method == 'POST':
+        # Bind request.POST to existing record instance
+        form = PayrollForm(request.POST, instance=record)
+        if form.is_valid():
+            updated_record = form.save(commit=False)
+            updated_record.status = 'draft'  # Ensure status never shifts to finalized on edit
+            updated_record.save()
+            messages.success(request, f"Payroll draft updated for {staff_user.get_full_name() or staff_user.username}.")
+            return redirect('dashboard:hrm_payroll_list')
+    else:
+        form = PayrollForm(instance=record)
+
+    return render(request, 'dashboard/hrm_payroll_create.html', {
+        'form': form,
+        'staff_user': staff_user,
+        'record': record,
+        'is_edit': True,
+    })
 
 @hrm_manager_required
 def hrm_payroll_finalize(request, record_id):
     if request.method != 'POST':
         return redirect('dashboard:hrm_payroll_list')
+    
     record = get_object_or_404(PayrollRecord, id=record_id, status='draft')
     record.status = 'finalized'
     record.save(update_fields=['status'])
-    messages.success(request, "Payroll finalized, payslip is now available to the staff member.")
+    messages.success(request, f"Payroll finalized for {record.staff.get_full_name() or record.staff.username}.")
     return redirect('dashboard:hrm_payroll_list')
 
 @hrm_manager_required

@@ -118,6 +118,7 @@ urlpatterns = [
     path('hrm/leave/<int:leave_id>/<str:action>/', views.hrm_leave_review, name='hrm_leave_review'),
     path('hrm/payroll/', views.hrm_payroll_list, name='hrm_payroll_list'),
     path('hrm/payroll/<int:user_id>/create/', views.hrm_payroll_create, name='hrm_payroll_create'),
+    path('hrm/payroll/edit/<int:record_id>/', views.hrm_payroll_edit, name='hrm_payroll_edit'),
     path('hrm/payroll/<int:record_id>/finalize/', views.hrm_payroll_finalize, name='hrm_payroll_finalize'),
     path('hrm/performance/', views.hrm_performance_list, name='hrm_performance_list'),
     path('hrm/performance/<int:user_id>/create/', views.hrm_performance_create, name='hrm_performance_create'),
