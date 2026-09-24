@@ -1,76 +1,344 @@
 {% extends "dashboard/base_dashboard.html" %}
+
 {% block dashboard_content %}
 {% include "dashboard/_hrm_styles.html" %}
-<a href="{% url 'dashboard:hrm' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; HRM</a>
-<h1 class="text-xl font-bold text-black mt-1 mb-6 flex items-center gap-2"><i class="fa-solid fa-envelope-open-text text-[#0B6B3A]"></i> Leave Requests</h1>
 
-{% if messages %}{% for message in messages %}<div class="{% if message.tags == 'error' %}bg-red-50 border-red-300 text-red-700{% else %}bg-[#0B6B3A]/10 border-[#0B6B3A] text-[#0B6B3A]{% endif %} border text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>{% endfor %}{% endif %}
+<style>
+    .hr-tile {
+        background-color: #ffffff !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 1rem !important;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
+    }
 
-<div class="flex gap-2 mb-5">
-    <a href="?status=pending" class="text-xs px-4 py-2 rounded-full {% if status_filter == 'pending' %}bg-[#0B6B3A] text-white{% else %}border border-gray-300 text-gray-600{% endif %}">Pending</a>
-    <a href="?status=approved" class="text-xs px-4 py-2 rounded-full {% if status_filter == 'approved' %}bg-[#0B6B3A] text-white{% else %}border border-gray-300 text-gray-600{% endif %}">Approved</a>
-    <a href="?status=rejected" class="text-xs px-4 py-2 rounded-full {% if status_filter == 'rejected' %}bg-[#0B6B3A] text-white{% else %}border border-gray-300 text-gray-600{% endif %}">Rejected</a>
-</div>
+    .hr-filter-input {
+        background-color: #ffffff !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 0.75rem !important;
+        padding: 0.5rem 0.75rem !important;
+        font-size: 0.8125rem !important;
+        color: #0f172a !important;
+        outline: none !important;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
 
-<div class="space-y-3">
-{% for r in requests %}
-<div class="hr-tile rounded-2xl p-4">
-    <div class="flex items-start justify-between flex-wrap gap-3">
-        <div class="flex items-start gap-3">
-            <div class="hr-avatar mt-0.5">{{ r.staff.get_full_name|default:r.staff.username|slice:":2"|upper }}</div>
-            <div>
-                <p class="font-semibold text-sm text-black">
-                    {{ r.staff.get_full_name|default:r.staff.username }}
-                    {% if r.staff.staff_profile %}<span class="text-xs text-gray-400 font-normal">— {{ r.staff.staff_profile.position|default:r.staff.staff_profile.get_department_display }}</span>{% endif %}
-                </p>
-                <p class="text-xs text-gray-500 mt-0.5">
-                    <span class="hr-badge bg-gray-100 text-gray-700">{{ r.leave_type.name }}</span>
-                    {{ r.start_date|date:"M d" }} &ndash; {{ r.end_date|date:"M d, Y" }} ({{ r.days_count }}d)
-                </p>
-                {% if r.reason %}<p class="text-xs text-gray-400 mt-1">"{{ r.reason }}"</p>{% endif %}
-                {% if r.status == 'rejected' and r.rejection_reason %}<p class="text-xs text-red-500 mt-1">Rejected: "{{ r.rejection_reason }}"</p>{% endif %}
-                {% if r.staff_balances %}
-                <div class="flex flex-wrap gap-1.5 mt-2">
-                    {% for b in r.staff_balances %}
-                    <span class="hr-balance-chip {% if b.remaining_days <= 2 %}hr-balance-low{% endif %}">{{ b.leave_type.name }}: {{ b.remaining_days }}/{{ b.allocated_days }}</span>
-                    {% endfor %}
-                </div>
-                {% endif %}
+    .hr-filter-input-iconic {
+        padding-left: 2.35rem !important;
+    }
+
+    .hr-filter-input:focus {
+        border-color: #0B6B3A !important;
+        box-shadow: 0 0 0 3px rgba(11, 107, 58, 0.1) !important;
+    }
+
+    .hr-balance-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.5rem;
+        font-size: 0.7rem;
+        font-weight: 700;
+        background-color: #f1f5f9;
+        color: #334155;
+        border: 1px solid #e2e8f0;
+    }
+
+    .hr-balance-low {
+        background-color: #fef2f2 !important;
+        color: #991b1b !important;
+        border-color: #fecaca !important;
+    }
+</style>
+
+<div class="space-y-6">
+    <!-- Back Navigation -->
+    <div>
+        <a href="{% url 'dashboard:hrm' %}" class="inline-flex items-center gap-2 text-[#0B6B3A] hover:text-[#074726] text-xs font-bold uppercase tracking-wider transition-colors">
+            <i class="fa-solid fa-arrow-left text-xs"></i> Back to HRM Overview
+        </a>
+    </div>
+
+    <!-- Hero Banner with Key Metrics -->
+    <div class="hr-hero-card rounded-2xl p-6 text-white flex flex-col md:flex-row md:items-center justify-between gap-6 bg-gradient-to-r from-[#0B6B3A] to-[#074726] shadow-lg">
+        <div>
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-white/10 text-[#C9A227] border border-white/15 mb-3">
+                <i class="fa-solid fa-plane-departure text-[11px]"></i> Workforce Mobility
+            </span>
+            <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight flex items-center gap-3">
+                <i class="fa-solid fa-envelope-open-text text-[#C9A227]"></i> Leave Management
+            </h1>
+            <p class="text-white/80 text-sm mt-1">
+                Review, approve, or reject employee leave applications and track leave balances.
+            </p>
+        </div>
+        
+        <!-- Summary Counters -->
+        <div class="flex items-center gap-3 flex-wrap">
+            <div class="bg-white/10 border border-white/15 px-4 py-2.5 rounded-xl text-center min-w-[95px]">
+                <span class="block text-[10px] text-white/70 font-bold uppercase">Pending</span>
+                <span class="text-xl font-black text-[#C9A227]">{{ metrics.pending }}</span>
+            </div>
+            <div class="bg-white/10 border border-white/15 px-4 py-2.5 rounded-xl text-center min-w-[95px]">
+                <span class="block text-[10px] text-white/70 font-bold uppercase">Approved</span>
+                <span class="text-xl font-black text-emerald-300">{{ metrics.approved }}</span>
+            </div>
+            <div class="bg-white/10 border border-white/15 px-4 py-2.5 rounded-xl text-center min-w-[95px]">
+                <span class="block text-[10px] text-white/70 font-bold uppercase">Rejected</span>
+                <span class="text-xl font-black text-red-300">{{ metrics.rejected }}</span>
             </div>
         </div>
-
-        {% if r.status == 'pending' %}
-        <div class="flex gap-2 shrink-0">
-            <form method="post" action="{% url 'dashboard:hrm_leave_review' r.id 'approve' %}">{% csrf_token %}<button class="text-xs font-semibold bg-[#0B6B3A] text-white px-4 py-2 rounded-full hover:bg-[#074726] inline-flex items-center gap-1.5"><i class="fa-solid fa-check"></i> Approve</button></form>
-            <button type="button" onclick="rejectLeave({{ r.id }})" class="text-xs font-semibold border border-red-400 text-red-500 px-4 py-2 rounded-full hover:bg-red-50 inline-flex items-center gap-1.5"><i class="fa-solid fa-xmark"></i> Reject</button>
-            <form id="reject-form-{{ r.id }}" method="post" action="{% url 'dashboard:hrm_leave_review' r.id 'reject' %}" class="hidden">
-                {% csrf_token %}<input type="hidden" name="rejection_reason" id="reject-reason-{{ r.id }}">
-            </form>
-        </div>
-        {% else %}
-        <span class="hr-badge {% if r.status == 'approved' %}bg-[#0B6B3A] text-white{% else %}bg-red-500 text-white{% endif %}">{{ r.get_status_display }}</span>
-        {% endif %}
     </div>
-</div>
-{% empty %}<p class="text-gray-400 text-center py-10">Nothing here.</p>{% endfor %}
+
+    <!-- Django Flash Messages -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="flex items-center gap-3 border text-xs font-semibold rounded-xl p-4 {% if message.tags == 'error' %}bg-red-50 border-red-200 text-red-800{% else %}bg-emerald-50 border-emerald-200 text-emerald-800{% endif %}">
+                <i class="fa-solid {% if message.tags == 'error' %}fa-circle-exclamation text-red-500{% else %}fa-circle-check text-emerald-600{% endif %}"></i>
+                <span>{{ message }}</span>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <!-- Filter & Toolbar Panel -->
+    <div class="hr-tile rounded-2xl p-5 space-y-4">
+        <!-- Tab Quick-Filter Links -->
+        <div class="flex items-center justify-between border-b border-slate-100 pb-3 flex-wrap gap-3">
+            <div class="flex items-center gap-2">
+                <a href="?status=pending" class="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 {% if status_filter == 'pending' %}bg-[#0B6B3A] text-white shadow-sm{% else %}bg-slate-100 text-slate-600 hover:bg-slate-200{% endif %}">
+                    <i class="fa-solid fa-clock text-[10px]"></i> Pending
+                    <span class="px-1.5 py-0.5 rounded-full text-[10px] {% if status_filter == 'pending' %}bg-white/20 text-white{% else %}bg-slate-200 text-slate-700{% endif %}">{{ metrics.pending }}</span>
+                </a>
+                <a href="?status=approved" class="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 {% if status_filter == 'approved' %}bg-[#0B6B3A] text-white shadow-sm{% else %}bg-slate-100 text-slate-600 hover:bg-slate-200{% endif %}">
+                    <i class="fa-solid fa-circle-check text-[10px]"></i> Approved
+                    <span class="px-1.5 py-0.5 rounded-full text-[10px] {% if status_filter == 'approved' %}bg-white/20 text-white{% else %}bg-slate-200 text-slate-700{% endif %}">{{ metrics.approved }}</span>
+                </a>
+                <a href="?status=rejected" class="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 {% if status_filter == 'rejected' %}bg-[#0B6B3A] text-white shadow-sm{% else %}bg-slate-100 text-slate-600 hover:bg-slate-200{% endif %}">
+                    <i class="fa-solid fa-circle-xmark text-[10px]"></i> Rejected
+                    <span class="px-1.5 py-0.5 rounded-full text-[10px] {% if status_filter == 'rejected' %}bg-white/20 text-white{% else %}bg-slate-200 text-slate-700{% endif %}">{{ metrics.rejected }}</span>
+                </a>
+                <a href="?status=all" class="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 {% if status_filter == 'all' %}bg-[#0B6B3A] text-white shadow-sm{% else %}bg-slate-100 text-slate-600 hover:bg-slate-200{% endif %}">
+                    <i class="fa-solid fa-list text-[10px]"></i> All Requests
+                    <span class="px-1.5 py-0.5 rounded-full text-[10px] {% if status_filter == 'all' %}bg-white/20 text-white{% else %}bg-slate-200 text-slate-700{% endif %}">{{ metrics.total }}</span>
+                </a>
+            </div>
+
+            <button type="button" onclick="resetFilters()" class="text-xs text-slate-500 hover:text-slate-800 font-bold flex items-center gap-1.5 cursor-pointer">
+                <i class="fa-solid fa-rotate-left"></i> Clear Filters
+            </button>
+        </div>
+
+        <!-- Filter Form with fixed icon alignment -->
+        <form method="get" id="filterForm" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+            <input type="hidden" name="status" value="{{ status_filter }}">
+
+            <!-- Search Field -->
+            <div class="space-y-1">
+                <label class="block text-[11px] font-bold text-slate-500 uppercase">Search Staff / Reason</label>
+                <div class="relative flex items-center">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3.5 text-slate-400 text-xs pointer-events-none"></i>
+                    <input type="text" name="q" value="{{ search_query }}" placeholder="Name, username or keyword..." class="hr-filter-input hr-filter-input-iconic w-full">
+                </div>
+            </div>
+
+            <!-- Start Date -->
+            <div class="space-y-1">
+                <label class="block text-[11px] font-bold text-slate-500 uppercase">From Date</label>
+                <input type="date" name="start_date" value="{{ start_date }}" class="hr-filter-input w-full">
+            </div>
+
+            <!-- End Date -->
+            <div class="space-y-1">
+                <label class="block text-[11px] font-bold text-slate-500 uppercase">To Date</label>
+                <input type="date" name="end_date" value="{{ end_date }}" class="hr-filter-input w-full">
+            </div>
+
+            <!-- Specific Month -->
+            <div class="space-y-1">
+                <label class="block text-[11px] font-bold text-slate-500 uppercase">By Month</label>
+                <input type="month" name="month" value="{{ selected_month }}" class="hr-filter-input w-full">
+            </div>
+
+            <!-- Specific Week -->
+            <div class="space-y-1">
+                <label class="block text-[11px] font-bold text-slate-500 uppercase">By Week</label>
+                <div class="flex gap-2">
+                    <input type="week" name="week" value="{{ selected_week }}" class="hr-filter-input w-full">
+                    <button type="submit" class="bg-[#0B6B3A] hover:bg-[#074726] text-white text-xs font-bold px-4 py-2 rounded-xl transition-all cursor-pointer shrink-0">
+                        <i class="fa-solid fa-filter"></i>
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- Request Cards Feed -->
+    <div class="space-y-3">
+        {% for r in requests %}
+        <div class="hr-tile rounded-2xl p-5 hover:border-slate-300 transition-all">
+            <div class="flex items-start justify-between flex-wrap md:flex-nowrap gap-4">
+                <!-- User Profile & Leave Details -->
+                <div class="flex items-start gap-4">
+                    <div class="w-10 h-10 rounded-full bg-[#0B6B3A]/10 text-[#0B6B3A] border border-[#0B6B3A]/20 font-extrabold text-sm flex items-center justify-center shrink-0">
+                        {{ r.staff.get_full_name|default:r.staff.username|slice:":2"|upper }}
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <h3 class="font-bold text-slate-900 text-sm">
+                                {{ r.staff.get_full_name|default:r.staff.username }}
+                            </h3>
+                            {% if r.staff.staff_profile %}
+                                <span class="text-xs text-slate-500 font-medium bg-slate-100 px-2 py-0.5 rounded-md">
+                                    {{ r.staff.staff_profile.position|default:r.staff.staff_profile.get_department_display }}
+                                </span>
+                            {% endif %}
+                        </div>
+
+                        <!-- Leave Type & Dates -->
+                        <div class="flex items-center gap-2 text-xs text-slate-600 flex-wrap">
+                            <span class="inline-flex items-center gap-1 font-bold text-slate-800 bg-slate-100 px-2.5 py-0.5 rounded-lg border border-slate-200">
+                                <i class="fa-solid fa-tag text-[10px] text-[#0B6B3A]"></i> {{ r.leave_type.name }}
+                            </span>
+                            <span class="font-semibold text-slate-700">
+                                <i class="fa-regular fa-calendar-check text-slate-400"></i> {{ r.start_date|date:"M d" }} &ndash; {{ r.end_date|date:"M d, Y" }}
+                            </span>
+                            <span class="font-black text-[#0B6B3A] bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 text-[11px]">
+                                {{ r.days_count }} Day{% if r.days_count > 1 %}s{% endif %}
+                            </span>
+                        </div>
+
+                        {% if r.reason %}
+                            <p class="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100 italic">
+                                "<span class="text-slate-700 font-medium">{{ r.reason }}</span>"
+                            </p>
+                        {% endif %}
+
+                        {% if r.status == 'rejected' and r.rejection_reason %}
+                            <p class="text-xs text-red-600 bg-red-50 p-2.5 rounded-xl border border-red-200 font-medium flex items-center gap-1.5">
+                                <i class="fa-solid fa-triangle-exclamation"></i> Rejection Reason: "{{ r.rejection_reason }}"
+                            </p>
+                        {% endif %}
+
+                        {% if r.staff_balances %}
+                        <div class="pt-1">
+                            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Leave Balances Overview:</p>
+                            <div class="flex flex-wrap gap-1.5">
+                                {% for b in r.staff_balances %}
+                                    <span class="hr-balance-chip {% if b.remaining_days <= 2 %}hr-balance-low{% endif %}">
+                                        <i class="fa-solid fa-chart-pie text-[9px] opacity-70"></i> {{ b.leave_type.name }}: <b class="text-slate-900">{{ b.remaining_days }}</b>/{{ b.allocated_days }}d
+                                    </span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Action / Status -->
+                <div class="shrink-0 flex items-center gap-2 self-start md:self-center">
+                    {% if r.status == 'pending' %}
+                        <form method="post" action="{% url 'dashboard:hrm_leave_review' r.id 'approve' %}">
+                            {% csrf_token %}
+                            <button type="submit" class="text-xs font-bold bg-[#0B6B3A] text-white px-4 py-2 rounded-xl hover:bg-[#074726] transition-all shadow-sm flex items-center gap-1.5 cursor-pointer">
+                                <i class="fa-solid fa-check"></i> Approve
+                            </button>
+                        </form>
+
+                        <button type="button" onclick="rejectLeave({{ r.id }})" class="text-xs font-bold bg-white border border-red-300 text-red-600 px-4 py-2 rounded-xl hover:bg-red-50 transition-all flex items-center gap-1.5 cursor-pointer">
+                            <i class="fa-solid fa-xmark"></i> Reject
+                        </button>
+
+                        <form id="reject-form-{{ r.id }}" method="post" action="{% url 'dashboard:hrm_leave_review' r.id 'reject' %}" class="hidden">
+                            {% csrf_token %}
+                            <input type="hidden" name="rejection_reason" id="reject-reason-{{ r.id }}">
+                        </form>
+                    {% elif r.status == 'approved' %}
+                        <span class="inline-flex items-center gap-1.5 text-xs font-extrabold px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <i class="fa-solid fa-circle-check text-emerald-600"></i> Approved
+                        </span>
+                    {% else %}
+                        <span class="inline-flex items-center gap-1.5 text-xs font-extrabold px-3 py-1.5 rounded-full bg-red-50 text-red-700 border border-red-200">
+                            <i class="fa-solid fa-circle-xmark text-red-600"></i> Rejected
+                        </span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="hr-tile rounded-2xl p-12 text-center space-y-3">
+            <div class="w-12 h-12 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto text-xl">
+                <i class="fa-solid fa-inbox"></i>
+            </div>
+            <h3 class="font-extrabold text-slate-800 text-base">No Leave Requests Found</h3>
+            <p class="text-xs text-slate-400 max-w-sm mx-auto">There are no leave requests matching your criteria.</p>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Pagination Toolbar -->
+    {% if requests.has_other_pages %}
+    <div class="hr-tile rounded-2xl p-4 flex items-center justify-between flex-wrap gap-3">
+        <p class="text-xs text-slate-500 font-medium">
+            Showing <span class="font-bold text-slate-800">{{ requests.start_index }}</span> to <span class="font-bold text-slate-800">{{ requests.end_index }}</span> of <span class="font-bold text-slate-800">{{ requests.paginator.count }}</span> total requests
+        </p>
+
+        <div class="flex items-center gap-1">
+            {% if requests.has_previous %}
+                <a href="?page=1{% if extra_params %}&{{ extra_params }}{% endif %}" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all">
+                    <i class="fa-solid fa-angles-left text-[10px]"></i> First
+                </a>
+                <a href="?page={{ requests.previous_page_number }}{% if extra_params %}&{{ extra_params }}{% endif %}" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all">
+                    <i class="fa-solid fa-chevron-left text-[10px]"></i> Prev
+                </a>
+            {% endif %}
+
+            <span class="px-3 py-1.5 rounded-lg bg-[#0B6B3A] text-white text-xs font-extrabold shadow-sm">
+                Page {{ requests.number }} of {{ requests.paginator.num_pages }}
+            </span>
+
+            {% if requests.has_next %}
+                <a href="?page={{ requests.next_page_number }}{% if extra_params %}&{{ extra_params }}{% endif %}" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all">
+                    Next <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                </a>
+                <a href="?page={{ requests.paginator.num_pages }}{% if extra_params %}&{{ extra_params }}{% endif %}" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all">
+                    Last <i class="fa-solid fa-angles-right text-[10px]"></i>
+                </a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
 </div>
 
 <script>
-function rejectLeave(id) {
-    Swal.fire({
-        title: 'Reject Leave Request',
-        input: 'textarea',
-        inputPlaceholder: 'Explain why this request is being rejected (e.g. days exceed remaining balance)...',
-        showCancelButton: true,
-        confirmButtonText: 'Reject',
-        confirmButtonColor: '#dc2626',
-        inputValidator: function (value) { if (!value) return 'A reason is required'; }
-    }).then(function (result) {
-        if (result.isConfirmed) {
-            document.getElementById('reject-reason-' + id).value = result.value;
-            document.getElementById('reject-form-' + id).submit();
-        }
-    });
-}
+    function rejectLeave(id) {
+        Swal.fire({
+            title: 'Reject Leave Request',
+            input: 'textarea',
+            inputPlaceholder: 'Explain why this request is being rejected...',
+            showCancelButton: true,
+            confirmButtonText: 'Confirm Rejection',
+            confirmButtonColor: '#dc2626',
+            cancelButtonText: 'Cancel',
+            customClass: {
+                confirmButton: 'text-xs font-bold px-4 py-2 rounded-xl',
+                cancelButton: 'text-xs font-bold px-4 py-2 rounded-xl'
+            },
+            inputValidator: function (value) { 
+                if (!value || !value.trim()) {
+                    return 'A rejection reason is required for administrative tracking.'; 
+                }
+            }
+        }).then(function (result) {
+            if (result.isConfirmed) {
+                document.getElementById('reject-reason-' + id).value = result.value;
+                document.getElementById('reject-form-' + id).submit();
+            }
+        });
+    }
+
+    function resetFilters() {
+        window.location.href = "{% url 'dashboard:hrm_leave_requests' %}?status=pending";
+    }
 </script>
 {% endblock %}

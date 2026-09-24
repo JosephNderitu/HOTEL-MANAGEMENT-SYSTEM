@@ -43,6 +43,7 @@ from hrm.services import is_within_geofence
 import calendar as cal_module
 
 from django.core.exceptions import ValidationError
+from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 
 COURSE_PRIORITY = {'starter': 0, 'main': 1, 'dessert': 2}
 
@@ -3399,6 +3400,122 @@ def hrm_payroll_list(request):
         'period_month': period_month,
         'period_year': period_year,
     })
+
+@hrm_manager_required
+def hrm_leave_requests(request):
+  status_filter = request.GET.get("status", "pending")
+  search_query = request.GET.get("q", "").strip()
+  start_date = request.GET.get("start_date", "")
+  end_date = request.GET.get("end_date", "")
+  selected_month = request.GET.get("month", "")
+  selected_week = request.GET.get("week", "")
+  page_number = request.GET.get("page", 1)
+
+  today = timezone.localdate()
+
+  # Base Queryset
+  base_qs = LeaveRequest.objects.select_related(
+      "staff", "leave_type", "staff__staff_profile"
+  )
+
+  # Counters computed before filtering current list tab
+  metrics = {
+      "total": base_qs.count(),
+      "pending": base_qs.filter(status="pending").count(),
+      "approved": base_qs.filter(status="approved").count(),
+      "rejected": base_qs.filter(status="rejected").count(),
+  }
+
+  requests_qs = base_qs.order_by("-created_at")
+
+  # Apply Status Filter
+  if status_filter and status_filter != "all":
+    requests_qs = requests_qs.filter(status=status_filter)
+
+  # Apply Search Filter
+  if search_query:
+    requests_qs = requests_qs.filter(
+        Q(staff__first_name__icontains=search_query)
+        | Q(staff__last_name__icontains=search_query)
+        | Q(staff__username__icontains=search_query)
+        | Q(reason__icontains=search_query)
+    )
+
+  # Apply Date Range
+  if start_date:
+    try:
+      parsed_start = datetime.strptime(start_date, "%Y-%m-%d").date()
+      requests_qs = requests_qs.filter(start_date__gte=parsed_start)
+    except ValueError:
+      pass
+
+  if end_date:
+    try:
+      parsed_end = datetime.strptime(end_date, "%Y-%m-%d").date()
+      requests_qs = requests_qs.filter(end_date__lte=parsed_end)
+    except ValueError:
+      pass
+
+  # Apply Month Filter
+  if selected_month:
+    try:
+      m_year, m_month = map(int, selected_month.split("-"))
+      requests_qs = requests_qs.filter(
+          start_date__year=m_year, start_date__month=m_month
+      )
+    except ValueError:
+      pass
+
+  # Apply Week Filter
+  if selected_week:
+    try:
+      w_year, w_week = map(int, selected_week.split("-W"))
+      requests_qs = requests_qs.filter(
+          start_date__year=w_year, start_date__week=w_week
+      )
+    except ValueError:
+      pass
+
+  # Pagination (10 requests per page)
+  paginator = Paginator(requests_qs, 10)
+  try:
+    requests_page = paginator.page(page_number)
+  except PageNotAnInteger:
+    requests_page = paginator.page(1)
+  except EmptyPage:
+    requests_page = paginator.page(paginator.num_pages)
+
+  # Preload Leave Balances for page items
+  staff_ids = [r.staff_id for r in requests_page]
+  balances_by_staff = {}
+  if staff_ids:
+    for b in LeaveBalance.objects.filter(
+        year=today.year, staff_id__in=staff_ids
+    ).select_related("leave_type"):
+      balances_by_staff.setdefault(b.staff_id, []).append(b)
+
+  for r in requests_page:
+    r.staff_balances = balances_by_staff.get(r.staff_id, [])
+
+  # Preserve search & filter parameters for pagination links
+  query_params = request.GET.copy()
+  if "page" in query_params:
+    del query_params["page"]
+  extra_params = query_params.urlencode()
+
+  context = {
+      "requests": requests_page,
+      "status_filter": status_filter,
+      "search_query": search_query,
+      "start_date": start_date,
+      "end_date": end_date,
+      "selected_month": selected_month,
+      "selected_week": selected_week,
+      "metrics": metrics,
+      "extra_params": extra_params,
+  }
+
+  return render(request, "dashboard/hrm_leave_requests.html", context)
 
 @hrm_manager_required
 def hrm_payroll_create(request, user_id):
