@@ -2748,15 +2748,11 @@ def hrm_my_attendance(request):
     return render(request, 'dashboard/hrm_my_attendance.html', context)
 
 def _compute_shift_display(a, attendance_by_date, leave_by_date, off_weekdays, today):
-    if a.status == 'swapped':
-        return 'swapped', 'Swapped', ''
     lr = leave_by_date.get(a.date)
-    if a.status == 'cancelled':
-        if lr:
-            return 'on_leave', 'On Leave', lr.leave_type.name
-        return 'cancelled', 'Cancelled', ''
     if lr:
         return 'on_leave', 'On Leave', lr.leave_type.name
+    if a.status == 'cancelled':
+        return 'cancelled', 'Cancelled', ''
     if a.date.weekday() in off_weekdays:
         return 'weekly_off', 'Weekly Off', ''
     if a.date >= today:
@@ -2766,6 +2762,7 @@ def _compute_shift_display(a, attendance_by_date, leave_by_date, off_weekdays, t
         detail = f"Late by {record.late_minutes}m" if record.is_late else ''
         return 'completed', 'Completed', detail
     return 'absent', 'Absent', ''
+
 
 @login_required
 def hrm_my_shifts(request):
@@ -2777,7 +2774,9 @@ def hrm_my_shifts(request):
     start_date = request.GET.get('start_date', '')
     end_date = request.GET.get('end_date', '')
 
-    assignments_qs = ShiftAssignment.objects.filter(staff=request.user).select_related('shift')
+    assignments_qs = ShiftAssignment.objects.filter(staff=request.user).select_related(
+        'shift', 'previous_shift', 'swap_partner'
+    )
 
     if start_date and end_date:
         assignments_qs = assignments_qs.filter(date__range=[start_date, end_date])
@@ -2798,7 +2797,6 @@ def hrm_my_shifts(request):
     today_attendance = AttendanceRecord.objects.filter(staff=request.user, date=today).first()
     is_currently_clocked_in = bool(today_attendance and today_attendance.clock_in_time and not today_attendance.clock_out_time)
 
-    # ---- Compute the REAL status for every shift: attended, absent, on leave, or weekly off ----
     all_dates = {a.date for a in all_items}
     attendance_by_date = {
         rec.date: rec for rec in AttendanceRecord.objects.filter(staff=request.user, date__in=all_dates)
@@ -2821,8 +2819,8 @@ def hrm_my_shifts(request):
         a.display_status, a.display_label, a.display_detail = _compute_shift_display(
             a, attendance_by_date, leave_by_date, off_weekdays, today
         )
+        a.is_swapped = bool(a.previous_shift_id or a.swap_partner_id)
 
-    # ---- Status filter now uses the computed (real) status, not the raw DB field ----
     if status_filter == 'on_shift':
         all_items = [a for a in all_items if a.date == today and a.display_status not in ('cancelled', 'on_leave')]
     elif status_filter == 'scheduled':
@@ -2834,7 +2832,7 @@ def hrm_my_shifts(request):
     elif status_filter == 'on_leave':
         all_items = [a for a in all_items if a.display_status == 'on_leave']
     elif status_filter == 'swapped':
-        all_items = [a for a in all_items if a.display_status == 'swapped']
+        all_items = [a for a in all_items if a.is_swapped]
     elif status_filter == 'cancelled':
         all_items = [a for a in all_items if a.display_status == 'cancelled']
 
@@ -2845,17 +2843,10 @@ def hrm_my_shifts(request):
     my_swaps = ShiftSwapRequest.objects.filter(requested_by=request.user).order_by('-created_at')[:10]
 
     context = {
-        'page_obj': page_obj,
-        'paginator': paginator,
-        'my_swaps': my_swaps,
-        'today': today,
-        'now_time': now_time,
-        'is_currently_clocked_in': is_currently_clocked_in,
-        'time_frame': time_frame,
-        'status_filter': status_filter,
-        'start_date': start_date,
-        'end_date': end_date,
-        'total_shifts': len(all_items),
+        'page_obj': page_obj, 'paginator': paginator, 'my_swaps': my_swaps,
+        'today': today, 'now_time': now_time, 'is_currently_clocked_in': is_currently_clocked_in,
+        'time_frame': time_frame, 'status_filter': status_filter,
+        'start_date': start_date, 'end_date': end_date, 'total_shifts': len(all_items),
     }
     return render(request, 'dashboard/hrm_my_shifts.html', context)
 

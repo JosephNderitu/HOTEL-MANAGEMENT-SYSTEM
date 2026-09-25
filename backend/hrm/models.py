@@ -30,6 +30,9 @@ class ShiftAssignment(models.Model):
     date = models.DateField()
     status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='scheduled')
     assigned_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='shifts_assigned')
+    previous_shift = models.ForeignKey(Shift, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    swap_partner = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    swap_request = models.ForeignKey('ShiftSwapRequest', null=True, blank=True, on_delete=models.SET_NULL, related_name='resulting_assignments')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -108,32 +111,37 @@ class ShiftSwapRequest(models.Model):
             raise ValidationError("End date can't be before start date.")
 
     def apply(self, reviewed_by):
-        """Approves the request and mutates the underlying ShiftAssignment rows
-        for every day in the range."""
         day = self.start_date
         while day <= self.end_date:
             if self.mode == 'self':
-                assignment, _ = ShiftAssignment.objects.get_or_create(
+                assignment, created = ShiftAssignment.objects.get_or_create(
                     staff=self.requested_by, date=day,
                     defaults={'shift': self.requested_shift, 'assigned_by': reviewed_by},
                 )
+                if not created:
+                    assignment.previous_shift = assignment.shift
                 assignment.shift = self.requested_shift
                 assignment.status = 'swapped'
-                assignment.save(update_fields=['shift', 'status'])
+                assignment.swap_partner = None
+                assignment.swap_request = self
+                assignment.save(update_fields=['shift', 'status', 'previous_shift', 'swap_partner', 'swap_request'])
             else:
                 mine = ShiftAssignment.objects.filter(staff=self.requested_by, date=day).first()
                 theirs = ShiftAssignment.objects.filter(staff=self.trade_with, date=day).first()
                 if mine and theirs:
+                    mine.previous_shift, theirs.previous_shift = mine.shift, theirs.shift
                     mine.shift, theirs.shift = theirs.shift, mine.shift
                     mine.status = theirs.status = 'swapped'
-                    mine.save(update_fields=['shift', 'status'])
-                    theirs.save(update_fields=['shift', 'status'])
+                    mine.swap_partner, theirs.swap_partner = theirs.staff, mine.staff
+                    mine.swap_request = theirs.swap_request = self
+                    mine.save(update_fields=['shift', 'status', 'previous_shift', 'swap_partner', 'swap_request'])
+                    theirs.save(update_fields=['shift', 'status', 'previous_shift', 'swap_partner', 'swap_request'])
             day += timedelta(days=1)
         self.status = 'approved'
         self.reviewed_by = reviewed_by
         self.reviewed_at = timezone.now()
         self.save(update_fields=['status', 'reviewed_by', 'reviewed_at'])
-
+        
     def __str__(self):
         return f"{self.requested_by} — {self.get_mode_display()} ({self.start_date} to {self.end_date})"
 

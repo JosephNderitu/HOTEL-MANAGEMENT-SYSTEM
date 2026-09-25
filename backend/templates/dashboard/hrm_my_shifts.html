@@ -101,6 +101,13 @@
                         <i class="fa-regular fa-clock text-slate-400"></i>
                         {{ a.shift.start_time|time:"H:i" }} &ndash; {{ a.shift.end_time|time:"H:i" }}
                     </p>
+                    {% if a.is_swapped %}
+                    <p class="text-[11px] font-medium text-amber-700 flex items-center gap-1.5 mt-1">
+                        <i class="fa-solid fa-repeat text-amber-500"></i>
+                        {% if a.previous_shift %}{{ a.previous_shift.name }} &rarr; {{ a.shift.name }}{% else %}Assigned {{ a.shift.name }}{% endif %}
+                        {% if a.swap_partner %} &middot; with {{ a.swap_partner.get_full_name|default:a.swap_partner.username }}{% endif %}
+                    </p>
+                    {% endif %}
                 </div>
             </div>
 
@@ -133,10 +140,6 @@
                 {% elif a.display_status == 'scheduled' %}
                     <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-800 border border-blue-300">
                         <i class="fa-regular fa-calendar-check text-blue-600 text-[10px]"></i> Scheduled
-                    </span>
-                {% elif a.display_status == 'swapped' %}
-                    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-300">
-                        <i class="fa-solid fa-repeat text-amber-600 text-[10px]"></i> Swapped
                     </span>
                 {% elif a.display_status == 'cancelled' %}
                     <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-300">
