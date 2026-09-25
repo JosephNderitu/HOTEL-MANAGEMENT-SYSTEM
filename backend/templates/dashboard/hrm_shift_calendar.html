@@ -1,333 +1,653 @@
 {% extends "dashboard/base_dashboard.html" %}
+
 {% block dashboard_content %}
 {% include "dashboard/_hrm_styles.html" %}
-<a href="{% url 'dashboard:hrm' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; HRM</a>
 
-<div class="hr-hero-card rounded-2xl p-6 md:p-8 mt-3 mb-6 text-white">
-    <div class="flex flex-wrap items-center justify-between gap-4">
-        <div>
-            <h1 class="text-2xl font-bold flex items-center gap-2"><i class="fa-solid fa-calendar-days text-[#C9A227]"></i> Shift Calendar</h1>
-            <p class="text-white/70 text-sm mt-1">Assign shifts across a date range, review swap requests, manage weekly offs.</p>
+<style>
+    /* High-Contrast Tile Overrides */
+    .hr-tile {
+        background: #ffffff !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 1rem !important;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04) !important;
+        transition: all 0.2s ease-in-out !important;
+    }
+
+    .hr-tile:hover {
+        border-color: #94a3b8 !important;
+        box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.08) !important;
+    }
+
+    /* Form Inputs & Controls */
+    .hr-filter-input, 
+    .hr-form-control input, 
+    .hr-form-control select, 
+    .hr-form-control textarea {
+        width: 100% !important;
+        background-color: #ffffff !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 0.75rem !important;
+        padding: 0.5rem 0.75rem !important;
+        font-size: 0.8125rem !important;
+        color: #0f172a !important;
+        outline: none !important;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+    }
+
+    .hr-filter-input:focus, 
+    .hr-form-control input:focus, 
+    .hr-form-control select:focus, 
+    .hr-form-control textarea:focus {
+        border-color: #0B6B3A !important;
+        box-shadow: 0 0 0 3px rgba(11, 107, 58, 0.12) !important;
+    }
+
+    /* High Visibility Calendar Grid & Cell Colors */
+    .hr-cal-grid {
+        display: grid !important;
+        grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+        gap: 6px !important;
+    }
+
+    .hr-cal-cell {
+        min-height: 86px !important;
+        border-radius: 0.75rem !important;
+        padding: 6px !important;
+        transition: all 0.15s ease-in-out !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        cursor: pointer !important;
+        position: relative !important;
+    }
+
+    .hr-cal-cell:hover {
+        border-color: #0B6B3A !important;
+        transform: translateY(-1.5px) !important;
+        box-shadow: 0 4px 12px -2px rgba(11, 107, 58, 0.18) !important;
+    }
+
+    /* Scheduled vs Unscheduled Contrast */
+    .hr-cal-scheduled {
+        background-color: #f0fdf4 !important;
+        border: 1.5px solid #86efac !important;
+    }
+
+    .hr-cal-unscheduled {
+        background-color: #f8fafc !important;
+        border: 1px dashed #cbd5e1 !important;
+    }
+
+    .hr-cal-cell.hr-cal-muted {
+        opacity: 0.4 !important;
+        background-color: #f1f5f9 !important;
+    }
+
+    .hr-cal-cell.hr-cal-today {
+        border: 2px solid #0B6B3A !important;
+        box-shadow: 0 0 0 2px rgba(11, 107, 58, 0.25) inset !important;
+    }
+
+    /* Shift Badges Inside Calendar Cells */
+    .hr-shift-chip {
+        font-size: 0.65rem !important;
+        font-weight: 700 !important;
+        padding: 2.5px 6px !important;
+        border-radius: 6px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 4px !important;
+        max-width: 100% !important;
+        border-width: 1px !important;
+        border-style: solid !important;
+    }
+
+    .hr-chip-day {
+        background-color: #fef3c7 !important;
+        color: #78350f !important;
+        border-color: #fde68a !important;
+    }
+
+    .hr-chip-night {
+        background-color: #0f172a !important;
+        color: #f8fafc !important;
+        border-color: #334155 !important;
+    }
+
+    .hr-chip-swapped {
+        background-color: #e0e7ff !important;
+        color: #3730a3 !important;
+        border-color: #c7d2fe !important;
+    }
+
+    .hr-cal-dot {
+        width: 6px !important;
+        height: 6px !important;
+        border-radius: 50% !important;
+        flex-shrink: 0 !important;
+    }
+
+    .hr-cal-dot-day { background-color: #d97706 !important; }
+    .hr-cal-dot-night { background-color: #38bdf8 !important; }
+
+    /* Segmented Buttons */
+    .hr-seg-btn {
+        font-size: 0.72rem !important;
+        font-weight: 700 !important;
+        padding: 0.35rem 0.8rem !important;
+        border-radius: 9999px !important;
+        color: #475569 !important;
+        transition: all 0.15s ease-in-out !important;
+    }
+
+    .hr-seg-btn.hr-seg-active {
+        background-color: #0B6B3A !important;
+        color: #ffffff !important;
+        box-shadow: 0 2px 6px rgba(11, 107, 58, 0.2) !important;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar { height: 5px; width: 5px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+</style>
+
+<div class="space-y-6">
+    <!-- Navigation Back Link -->
+    <div>
+        <a href="{% url 'dashboard:hrm' %}" class="inline-flex items-center gap-2 text-[#0B6B3A] hover:text-[#074726] text-xs font-bold uppercase tracking-wider transition-colors">
+            <i class="fa-solid fa-arrow-left text-xs"></i> Back to HRM Overview
+        </a>
+    </div>
+
+    <!-- Hero Header Banner -->
+    <div class="hr-hero-card rounded-2xl p-6 md:p-8 text-white flex flex-col lg:flex-row lg:items-center justify-between gap-6 shadow-md bg-gradient-to-r from-[#0B6B3A] via-[#074726] to-[#042e18]">
+        <div class="relative z-10 space-y-1">
+            <span class="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-xs font-semibold bg-white/10 text-[#C9A227] border border-white/15 backdrop-blur-md">
+                <i class="fa-solid fa-calendar-alt text-[11px]"></i> Roster Planning & Scheduling
+            </span>
+            <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight flex items-center gap-2.5">
+                <i class="fa-solid fa-calendar-days text-[#C9A227]"></i> Shift Calendar & Roster
+            </h1>
+            <p class="text-white/80 text-xs md:text-sm">
+                Assign shifts across date ranges, manage staff swaps, and monitor live roster coverage. Past or started shifts are locked.
+            </p>
         </div>
-        <div class="flex gap-3">
-            <div class="hr-stat-pill rounded-xl px-4 py-2 text-center">
-                <i class="fa-solid fa-calendar-check text-[#C9A227] text-xs mb-1"></i>
-                <p class="text-lg font-bold">{{ total_upcoming }}</p>
-                <p class="text-[11px] text-white/70 uppercase tracking-wide">Upcoming</p>
+
+        <div class="relative z-10 flex items-center gap-3">
+            <div class="hr-stat-pill rounded-xl px-4 py-2 text-center min-w-[85px]">
+                <p class="text-xl font-black text-[#C9A227] leading-none">{{ total_upcoming }}</p>
+                <p class="text-[10px] uppercase font-bold text-white/70 mt-1">Upcoming</p>
             </div>
-            <div class="hr-stat-pill rounded-xl px-4 py-2 text-center">
-                <i class="fa-solid fa-arrows-rotate text-[#C9A227] text-xs mb-1"></i>
-                <p class="text-lg font-bold">{{ pending_swap_count }}</p>
-                <p class="text-[11px] text-white/70 uppercase tracking-wide">Pending Swaps</p>
+            <div class="hr-stat-pill rounded-xl px-4 py-2 text-center min-w-[85px]">
+                <p class="text-xl font-black text-amber-300 leading-none">{{ pending_swap_count }}</p>
+                <p class="text-[10px] uppercase font-bold text-white/70 mt-1">Swaps</p>
             </div>
+            <a href="{% url 'dashboard:hrm_weekly_off' %}" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-[#C9A227] font-bold text-xs border border-white/20 transition-all">
+                <i class="fa-solid fa-calendar-xmark text-sm"></i> Weekly Offs
+            </a>
         </div>
     </div>
-    <a href="{% url 'dashboard:hrm_weekly_off' %}" class="inline-flex items-center gap-1.5 mt-5 text-sm font-semibold text-[#C9A227] hover:text-[#e0b82e]">
-        <i class="fa-solid fa-calendar-xmark"></i> Manage weekly off-days <i class="fa-solid fa-arrow-right text-xs"></i>
-    </a>
-</div>
 
-{% if messages %}{% for message in messages %}
-<div class="{% if message.tags == 'error' %}bg-red-50 border-red-300 text-red-700{% elif message.tags == 'warning' %}bg-amber-50 border-amber-300 text-amber-800{% else %}bg-[#0B6B3A]/10 border-[#0B6B3A] text-[#0B6B3A]{% endif %} border text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
-{% endfor %}{% endif %}
+    <!-- Messages -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="flex items-center gap-3 border text-xs font-semibold rounded-xl p-3.5 shadow-sm {% if message.tags == 'error' %}bg-red-50 border-red-200 text-red-800{% elif message.tags == 'warning' %}bg-amber-50 border-amber-200 text-amber-800{% else %}bg-emerald-50 border-emerald-200 text-emerald-800{% endif %}">
+                <i class="fa-solid {% if message.tags == 'error' %}fa-circle-exclamation text-red-500{% elif message.tags == 'warning' %}fa-triangle-exclamation text-amber-500{% else %}fa-circle-check text-emerald-600{% endif %}"></i>
+                <span>{{ message }}</span>
+            </div>
+        {% endfor %}
+    {% endif %}
 
-<div class="grid lg:grid-cols-3 gap-6 mb-6">
-    <div class="hr-tile rounded-2xl p-5">
-        <h2 class="font-bold text-black text-sm mb-1 flex items-center gap-2"><i class="fa-solid fa-calendar-plus text-[#0B6B3A]"></i> Assign a Shift Range</h2>
-        <p class="text-xs text-gray-500 mb-4">Assigns every day in the range — automatically skips weekly-offs, approved leave, and days already assigned.</p>
-        <form method="post" class="space-y-3">
-            {% csrf_token %}
-            {% for field in form %}
-            <div>
-                <label class="text-xs font-semibold text-gray-600 mb-1 block">{{ field.label }}</label>
-                {{ field }}
-                {% if field.errors %}<p class="text-red-600 text-xs mt-1">{{ field.errors.0 }}</p>{% endif %}
-            </div>
-            {% endfor %}
-            <button type="submit" class="w-full bg-[#0B6B3A] hover:bg-[#074726] transition-colors text-white font-bold py-2.5 rounded-full mt-2 flex items-center justify-center gap-2"><i class="fa-solid fa-check"></i> Assign Shift Range</button>
-        </form>
-    </div>
-
-    <div class="lg:col-span-2 hr-tile rounded-2xl p-5">
-        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
-            <div class="flex items-center gap-2">
-                <a href="?{{ month_base_qs }}{% if month_base_qs %}&{% endif %}month={{ prev_month }}" class="w-7 h-7 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:border-[#0B6B3A] hover:text-[#0B6B3A]"><i class="fa-solid fa-chevron-left text-xs"></i></a>
-                <h2 class="font-bold text-black text-sm min-w-[130px] text-center">{{ cal_month_label }}</h2>
-                <a href="?{{ month_base_qs }}{% if month_base_qs %}&{% endif %}month={{ next_month }}" class="w-7 h-7 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:border-[#0B6B3A] hover:text-[#0B6B3A]"><i class="fa-solid fa-chevron-right text-xs"></i></a>
-                {% if current_month_param != this_month_str %}
-                <a href="?{{ month_base_qs }}{% if month_base_qs %}&{% endif %}month={{ this_month_str }}" class="text-[11px] font-semibold text-[#0B6B3A] hover:underline ml-1">Today</a>
-                {% endif %}
-            </div>
-            <div class="flex items-center gap-3 text-[11px] text-gray-500">
-                <span class="flex items-center gap-1"><span class="hr-cal-dot hr-cal-dot-day"></span> Day</span>
-                <span class="flex items-center gap-1"><span class="hr-cal-dot hr-cal-dot-night"></span> Night</span>
-            </div>
-        </div>
-        <div class="grid grid-cols-7 gap-1.5 text-[10px] font-bold text-gray-400 uppercase mb-1 text-center">
-            <div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div><div>Sun</div>
-        </div>
-        <div class="hr-cal-grid">
-            {% for week in weeks %}{% for day in week %}
-            <div class="hr-cal-cell {% if not day.in_month %}hr-cal-muted{% endif %} {% if day.is_today %}hr-cal-today{% endif %}">
-                <div class="flex items-center justify-between mb-1">
-                    <a href="?{{ calendar_day_link_qs }}{% if calendar_day_link_qs %}&{% endif %}date_from={{ day.date|date:'Y-m-d' }}&date_to={{ day.date|date:'Y-m-d' }}#upcoming-assignments"
-                       class="text-[11px] font-semibold text-gray-500 hover:text-[#0B6B3A]">{{ day.date.day }}</a>
-                    {% if day.is_today %}<span class="hr-cal-today-badge">•</span>{% endif %}
+    <!-- Upper Grid: Form & High-Contrast Calendar -->
+    <div class="grid lg:grid-cols-3 gap-6">
+        <!-- Assign Shift Range Form -->
+        <div class="hr-tile rounded-2xl p-5">
+            <h2 class="font-extrabold text-slate-900 text-sm mb-1 flex items-center gap-2 pb-2 border-b border-slate-100">
+                <i class="fa-solid fa-calendar-plus text-[#0B6B3A]"></i> Assign Shift Range
+            </h2>
+            <p class="text-xs text-slate-500 mb-4 mt-2">Assigns shifts over a date range — skips past dates, approved leaves & off days.</p>
+            <form method="post" class="space-y-3">
+                {% csrf_token %}
+                {% for field in form %}
+                <div class="hr-form-control">
+                    <label class="text-[11px] font-bold text-slate-700 uppercase block mb-1">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.errors %}<p class="text-red-500 font-semibold text-[11px] mt-0.5">{{ field.errors.0 }}</p>{% endif %}
                 </div>
-                {% for a in day.assignments|slice:":3" %}
-                <a href="{% url 'dashboard:hrm_shift_assignment_edit' a.id %}" class="hr-cal-chip" title="{{ a.staff.get_full_name|default:a.staff.username }} — {{ a.shift.name }}">
-                    <span class="hr-cal-dot {% if a.shift.shift_kind == 'night' %}hr-cal-dot-night{% else %}hr-cal-dot-day{% endif %}"></span>
-                    {{ a.staff.first_name|default:a.staff.username|truncatechars:8 }}
-                </a>
                 {% endfor %}
-                {% if day.assignments|length > 3 %}
-                <a href="?{{ calendar_day_link_qs }}{% if calendar_day_link_qs %}&{% endif %}date_from={{ day.date|date:'Y-m-d' }}&date_to={{ day.date|date:'Y-m-d' }}#upcoming-assignments" class="text-[10px] text-[#0B6B3A] font-semibold hover:underline">+{{ day.assignments|length|add:"-3" }} more</a>
-                {% endif %}
-            </div>
-            {% endfor %}{% endfor %}
+                <button type="submit" class="w-full bg-[#0B6B3A] hover:bg-[#074726] transition-all text-white font-bold text-xs py-2.5 px-4 rounded-xl mt-3 flex items-center justify-center gap-2 shadow-sm cursor-pointer">
+                    <i class="fa-solid fa-check"></i> Assign Shift Range
+                </button>
+            </form>
         </div>
-    </div>
-</div>
 
-<div id="upcoming-assignments" class="hr-tile rounded-2xl p-5 mb-8">
-    <h2 class="font-bold text-black text-sm mb-3 flex items-center gap-2"><i class="fa-solid fa-list-check text-[#0B6B3A]"></i> Upcoming Assignments</h2>
-
-    <form method="get" class="grid sm:grid-cols-2 lg:grid-cols-6 gap-2.5 mb-4">
-        <input type="hidden" name="month" value="{{ current_month_param }}">
-        <input type="hidden" name="swap_status" value="{{ swap_status }}">
-        <input type="hidden" name="swap_mode" value="{{ swap_mode }}">
-        <select name="staff" class="hr-filter-input">
-            <option value="">All Staff</option>
-            {% for s in staff_options %}<option value="{{ s.id }}" {% if f_staff == s.id|stringformat:"s" %}selected{% endif %}>{{ s.get_full_name|default:s.username }}</option>{% endfor %}
-        </select>
-        <select name="shift" class="hr-filter-input">
-            <option value="">All Shifts</option>
-            {% for sh in shift_options %}<option value="{{ sh.id }}" {% if f_shift == sh.id|stringformat:"s" %}selected{% endif %}>{{ sh.name }}</option>{% endfor %}
-        </select>
-        <select name="status" class="hr-filter-input">
-            <option value="">All Statuses</option>
-            {% for val, label in status_options %}<option value="{{ val }}" {% if f_status == val %}selected{% endif %}>{{ label }}</option>{% endfor %}
-        </select>
-        <input type="date" name="date_from" value="{{ f_date_from }}" class="hr-filter-input">
-        <input type="date" name="date_to" value="{{ f_date_to }}" class="hr-filter-input">
-        <div class="flex gap-2">
-            <button type="submit" class="flex-1 bg-[#0B6B3A] hover:bg-[#074726] text-white text-xs font-semibold rounded-lg px-3 flex items-center justify-center gap-1.5"><i class="fa-solid fa-filter"></i> Filter</button>
-            <a href="{% url 'dashboard:hrm_shift_calendar' %}#upcoming-assignments" class="flex items-center justify-center px-3 rounded-lg border border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300"><i class="fa-solid fa-rotate-left text-xs"></i></a>
-        </div>
-    </form>
-
-    <div class="overflow-x-auto custom-scrollbar">
-        <table class="hr-table w-full">
-            <thead><tr><th>Staff</th><th>Role</th><th>Date</th><th>Shift</th><th>Status</th><th>Actions</th></tr></thead>
-            <tbody>
-            {% for a in upcoming_page %}
-            <tr>
-                <td data-label="Staff">{{ a.staff.get_full_name|default:a.staff.username }}</td>
-                <td data-label="Role">{{ a.staff.staff_profile.position|default:"—" }}</td>
-                <td data-label="Date">{{ a.date|date:"M d, Y" }} ({{ a.date|date:"D" }})</td>
-                <td data-label="Shift"><span class="hr-cal-dot {% if a.shift.shift_kind == 'night' %}hr-cal-dot-night{% else %}hr-cal-dot-day{% endif %}"></span> {{ a.shift.name }}</td>
-                <td data-label="Status"><span class="hr-badge {% if a.status == 'scheduled' %}bg-[#0B6B3A] text-white{% elif a.status == 'swapped' %}bg-[#C9A227] text-black{% elif a.status == 'cancelled' %}bg-gray-300 text-gray-600{% else %}bg-amber-100 text-amber-700{% endif %}">{{ a.get_status_display }}</span></td>
-                <td data-label="Actions">
-                    <div class="flex gap-2">
-                        <a href="{% url 'dashboard:hrm_shift_assignment_edit' a.id %}" class="text-[#0B6B3A] hover:underline text-xs"><i class="fa-solid fa-pen"></i></a>
-                        <button type="button" data-action="delete-assignment" data-assignment-id="{{ a.id }}" class="text-red-500 hover:underline text-xs"><i class="fa-solid fa-trash"></i></button>
-                        <form id="delete-form-{{ a.id }}" method="post" action="{% url 'dashboard:hrm_shift_assignment_delete' a.id %}" class="hidden">{% csrf_token %}</form>
-                    </div>
-                </td>
-            </tr>
-            {% empty %}
-            <tr><td colspan="6"><div class="hr-empty-state"><i class="fa-regular fa-calendar-xmark"></i>No shifts match these filters.</div></td></tr>
-            {% endfor %}
-            </tbody>
-        </table>
-    </div>
-
-    {% if upcoming_page.paginator.num_pages > 1 %}
-    <div class="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4 pt-4 border-t border-gray-100">
-        <p class="text-xs text-gray-500">Showing {{ upcoming_page.start_index }}&ndash;{{ upcoming_page.end_index }} of {{ upcoming_page.paginator.count }}</p>
-        <div class="flex items-center gap-1">
-            {% if upcoming_page.has_previous %}
-                <a href="?{{ upcoming_base_qs }}{% if upcoming_base_qs %}&{% endif %}page={{ upcoming_page.previous_page_number }}#upcoming-assignments"
-                class="hr-page-btn">
-                    <i class="fa-solid fa-chevron-left text-[10px]"></i>
-                </a>
-            {% else %}
-                <span class="hr-page-btn hr-page-disabled">
-                    <i class="fa-solid fa-chevron-left text-[10px]"></i>
-                </span>
-            {% endif %}
-
-            {% for num in upcoming_page.paginator.page_range %}
-                {% if num == upcoming_page.number %}
-                    <span class="hr-page-btn hr-page-active">{{ num }}</span>
-                {% elif num > upcoming_page.number|add:"-3" and num < upcoming_page.number|add:"3" %}
-                    <a href="?{{ upcoming_base_qs }}{% if upcoming_base_qs %}&{% endif %}page={{ num }}#upcoming-assignments"
-                    class="hr-page-btn">
-                        {{ num }}
+        <!-- Interactive Roster Calendar Tile -->
+        <div class="lg:col-span-2 hr-tile rounded-2xl p-5">
+            <!-- Navigation & Legend Bar -->
+            <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-100 flex-wrap gap-2">
+                <div class="flex items-center gap-2">
+                    <a href="?{{ month_base_qs }}{% if month_base_qs %}&{% endif %}month={{ prev_month }}" class="w-7 h-7 rounded-lg border border-slate-300 flex items-center justify-center text-slate-600 hover:border-[#0B6B3A] hover:text-[#0B6B3A]">
+                        <i class="fa-solid fa-chevron-left text-xs"></i>
                     </a>
-                {% endif %}
-            {% endfor %}
-
-            {% if upcoming_page.has_next %}
-                <a href="?{{ upcoming_base_qs }}{% if upcoming_base_qs %}&{% endif %}page={{ upcoming_page.next_page_number }}#upcoming-assignments"
-                class="hr-page-btn">
-                    <i class="fa-solid fa-chevron-right text-[10px]"></i>
-                </a>
-            {% else %}
-                <span class="hr-page-btn hr-page-disabled">
-                    <i class="fa-solid fa-chevron-right text-[10px]"></i>
-                </span>
-            {% endif %}
-        </div>
-    </div>
-    {% endif %}
-</div>
-
-<div id="swap-requests" class="hr-tile rounded-2xl p-5">
-    <div class="flex items-center justify-between flex-wrap gap-3 mb-4">
-        <h2 class="font-bold text-black text-sm flex items-center gap-2"><i class="fa-solid fa-arrows-rotate text-[#0B6B3A]"></i> Shift Change Requests</h2>
-        <div class="flex flex-wrap gap-2">
-            <div class="hr-seg-group">
-                <a href="?{{ swap_status_base_qs }}{% if swap_status_base_qs %}&{% endif %}swap_status=pending#swap-requests" class="hr-seg-btn {% if swap_status == 'pending' %}hr-seg-active{% endif %}">Pending</a>
-                <a href="?{{ swap_status_base_qs }}{% if swap_status_base_qs %}&{% endif %}swap_status=approved#swap-requests" class="hr-seg-btn {% if swap_status == 'approved' %}hr-seg-active{% endif %}">Approved</a>
-                <a href="?{{ swap_status_base_qs }}{% if swap_status_base_qs %}&{% endif %}swap_status=rejected#swap-requests" class="hr-seg-btn {% if swap_status == 'rejected' %}hr-seg-active{% endif %}">Rejected</a>
-            </div>
-            <div class="hr-seg-group">
-                <a href="?{{ swap_mode_base_qs }}{% if swap_mode_base_qs %}&{% endif %}swap_mode=#swap-requests" class="hr-seg-btn {% if swap_mode == '' %}hr-seg-active{% endif %}">All</a>
-                <a href="?{{ swap_mode_base_qs }}{% if swap_mode_base_qs %}&{% endif %}swap_mode=self#swap-requests" class="hr-seg-btn {% if swap_mode == 'self' %}hr-seg-active{% endif %}">Self-Change</a>
-                <a href="?{{ swap_mode_base_qs }}{% if swap_mode_base_qs %}&{% endif %}swap_mode=trade#swap-requests" class="hr-seg-btn {% if swap_mode == 'trade' %}hr-seg-active{% endif %}">Trade</a>
-            </div>
-        </div>
-    </div>
-
-    <div class="space-y-3">
-    {% for s in swap_page %}
-    <div class="hr-tile hr-tile-accent rounded-xl p-4">
-        <div class="flex items-start justify-between flex-wrap gap-3">
-            <div class="flex items-start gap-3">
-                <div class="hr-avatar">{{ s.requested_by.get_full_name|default:s.requested_by.username|slice:":2"|upper }}</div>
-                <div>
-                    <p class="font-semibold text-sm text-black">
-                        {{ s.requested_by.get_full_name|default:s.requested_by.username }}
-                        {% if s.requested_by.staff_profile %}<span class="text-xs text-gray-400 font-normal">— {{ s.requested_by.staff_profile.position }}</span>{% endif %}
-                        <span class="hr-badge bg-[#C9A227] text-black ml-1">{{ s.get_mode_display }}</span>
-                    </p>
-                    <p class="text-xs text-gray-500 mt-1">{{ s.start_date|date:"M d" }} &ndash; {{ s.end_date|date:"M d, Y" }} ({{ s.days_count }} day{{ s.days_count|pluralize }})</p>
-                    {% if s.mode == 'self' %}
-                    <p class="text-xs text-gray-600 mt-1">Wants to move to <strong>{{ s.requested_shift.name }}</strong></p>
-                    {% else %}
-                    <p class="text-xs text-gray-600 mt-1">Trade with <strong>{{ s.trade_with.get_full_name|default:s.trade_with.username }}</strong></p>
-                    {% if s.status == 'pending' %}
-                    <p class="text-xs mt-1" id="trade-info-{{ s.id }}" data-trade-check data-swap-id="{{ s.id }}"
-                       data-check-url="{% url 'dashboard:hrm_swap_conflict_check' %}?date={{ s.start_date|date:'Y-m-d' }}&trade_with={{ s.trade_with_id }}&staff_id={{ s.requested_by_id }}"
-                       data-same-shift-message="{{ s.requested_by.get_full_name|default:s.requested_by.username }} and {{ s.trade_with.get_full_name|default:s.trade_with.username }} already have the same shift on {{ s.start_date|date:'M d' }} — trading has no effect. Consider rejecting this request.">
-                        <i class="fa-solid fa-spinner fa-spin text-gray-400"></i> Checking current shifts...
-                    </p>
+                    <h2 class="font-extrabold text-slate-900 text-xs px-2.5 py-1 rounded-md bg-slate-100 border border-slate-200 min-w-[130px] text-center">
+                        {{ cal_month_label }}
+                    </h2>
+                    <a href="?{{ month_base_qs }}{% if month_base_qs %}&{% endif %}month={{ next_month }}" class="w-7 h-7 rounded-lg border border-slate-300 flex items-center justify-center text-slate-600 hover:border-[#0B6B3A] hover:text-[#0B6B3A]">
+                        <i class="fa-solid fa-chevron-right text-xs"></i>
+                    </a>
+                    {% if current_month_param != this_month_str %}
+                    <a href="?{{ month_base_qs }}{% if month_base_qs %}&{% endif %}month={{ this_month_str }}" class="text-[11px] font-bold text-[#0B6B3A] hover:underline ml-1">Today</a>
                     {% endif %}
-                    {% endif %}
-                    <p class="text-xs text-gray-400 mt-1">"{{ s.reason }}"</p>
-                    {% if s.status == 'rejected' and s.rejection_reason %}<p class="text-xs text-red-500 mt-1">Rejected: "{{ s.rejection_reason }}"</p>{% endif %}
+                </div>
+
+                <!-- Legend Keys -->
+                <div class="flex items-center gap-2.5 text-[10px] font-bold text-slate-600 flex-wrap">
+                    <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded border border-emerald-400 bg-emerald-100"></span> Scheduled</span>
+                    <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded border border-slate-300 bg-slate-100"></span> Unscheduled</span>
+                    <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded border border-amber-300 bg-amber-100"></span> Day</span>
+                    <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded border border-slate-700 bg-slate-900"></span> Night</span>
+                    <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded border border-indigo-300 bg-indigo-100"></span> Swapped</span>
                 </div>
             </div>
 
-            {% if s.status == 'pending' %}
-            <div class="flex gap-2 shrink-0">
-                <form method="post" action="{% url 'dashboard:hrm_shift_swap_review' s.id 'approve' %}" onsubmit="this.querySelector('button').disabled=true;">
-                    {% csrf_token %}
-                    <button id="approve-btn-{{ s.id }}" type="submit" class="text-xs font-semibold bg-[#0B6B3A] text-white px-4 py-2 rounded-full hover:bg-[#074726] inline-flex items-center gap-1.5"><i class="fa-solid fa-check"></i> Approve</button>
-                </form>
-                <button type="button" data-action="reject-swap" data-swap-id="{{ s.id }}" class="text-xs font-semibold border border-red-400 text-red-500 px-4 py-2 rounded-full hover:bg-red-50 inline-flex items-center gap-1.5"><i class="fa-solid fa-xmark"></i> Reject</button>
-                <form id="swap-reject-form-{{ s.id }}" method="post" action="{% url 'dashboard:hrm_shift_swap_review' s.id 'reject' %}" class="hidden">
-                    {% csrf_token %}<input type="hidden" name="rejection_reason" id="swap-reject-reason-{{ s.id }}">
-                </form>
+            <!-- Weekday Titles -->
+            <div class="grid grid-cols-7 gap-1.5 text-[10px] font-bold text-slate-400 uppercase mb-1.5 text-center">
+                <div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div><div>Sun</div>
             </div>
-            {% else %}
-            <span class="hr-badge {% if s.status == 'approved' %}bg-[#0B6B3A] text-white{% else %}bg-red-500 text-white{% endif %}">{{ s.get_status_display }}</span>
-            {% endif %}
+
+            <!-- Calendar Days Grid -->
+            <div class="hr-cal-grid">
+                {% for week in weeks %}{% for day in week %}
+                <div class="hr-cal-cell {% if not day.in_month %}hr-cal-muted{% endif %} {% if day.is_today %}hr-cal-today{% endif %} {% if day.assignments %}hr-cal-scheduled{% else %}hr-cal-unscheduled{% endif %}"
+                     onclick="openDayModal('{{ day.date|date:'Y-m-d' }}', '{{ day.date|date:'D, M d, Y' }}', '{{ day.assignments|length }}')"
+                     title="Click to view shifts for {{ day.date|date:'M d, Y' }}">
+                    
+                    <div class="flex items-center justify-between w-full">
+                        <span class="text-[11px] font-extrabold {% if day.assignments %}text-emerald-950{% else %}text-slate-500{% endif %}">
+                            {{ day.date.day }}
+                        </span>
+                        {% if day.is_today %}
+                            <span class="text-[9px] font-extrabold text-[#0B6B3A] uppercase tracking-wider">Today</span>
+                        {% endif %}
+                    </div>
+
+                    <!-- Shift Chips List -->
+                    <div class="space-y-1 my-1">
+                        {% for a in day.assignments|slice:":2" %}
+                        <div class="hr-shift-chip {% if a.status == 'swapped' %}hr-chip-swapped{% elif a.shift.shift_kind == 'night' %}hr-chip-night{% else %}hr-chip-day{% endif %}"
+                             title="{{ a.staff.get_full_name|default:a.staff.username }} — {{ a.shift.name }}">
+                            <span class="hr-cal-dot {% if a.shift.shift_kind == 'night' %}hr-cal-dot-night{% else %}hr-cal-dot-day{% endif %}"></span>
+                            <span class="truncate max-w-[50px] text-[10px]">{{ a.staff.first_name|default:a.staff.username }}</span>
+                            {% if a.status == 'swapped' %}<i class="fa-solid fa-arrows-rotate text-[8px]" title="Swapped Shift"></i>{% endif %}
+                        </div>
+                        {% empty %}
+                        <span class="text-[9px] text-slate-400 italic block font-normal text-center py-1">Unscheduled</span>
+                        {% endfor %}
+                    </div>
+
+                    {% if day.assignments|length > 2 %}
+                        <p class="text-[9px] font-bold text-[#0B6B3A] text-right">+{{ day.assignments|length|add:"-2" }} more</p>
+                    {% else %}
+                        <div></div>
+                    {% endif %}
+
+                    <!-- Hidden JSON Payload for Pop-up Modal with Date checking -->
+                    <script id="day-data-{{ day.date|date:'Y-m-d' }}" type="application/json">
+                    [
+                        {% for a in day.assignments %}
+                        {
+                            "id": "{{ a.id }}",
+                            "staff": "{{ a.staff.get_full_name|default:a.staff.username|escapejs }}",
+                            "role": "{{ a.staff.staff_profile.position|default:'—'|escapejs }}",
+                            "shift": "{{ a.shift.name|escapejs }}",
+                            "kind": "{{ a.shift.shift_kind }}",
+                            "date": "{{ a.date|date:'Y-m-d' }}",
+                            "status": "{{ a.status }}",
+                            "status_display": "{% if a.status == 'swapped' %}Swapped Shift{% else %}{{ a.get_status_display|escapejs }}{% endif %}",
+                            "swapped_with": "{% if a.swap_request %}{% if a.swap_request.mode == 'self' %}Self Change{% else %}{{ a.swap_request.trade_with.get_full_name|default:a.swap_request.trade_with.username|escapejs }}{% endif %}{% endif %}",
+                            "swap_note": "{% if a.swap_request %}{% if a.swap_request.mode == 'self' %}Shift changed from {{ a.swap_request.original_shift.name }} to {{ a.shift.name }}{% else %}Traded with {{ a.swap_request.trade_with.get_full_name|default:a.swap_request.trade_with.username }}{% endif %}{% endif %}",
+                            "edit_url": "{% url 'dashboard:hrm_shift_assignment_edit' a.id %}"
+                        }{% if not forloop.last %},{% endif %}
+                        {% endfor %}
+                    ]
+                    </script>
+                </div>
+                {% endfor %}{% endfor %}
+            </div>
         </div>
-    </div>
-    {% empty %}
-    <div class="hr-empty-state"><i class="fa-solid fa-inbox"></i>No {{ swap_status }} requests{% if swap_mode %} of this type{% endif %}.</div>
-    {% endfor %}
     </div>
 
-    {% if swap_page.paginator.num_pages > 1 %}
-    <div class="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
-        <p class="text-xs text-gray-500">Page {{ swap_page.number }} of {{ swap_page.paginator.num_pages }}</p>
-        <div class="flex items-center gap-1">
-            <a href="?{{ swap_base_qs }}{% if swap_base_qs %}&{% endif %}swap_page={{ swap_page.previous_page_number }}#swap-requests" class="hr-page-btn {% if not swap_page.has_previous %}hr-page-disabled{% endif %}"><i class="fa-solid fa-chevron-left text-[10px]"></i></a>
-            <a href="?{{ swap_base_qs }}{% if swap_base_qs %}&{% endif %}swap_page={{ swap_page.next_page_number }}#swap-requests" class="hr-page-btn {% if not swap_page.has_next %}hr-page-disabled{% endif %}"><i class="fa-solid fa-chevron-right text-[10px]"></i></a>
+    <!-- Upcoming Assignments Table Tile -->
+    <div id="upcoming-assignments" class="hr-tile rounded-2xl p-5">
+        <div class="pb-3 mb-4 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
+            <div>
+                <h2 class="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                    <i class="fa-solid fa-list-check text-[#0B6B3A]"></i> Upcoming Shift Roster
+                </h2>
+                <p class="text-xs text-slate-500 mt-0.5">Past shifts are locked from editing or deletion</p>
+            </div>
+            <span class="text-[11px] font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
+                Active Staff Roster
+            </span>
+        </div>
+
+        <!-- Filters Form -->
+        <form method="get" class="grid sm:grid-cols-2 lg:grid-cols-6 gap-2 mb-4 bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <input type="hidden" name="month" value="{{ current_month_param }}">
+            <input type="hidden" name="swap_status" value="{{ swap_status }}">
+            <input type="hidden" name="swap_mode" value="{{ swap_mode }}">
+            
+            <select name="staff" class="hr-filter-input">
+                <option value="">All Staff</option>
+                {% for s in staff_options %}
+                    <option value="{{ s.id }}" {% if f_staff == s.id|stringformat:"s" %}selected{% endif %}>{{ s.get_full_name|default:s.username }}</option>
+                {% endfor %}
+            </select>
+
+            <select name="shift" class="hr-filter-input">
+                <option value="">All Shifts</option>
+                {% for sh in shift_options %}
+                    <option value="{{ sh.id }}" {% if f_shift == sh.id|stringformat:"s" %}selected{% endif %}>{{ sh.name }}</option>
+                {% endfor %}
+            </select>
+
+            <select name="status" class="hr-filter-input">
+                <option value="">All Statuses</option>
+                {% for val, label in status_options %}
+                    <option value="{{ val }}" {% if f_status == val %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+
+            <input type="date" name="date_from" value="{{ f_date_from }}" class="hr-filter-input">
+            <input type="date" name="date_to" value="{{ f_date_to }}" class="hr-filter-input">
+
+            <div class="flex gap-2">
+                <button type="submit" class="flex-1 bg-[#0B6B3A] hover:bg-[#074726] text-white text-xs font-bold rounded-xl py-2 px-3 flex items-center justify-center gap-1 shadow-sm">
+                    <i class="fa-solid fa-filter"></i> Filter
+                </button>
+                <a href="{% url 'dashboard:hrm_shift_calendar' %}#upcoming-assignments" class="flex items-center justify-center py-2 px-3 rounded-xl border border-slate-300 text-slate-500 bg-white hover:border-slate-400">
+                    <i class="fa-solid fa-rotate-left text-xs"></i>
+                </a>
+            </div>
+        </form>
+
+        <!-- Assignments Table -->
+        <div class="overflow-x-auto custom-scrollbar rounded-xl border border-slate-200">
+            <table class="w-full text-left border-collapse min-w-[750px]">
+                <thead>
+                    <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase">
+                        <th class="py-3 px-4">Staff Member</th>
+                        <th class="py-3 px-4">Role</th>
+                        <th class="py-3 px-4">Scheduled Date</th>
+                        <th class="py-3 px-4">Effective Assigned Shift</th>
+                        <th class="py-3 px-4">Status & Swap Details</th>
+                        <th class="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 text-sm" id="rosterTableBody">
+                    {% for a in upcoming_page %}
+                    <tr class="hover:bg-slate-50/60 transition-colors" data-assignment-date="{{ a.date|date:'Y-m-d' }}">
+                        <td class="py-3 px-4 font-bold text-slate-900">
+                            {{ a.staff.get_full_name|default:a.staff.username }}
+                        </td>
+                        <td class="py-3 px-4 text-xs text-slate-600">
+                            {{ a.staff.staff_profile.position|default:"—" }}
+                        </td>
+                        <td class="py-3 px-4 text-xs font-semibold text-slate-800">
+                            {{ a.date|date:"M d, Y" }} <span class="text-slate-400 font-normal">({{ a.date|date:"D" }})</span>
+                        </td>
+                        <td class="py-3 px-4 text-xs font-bold text-slate-900">
+                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg {% if a.shift.shift_kind == 'night' %}bg-slate-900 text-slate-100{% else %}bg-amber-100 text-amber-900 border border-amber-200{% endif %}">
+                                <span class="hr-cal-dot {% if a.shift.shift_kind == 'night' %}hr-cal-dot-night{% else %}hr-cal-dot-day{% endif %}"></span>
+                                {{ a.shift.name }}
+                            </span>
+                        </td>
+                        <td class="py-3 px-4">
+                            <div class="flex flex-col gap-1">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase {% if a.status == 'scheduled' %}bg-emerald-50 text-emerald-700 border border-emerald-200{% elif a.status == 'swapped' %}bg-indigo-50 text-indigo-800 border border-indigo-200{% else %}bg-slate-100 text-slate-600 border border-slate-200{% endif %}">
+                                        {% if a.status == 'swapped' %}Swapped Shift{% else %}{{ a.get_status_display }}{% endif %}
+                                    </span>
+
+                                    {% if a.swap_request %}
+                                        <span class="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
+                                            {{ a.swap_request.get_mode_display }}
+                                        </span>
+                                    {% endif %}
+                                </div>
+
+                                {% if a.swap_request %}
+                                    <p class="text-[11px] text-indigo-950 font-bold flex items-center gap-1">
+                                        <i class="fa-solid fa-arrows-rotate text-[10px] text-indigo-600"></i>
+                                        {% if a.swap_request.mode == 'self' %}
+                                            Swapped from <strong>{{ a.swap_request.original_shift.name }}</strong> to <strong>{{ a.shift.name }}</strong>
+                                        {% else %}
+                                            Swapped with <strong class="text-[#0B6B3A] underline">{{ a.swap_request.trade_with.get_full_name|default:a.swap_request.trade_with.username }}</strong>
+                                        {% endif %}
+                                    </p>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td class="py-3 px-4 text-right">
+                            <div class="flex items-center justify-end gap-2 action-buttons-container" data-date="{{ a.date|date:'Y-m-d' }}">
+                                <a href="{% url 'dashboard:hrm_shift_assignment_edit' a.id %}" class="text-slate-600 hover:text-[#0B6B3A] text-xs p-1 edit-action-btn" title="Edit Shift">
+                                    <i class="fa-solid fa-pen"></i>
+                                </a>
+                                <button type="button" data-action="delete-assignment" data-assignment-id="{{ a.id }}" class="text-red-500 hover:text-red-700 text-xs p-1 delete-action-btn" title="Delete Shift">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                                <form id="delete-form-{{ a.id }}" method="post" action="{% url 'dashboard:hrm_shift_assignment_delete' a.id %}" class="hidden">{% csrf_token %}</form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="py-8 text-center text-slate-400 text-xs">
+                            <i class="fa-regular fa-calendar-xmark text-2xl block mb-1"></i> No matching shifts found.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if upcoming_page.paginator.num_pages > 1 %}
+        <div class="flex items-center justify-between mt-4 pt-3 border-t border-slate-100 text-xs">
+            <p class="text-slate-500">Showing <b>{{ upcoming_page.start_index }}</b>&ndash;<b>{{ upcoming_page.end_index }}</b> of <b>{{ upcoming_page.paginator.count }}</b></p>
+            <div class="flex items-center gap-1">
+                {% if upcoming_page.has_previous %}
+                    <a href="?{{ upcoming_base_qs }}{% if upcoming_base_qs %}&{% endif %}page={{ upcoming_page.previous_page_number }}#upcoming-assignments" class="hr-page-btn"><i class="fa-solid fa-chevron-left text-[10px]"></i></a>
+                {% endif %}
+                <span class="hr-page-btn hr-page-active">{{ upcoming_page.number }}</span>
+                {% if upcoming_page.has_next %}
+                    <a href="?{{ upcoming_base_qs }}{% if upcoming_base_qs %}&{% endif %}page={{ upcoming_page.next_page_number }}#upcoming-assignments" class="hr-page-btn"><i class="fa-solid fa-chevron-right text-[10px]"></i></a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Shift Change Requests Log -->
+    <div id="swap-requests" class="hr-tile rounded-2xl p-5">
+        <div class="flex items-center justify-between flex-wrap gap-3 pb-3 mb-4 border-b border-slate-100">
+            <h2 class="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                <i class="fa-solid fa-arrows-rotate text-[#0B6B3A]"></i> Shift Change Requests Log
+            </h2>
+            <div class="flex flex-wrap gap-2">
+                <div class="hr-seg-group bg-slate-100 p-1 rounded-full border border-slate-200">
+                    <a href="?{{ swap_status_base_qs }}{% if swap_status_base_qs %}&{% endif %}swap_status=pending#swap-requests" class="hr-seg-btn {% if swap_status == 'pending' %}hr-seg-active{% endif %}">Pending</a>
+                    <a href="?{{ swap_status_base_qs }}{% if swap_status_base_qs %}&{% endif %}swap_status=approved#swap-requests" class="hr-seg-btn {% if swap_status == 'approved' %}hr-seg-active{% endif %}">Approved</a>
+                    <a href="?{{ swap_status_base_qs }}{% if swap_status_base_qs %}&{% endif %}swap_status=rejected#swap-requests" class="hr-seg-btn {% if swap_status == 'rejected' %}hr-seg-active{% endif %}">Rejected</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="space-y-3">
+            {% for s in swap_page %}
+            <div class="hr-tile rounded-xl p-3.5 border border-slate-200">
+                <div class="flex items-start justify-between flex-wrap gap-3">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="font-bold text-sm text-slate-900">{{ s.requested_by.get_full_name|default:s.requested_by.username }}</span>
+                            <span class="text-xs text-slate-500">({{ s.start_date|date:"M d" }} &ndash; {{ s.end_date|date:"M d, Y" }})</span>
+                            <span class="text-[10px] font-bold uppercase bg-indigo-50 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded-full">
+                                {{ s.get_mode_display }}
+                            </span>
+                        </div>
+
+                        {% if s.mode == 'self' %}
+                            <p class="text-xs text-slate-700 mt-1">Requested shift move to: <strong class="text-slate-900">{{ s.requested_shift.name }}</strong></p>
+                        {% else %}
+                            <p class="text-xs text-slate-700 mt-1">Traded shift with: <strong class="text-[#0B6B3A] font-bold">{{ s.trade_with.get_full_name|default:s.trade_with.username }}</strong></p>
+                        {% endif %}
+
+                        <p class="text-xs text-slate-500 italic mt-1">"{{ s.reason }}"</p>
+                    </div>
+
+                    {% if s.status == 'pending' %}
+                        <div class="flex gap-2">
+                            <form method="post" action="{% url 'dashboard:hrm_shift_swap_review' s.id 'approve' %}">
+                                {% csrf_token %}
+                                <button type="submit" class="text-xs font-bold bg-[#0B6B3A] text-white px-3 py-1.5 rounded-lg hover:bg-[#074726]">Approve</button>
+                            </form>
+                            <button type="button" data-action="reject-swap" data-swap-id="{{ s.id }}" class="text-xs font-bold border border-red-300 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-50">Reject</button>
+                            <form id="swap-reject-form-{{ s.id }}" method="post" action="{% url 'dashboard:hrm_shift_swap_review' s.id 'reject' %}" class="hidden">
+                                {% csrf_token %}<input type="hidden" name="rejection_reason" id="swap-reject-reason-{{ s.id }}">
+                            </form>
+                        </div>
+                    {% else %}
+                        <span class="text-xs font-bold uppercase px-2.5 py-1 rounded-full {% if s.status == 'approved' %}bg-emerald-50 text-emerald-700 border border-emerald-200{% else %}bg-red-50 text-red-700 border border-red-200{% endif %}">
+                            {{ s.get_status_display }}
+                        </span>
+                    {% endif %}
+                </div>
+            </div>
+            {% empty %}
+                <p class="text-xs text-slate-400 text-center py-6">No shift swap requests found.</p>
+            {% endfor %}
         </div>
     </div>
-    {% endif %}
+</div>
+
+<!-- Modal Pop-up for Day Roster Details -->
+<div id="shiftDetailModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-md p-5 space-y-4">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div>
+                <h3 class="font-extrabold text-slate-900 text-base" id="modalDateTitle">Date Roster</h3>
+                <p class="text-xs text-slate-500" id="modalSubtitle">Staff shift assignments</p>
+            </div>
+            <button onclick="closeDayModal()" class="w-7 h-7 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-700">
+                <i class="fa-solid fa-xmark text-xs"></i>
+            </button>
+        </div>
+
+        <div id="modalRosterList" class="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
+            <!-- Dynamic Shift Rows -->
+        </div>
+
+        <div class="pt-2 border-t border-slate-100 flex justify-end">
+            <button onclick="closeDayModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs px-4 py-2 rounded-xl">
+                Close
+            </button>
+        </div>
+    </div>
 </div>
 
 <script>
-(function () {
-    function confirmAction(opts) {
-        if (typeof Swal !== 'undefined') return Swal.fire(opts);
-        if (opts.input === 'textarea') {
-            var value = window.prompt(opts.title + (opts.text ? '\n' + opts.text : ''));
-            if (value === null) return Promise.resolve({ isConfirmed: false });
-            if (!value.trim()) { window.alert('A reason is required'); return Promise.resolve({ isConfirmed: false }); }
-            return Promise.resolve({ isConfirmed: true, value: value });
-        }
-        return Promise.resolve({ isConfirmed: window.confirm(opts.title + (opts.text ? '\n' + opts.text : '')) });
-    }
-    function notify(opts) {
-        if (typeof Swal !== 'undefined') { Swal.fire(opts); }
-        else { window.alert((opts.title || '') + (opts.text ? '\n' + opts.text : '')); }
-    }
+// Get current date string in YYYY-MM-DD format (local time)
+var todayDateStr = new Date().toISOString().split('T')[0];
 
+function isDateInPast(dateStr) {
+    return dateStr < todayDateStr;
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+    // Lock past shift buttons in the main roster table
+    document.querySelectorAll('.action-buttons-container').forEach(function(container) {
+        var shiftDate = container.dataset.date;
+        if (isDateInPast(shiftDate)) {
+            container.innerHTML = '<span class="inline-flex items-center gap-1 text-[11px] font-bold text-slate-400 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200"><i class="fa-solid fa-lock text-[10px]"></i> Locked (Past)</span>';
+        }
+    });
+});
+
+function openDayModal(dateStr, formattedDate, count) {
+    var rawData = document.getElementById('day-data-' + dateStr);
+    var listContainer = document.getElementById('modalRosterList');
+    document.getElementById('modalDateTitle').textContent = formattedDate;
+    document.getElementById('modalSubtitle').textContent = count + ' staff member(s) scheduled';
+    
+    listContainer.innerHTML = '';
+
+    if (!rawData) return;
+    try {
+        var items = JSON.parse(rawData.textContent);
+        var isPast = isDateInPast(dateStr);
+
+        if (items.length === 0) {
+            listContainer.innerHTML = '<p class="text-xs text-slate-400 italic text-center py-4">No staff shifts scheduled for this date.</p>';
+        } else {
+            items.forEach(function(item) {
+                var isNight = item.kind === 'night';
+                var isSwapped = item.status === 'swapped';
+                var row = document.createElement('div');
+                row.className = 'flex items-center justify-between p-2.5 rounded-xl border border-slate-100 bg-slate-50';
+                
+                var swapPartnerTag = item.swapped_with ? `<span class="text-[10px] font-bold text-[#0B6B3A] bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">Swapped with ${item.swapped_with}</span>` : '';
+                var swapDetailsHtml = item.swap_note ? `<p class="text-[10px] text-indigo-900 font-bold mt-0.5"><i class="fa-solid fa-arrows-rotate text-[8px] text-indigo-600"></i> ${item.swap_note}</p>` : '';
+
+                var actionHtml = isPast 
+                    ? '<span class="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded border border-slate-200 inline-flex items-center gap-1"><i class="fa-solid fa-lock text-[9px]"></i> Locked</span>'
+                    : `<a href="${item.edit_url}" class="text-xs font-bold text-[#0B6B3A] hover:underline shrink-0">Edit</a>`;
+
+                row.innerHTML = `
+                    <div class="flex items-center gap-2.5 pr-2">
+                        <span class="w-2.5 h-2.5 rounded-full ${isNight ? 'bg-slate-800' : 'bg-amber-500'} shrink-0"></span>
+                        <div>
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <p class="font-bold text-xs text-slate-900">${item.staff}</p>
+                                ${isSwapped ? '<span class="text-[9px] font-bold uppercase bg-indigo-100 text-indigo-900 px-1.5 py-0.2 rounded-full border border-indigo-200">Swapped</span>' : ''}
+                                ${swapPartnerTag}
+                            </div>
+                            <p class="text-[10px] text-slate-500">${item.role} &middot; <strong class="text-slate-800">${item.shift}</strong></p>
+                            ${swapDetailsHtml}
+                        </div>
+                    </div>
+                    ${actionHtml}
+                `;
+                listContainer.appendChild(row);
+            });
+        }
+        document.getElementById('shiftDetailModal').classList.remove('hidden');
+    } catch(e) {
+        console.error('Failed to parse day JSON data');
+    }
+}
+
+function closeDayModal() {
+    document.getElementById('shiftDetailModal').classList.add('hidden');
+}
+
+(function () {
     document.querySelectorAll('[data-action="delete-assignment"]').forEach(function (btn) {
         btn.addEventListener('click', function () {
             var id = btn.dataset.assignmentId;
-            confirmAction({
-                icon: 'warning', title: 'Remove this shift?', text: 'This cannot be undone.',
-                showCancelButton: true, confirmButtonText: 'Delete', confirmButtonColor: '#dc2626'
-            }).then(function (result) {
-                if (result.isConfirmed) document.getElementById('delete-form-' + id).submit();
-            });
+            if (confirm('Delete this shift assignment?')) {
+                document.getElementById('delete-form-' + id).submit();
+            }
         });
     });
 
     document.querySelectorAll('[data-action="reject-swap"]').forEach(function (btn) {
         btn.addEventListener('click', function () {
             var id = btn.dataset.swapId;
-            confirmAction({
-                title: 'Reject Shift Change Request', input: 'textarea',
-                inputPlaceholder: 'Explain why this request is being rejected...',
-                showCancelButton: true, confirmButtonText: 'Reject', confirmButtonColor: '#dc2626',
-                inputValidator: function (value) { if (!value) return 'A reason is required'; }
-            }).then(function (result) {
-                if (result.isConfirmed) {
-                    document.getElementById('swap-reject-reason-' + id).value = result.value;
-                    document.getElementById('swap-reject-form-' + id).submit();
-                }
-            });
+            var reason = prompt('Reason for rejection:');
+            if (reason) {
+                document.getElementById('swap-reject-reason-' + id).value = reason;
+                document.getElementById('swap-reject-form-' + id).submit();
+            }
         });
-    });
-
-    document.querySelectorAll('[data-trade-check]').forEach(function (el) {
-        var id = el.dataset.swapId;
-        fetch(el.dataset.checkUrl)
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                var box = document.getElementById('trade-info-' + id);
-                if (box) {
-                    box.innerHTML = '<i class="fa-solid fa-shuffle text-gray-400"></i> ' +
-                        (data.mine || 'No shift') + ' <span class="text-gray-300">&harr;</span> ' + (data.theirs || 'No shift');
-                }
-                if (data.same) {
-                    var btn = document.getElementById('approve-btn-' + id);
-                    if (btn) { btn.disabled = true; btn.classList.add('opacity-40', 'cursor-not-allowed'); }
-                    notify({ icon: 'warning', title: 'Same Shift', text: el.dataset.sameShiftMessage });
-                }
-            })
-            .catch(function () {
-                var box = document.getElementById('trade-info-' + id);
-                if (box) box.textContent = 'Could not check current shifts.';
-            });
     });
 })();
 </script>

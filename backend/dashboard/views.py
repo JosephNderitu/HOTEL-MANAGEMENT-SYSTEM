@@ -3342,15 +3342,6 @@ def hrm_attendance_report(request):
         'flagged': flagged[:20], 'days': days,
     })
 
-from datetime import datetime, timedelta
-from django.contrib import messages
-from django.http import HttpResponse
-from django.shortcuts import redirect
-from django.template.loader import render_to_string
-from django.utils import timezone
-from weasyprint import HTML
-
-
 @hrm_manager_required
 def hrm_attendance_report_pdf(request):
   today = timezone.localdate()
