@@ -100,6 +100,10 @@
 
     .gallery-dot { transition: background 0.25s ease, width 0.25s ease; }
     .gallery-dot.active { background: white; width: 14px; border-radius: 9999px; }
+    .menu-chip { padding: 6px 16px; border-radius: 9999px; border: 1px solid #e5e7eb; font-size: 12px; font-weight: 600; color: #6b7280; cursor: pointer; white-space: nowrap; user-select: none; transition: all 0.15s; }
+    .menu-chip.active { background: #0B6B3A; border-color: #0B6B3A; color: #fff; }
+    .menu-chip-dark { padding: 6px 16px; border-radius: 9999px; border: 1px solid rgba(255,255,255,0.15); font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.6); cursor: pointer; white-space: nowrap; user-select: none; transition: all 0.15s; }
+    .menu-chip-dark.active { background: #C9A227; border-color: #C9A227; color: #000; }
 </style>
 
 <!-- ============ HERO ============ -->
@@ -223,7 +227,7 @@
 
 <!-- ============ DINING ============ -->
 <section id="dining" class="max-w-7xl mx-auto px-6 py-16 md:py-20" data-animate>
-    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-10">
+    <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-8">
         <div>
             <p class="text-[#0B6B3A] font-semibold uppercase tracking-wider text-sm mb-2">The Restaurant</p>
             <h2 class="gold-underline text-3xl md:text-4xl font-bold text-black">Food worth the drive</h2>
@@ -237,28 +241,32 @@
             </div>
         </div>
     </div>
+
+    <div class="flex flex-col sm:flex-row gap-3 mb-5">
+        <div class="relative flex-1">
+            <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-gray-300 text-sm"></i>
+            <input type="text" id="food-search" placeholder="Search the menu..." class="w-full border border-gray-200 rounded-full pl-11 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0B6B3A]/20">
+        </div>
+    </div>
+    <div class="flex gap-2 overflow-x-auto pb-2 mb-8" id="food-chips">
+        <span class="menu-chip active" data-cat="all">All</span>
+        {% for cat in dining_categories %}<span class="menu-chip" data-cat="{{ cat }}">{{ cat }}</span>{% endfor %}
+    </div>
+
     <div id="food-grid" class="grid sm:grid-cols-2 md:grid-cols-3 gap-6">
-        {% for item in food_items %}
-        <div class="menu-card bg-white rounded-2xl shadow-md hover:shadow-xl transition overflow-hidden border border-gray-100">
+        {% for item in dining_items %}
+        <div class="menu-card bg-white rounded-2xl shadow-md hover:shadow-xl transition overflow-hidden border border-gray-100" data-category="{{ item.category }}" data-name="{{ item.name|lower }}">
             <div class="gallery aspect-video overflow-hidden" data-gallery>
                 {% for img in item.images.all %}
                 <img src="{{ img.image.url }}" alt="{{ item.name }}" class="gallery-img w-full h-full object-cover {% if forloop.first %}active{% endif %}">
                 {% empty %}
-                <div class="w-full h-full bg-gray-100 flex items-center justify-center text-gray-400">
-                    <i class="fa-solid fa-utensils text-2xl"></i>
-                </div>
+                <div class="w-full h-full bg-gray-100 flex items-center justify-center text-gray-400"><i class="fa-solid fa-utensils text-2xl"></i></div>
                 {% endfor %}
                 {% if item.images.count > 1 %}
-                <button type="button" class="gallery-prev gallery-nav-btn absolute left-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 z-10">
-                    <i class="fa-solid fa-chevron-left text-[10px]"></i>
-                </button>
-                <button type="button" class="gallery-next gallery-nav-btn absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 z-10">
-                    <i class="fa-solid fa-chevron-right text-[10px]"></i>
-                </button>
+                <button type="button" class="gallery-prev gallery-nav-btn absolute left-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 z-10"><i class="fa-solid fa-chevron-left text-[10px]"></i></button>
+                <button type="button" class="gallery-next gallery-nav-btn absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 z-10"><i class="fa-solid fa-chevron-right text-[10px]"></i></button>
                 <div class="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
-                    {% for img in item.images.all %}
-                    <span class="gallery-dot w-1.5 h-1.5 rounded-full bg-white/50 {% if forloop.first %}active{% endif %}"></span>
-                    {% endfor %}
+                    {% for img in item.images.all %}<span class="gallery-dot w-1.5 h-1.5 rounded-full bg-white/50 {% if forloop.first %}active{% endif %}"></span>{% endfor %}
                 </div>
                 {% endif %}
             </div>
@@ -278,21 +286,21 @@
                 </button>
             </div>
         </div>
-        {% empty %}
-        <p class="text-gray-500 col-span-3 text-center">Menu items will appear here once added in the admin panel.</p>
-        {% endfor %}
+        {% empty %}<p class="text-gray-500 col-span-3 text-center">Menu items will appear here once added in the admin panel.</p>{% endfor %}
     </div>
-    <div class="text-center mt-8">
-        <button type="button" id="food-view-more" class="border-2 border-[#0B6B3A] text-[#0B6B3A] font-semibold px-8 py-2.5 rounded-full hover:bg-[#0B6B3A] hover:text-white transition hidden">
-            View More
-        </button>
+    <p id="food-empty-msg" class="text-gray-400 text-center py-10 hidden">No items match your search.</p>
+
+    <div id="food-pagination" class="flex items-center justify-center gap-4 mt-10 hidden">
+        <button type="button" id="food-prev" class="w-10 h-10 rounded-full border border-[#0B6B3A] text-[#0B6B3A] hover:bg-[#0B6B3A] hover:text-white transition disabled:opacity-30 disabled:pointer-events-none"><i class="fa-solid fa-chevron-left text-xs"></i></button>
+        <span id="food-page-info" class="text-xs text-gray-400 font-medium"></span>
+        <button type="button" id="food-next" class="w-10 h-10 rounded-full border border-[#0B6B3A] text-[#0B6B3A] hover:bg-[#0B6B3A] hover:text-white transition disabled:opacity-30 disabled:pointer-events-none"><i class="fa-solid fa-chevron-right text-xs"></i></button>
     </div>
 </section>
 
 <!-- ============ BAR ============ -->
 <section id="bar" class="bg-[#06140b] py-16 md:py-20" data-animate>
     <div class="max-w-7xl mx-auto px-6">
-        <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-10">
+        <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-8">
             <div>
                 <p class="text-[#C9A227] font-semibold uppercase tracking-wider text-sm mb-2">The Bar &amp; Lounge</p>
                 <h2 class="text-3xl md:text-4xl font-bold text-white">Golden hour, every hour</h2>
@@ -306,28 +314,32 @@
                 </div>
             </div>
         </div>
+
+        <div class="flex flex-col sm:flex-row gap-3 mb-5">
+            <div class="relative flex-1">
+                <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-white/30 text-sm"></i>
+                <input type="text" id="drink-search" placeholder="Search drinks..." class="w-full bg-white/5 border border-white/10 text-white placeholder-white/30 rounded-full pl-11 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#C9A227]/40">
+            </div>
+        </div>
+        <div class="flex gap-2 overflow-x-auto pb-2 mb-8" id="drink-chips">
+            <span class="menu-chip-dark active" data-cat="all">All</span>
+            {% for cat in bar_categories %}<span class="menu-chip-dark" data-cat="{{ cat }}">{{ cat }}</span>{% endfor %}
+        </div>
+
         <div id="drink-grid" class="grid sm:grid-cols-2 md:grid-cols-4 gap-6">
-            {% for item in drink_items %}
-            <div class="menu-card bg-[#0d1f13] rounded-2xl overflow-hidden border border-white/10 hover:border-[#C9A227]/50 transition">
+            {% for item in bar_items %}
+            <div class="menu-card bg-[#0d1f13] rounded-2xl overflow-hidden border border-white/10 hover:border-[#C9A227]/50 transition" data-category="{{ item.category }}" data-name="{{ item.name|lower }}">
                 <div class="gallery aspect-square overflow-hidden" data-gallery>
                     {% for img in item.images.all %}
                     <img src="{{ img.image.url }}" alt="{{ item.name }}" class="gallery-img w-full h-full object-cover {% if forloop.first %}active{% endif %}">
                     {% empty %}
-                    <div class="w-full h-full bg-white/5 flex items-center justify-center text-white/30">
-                        <i class="fa-solid fa-martini-glass-citrus text-2xl"></i>
-                    </div>
+                    <div class="w-full h-full bg-white/5 flex items-center justify-center text-white/30"><i class="fa-solid fa-martini-glass-citrus text-2xl"></i></div>
                     {% endfor %}
                     {% if item.images.count > 1 %}
-                    <button type="button" class="gallery-prev gallery-nav-btn absolute left-1 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 z-10">
-                        <i class="fa-solid fa-chevron-left text-[9px]"></i>
-                    </button>
-                    <button type="button" class="gallery-next gallery-nav-btn absolute right-1 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 z-10">
-                        <i class="fa-solid fa-chevron-right text-[9px]"></i>
-                    </button>
+                    <button type="button" class="gallery-prev gallery-nav-btn absolute left-1 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 z-10"><i class="fa-solid fa-chevron-left text-[9px]"></i></button>
+                    <button type="button" class="gallery-next gallery-nav-btn absolute right-1 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 z-10"><i class="fa-solid fa-chevron-right text-[9px]"></i></button>
                     <div class="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex gap-1 z-10">
-                        {% for img in item.images.all %}
-                        <span class="gallery-dot w-1 h-1 rounded-full bg-white/50 {% if forloop.first %}active{% endif %}"></span>
-                        {% endfor %}
+                        {% for img in item.images.all %}<span class="gallery-dot w-1 h-1 rounded-full bg-white/50 {% if forloop.first %}active{% endif %}"></span>{% endfor %}
                     </div>
                     {% endif %}
                 </div>
@@ -344,14 +356,14 @@
                     </button>
                 </div>
             </div>
-            {% empty %}
-            <p class="text-white/50 col-span-4 text-center">Drinks will appear here once added in the admin panel.</p>
-            {% endfor %}
+            {% empty %}<p class="text-white/50 col-span-4 text-center">Drinks will appear here once added in the admin panel.</p>{% endfor %}
         </div>
-        <div class="text-center mt-8">
-            <button type="button" id="drink-view-more" class="border-2 border-[#C9A227] text-[#C9A227] font-semibold px-8 py-2.5 rounded-full hover:bg-[#C9A227] hover:text-black transition hidden">
-                View More
-            </button>
+        <p id="drink-empty-msg" class="text-white/40 text-center py-10 hidden">No drinks match your search.</p>
+
+        <div id="drink-pagination" class="flex items-center justify-center gap-4 mt-10 hidden">
+            <button type="button" id="drink-prev" class="w-10 h-10 rounded-full border border-[#C9A227] text-[#C9A227] hover:bg-[#C9A227] hover:text-black transition disabled:opacity-30 disabled:pointer-events-none"><i class="fa-solid fa-chevron-left text-xs"></i></button>
+            <span id="drink-page-info" class="text-xs text-white/40 font-medium"></span>
+            <button type="button" id="drink-next" class="w-10 h-10 rounded-full border border-[#C9A227] text-[#C9A227] hover:bg-[#C9A227] hover:text-black transition disabled:opacity-30 disabled:pointer-events-none"><i class="fa-solid fa-chevron-right text-xs"></i></button>
         </div>
     </div>
 </section>
@@ -480,50 +492,99 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     const csrftoken = getCookie('csrftoken');
 
-    // ---------- Tier toggles ----------
-    function setupToggle(toggleId, gridId, viewMoreId) {
-    const toggle = document.getElementById(toggleId);
-    const grid = document.getElementById(gridId);
-    const viewMoreBtn = document.getElementById(viewMoreId);
-    let currentTier = 'regular';
-    let expanded = false;
+    // ---------- Menu section: search + category filter + client-side pagination + tier pricing ----------
+    function setupMenuSection(config) {
+        const grid = document.getElementById(config.gridId);
+        const allCards = Array.from(grid.querySelectorAll('.menu-card'));
+        const searchInput = document.getElementById(config.searchId);
+        const chipsContainer = document.getElementById(config.chipsId);
+        const emptyMsg = document.getElementById(config.emptyMsgId);
+        const paginationEl = document.getElementById(config.paginationId);
+        const prevBtn = document.getElementById(config.prevId);
+        const nextBtn = document.getElementById(config.nextId);
+        const pageInfo = document.getElementById(config.pageInfoId);
+        const toggle = document.getElementById(config.toggleId);
+        const pageSize = config.pageSize || 6;
 
-    function applyTier() {
-        grid.querySelectorAll('.menu-card').forEach(card => {
-            const btn = card.querySelector('.add-to-cart-btn');
-            const priceEl = card.querySelector('.item-price');
-            if (!btn) return;
-            const price = currentTier === 'vip' ? btn.dataset.vipPrice : btn.dataset.regularPrice;
-            btn.dataset.price = price;
-            btn.dataset.currentTier = currentTier;
-            if (priceEl) priceEl.textContent = `KSh ${parseFloat(price).toLocaleString()}`;
-        });
-    }
+        let currentTier = 'regular';
+        let currentPage = 1;
+        let filtered = allCards.slice();
 
-    function applyVisibility() {
-            const cards = grid.querySelectorAll('.menu-card');
-            cards.forEach((card, index) => {
-                card.classList.toggle('hidden', !expanded && index >= 6);
+        function applyTierPricing() {
+            allCards.forEach(card => {
+                const btn = card.querySelector('.add-to-cart-btn');
+                const priceEl = card.querySelector('.item-price');
+                if (!btn) return;
+                const price = currentTier === 'vip' ? btn.dataset.vipPrice : btn.dataset.regularPrice;
+                btn.dataset.price = price;
+                btn.dataset.currentTier = currentTier;
+                if (priceEl) priceEl.textContent = `KSh ${parseFloat(price).toLocaleString()}`;
             });
-            viewMoreBtn.classList.toggle('hidden', cards.length <= 6 || expanded);
         }
 
+        function applyFilters() {
+            const q = searchInput.value.toLowerCase().trim();
+            const activeCat = chipsContainer.querySelector('.menu-chip.active, .menu-chip-dark.active').dataset.cat;
+            filtered = allCards.filter(card => {
+                const matchesText = !q || card.dataset.name.includes(q);
+                const matchesCat = activeCat === 'all' || card.dataset.category === activeCat;
+                return matchesText && matchesCat;
+            });
+            currentPage = 1;
+            renderPage();
+        }
+
+        function renderPage() {
+            const totalPages = Math.max(Math.ceil(filtered.length / pageSize), 1);
+            if (currentPage > totalPages) currentPage = totalPages;
+            const start = (currentPage - 1) * pageSize;
+            const end = start + pageSize;
+
+            allCards.forEach(card => { card.style.display = 'none'; });
+            filtered.slice(start, end).forEach(card => { card.style.display = ''; });
+
+            emptyMsg.classList.toggle('hidden', filtered.length > 0);
+
+            if (filtered.length > pageSize) {
+                paginationEl.classList.remove('hidden');
+                pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+                prevBtn.disabled = currentPage === 1;
+                nextBtn.disabled = currentPage === totalPages;
+            } else {
+                paginationEl.classList.add('hidden');
+            }
+        }
+
+        searchInput.addEventListener('input', applyFilters);
+        chipsContainer.querySelectorAll('.menu-chip, .menu-chip-dark').forEach(chip => {
+            chip.addEventListener('click', function () {
+                chipsContainer.querySelectorAll('.menu-chip, .menu-chip-dark').forEach(c => c.classList.remove('active'));
+                this.classList.add('active');
+                applyFilters();
+            });
+        });
+        prevBtn.addEventListener('click', () => { if (currentPage > 1) { currentPage--; renderPage(); } });
+        nextBtn.addEventListener('click', () => { currentPage++; renderPage(); });
         toggle.addEventListener('click', function () {
             currentTier = currentTier === 'regular' ? 'vip' : 'regular';
             toggle.classList.toggle('vip', currentTier === 'vip');
-            applyTier();
+            applyTierPricing();
         });
 
-        viewMoreBtn.addEventListener('click', function () {
-            expanded = true;
-            applyVisibility();
-        });
-
-        applyTier();
-        applyVisibility();
+        applyTierPricing();
+        renderPage();
     }
-    setupToggle('food-toggle', 'food-grid', 'food-view-more');
-    setupToggle('drink-toggle', 'drink-grid', 'drink-view-more');
+
+    setupMenuSection({
+        gridId: 'food-grid', searchId: 'food-search', chipsId: 'food-chips', emptyMsgId: 'food-empty-msg',
+        paginationId: 'food-pagination', prevId: 'food-prev', nextId: 'food-next', pageInfoId: 'food-page-info',
+        toggleId: 'food-toggle', pageSize: 6,
+    });
+    setupMenuSection({
+        gridId: 'drink-grid', searchId: 'drink-search', chipsId: 'drink-chips', emptyMsgId: 'drink-empty-msg',
+        paginationId: 'drink-pagination', prevId: 'drink-prev', nextId: 'drink-next', pageInfoId: 'drink-page-info',
+        toggleId: 'drink-toggle', pageSize: 8,
+    });
 
     // ---------- Cart (persisted in localStorage) ----------
     const CART_KEY = 'qgh_cart';

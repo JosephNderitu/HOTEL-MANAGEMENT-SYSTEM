@@ -13,25 +13,36 @@ from django.core.mail import send_mail
 from django.conf import settings
 from django.utils import timezone
 from .models import Conversation, ChatMessage, EmailVerification
+from django.db.models import Q
 
 
 def home(request):
     room_types = RoomType.objects.filter(is_active=True).prefetch_related('images')
-    all_food = MenuItem.objects.filter(item_type='food', is_available=True).select_related('stock_item').prefetch_related('images')
-    all_drinks = MenuItem.objects.filter(item_type='drink', is_available=True).select_related('stock_item').prefetch_related('images')
-    food_items = [item for item in all_food if item.is_orderable]
-    drink_items = [item for item in all_drinks if item.is_orderable]
+
+    dining_qs = MenuItem.objects.filter(is_available=True).filter(
+        Q(item_type='food') | Q(item_type='drink', serving_point='kitchen')
+    ).select_related('stock_item').prefetch_related('images')
+    dining_items = [item for item in dining_qs if item.is_orderable]
+    dining_categories = sorted(set(i.category for i in dining_items if i.category))
+
+    bar_qs = MenuItem.objects.filter(
+        item_type='drink', serving_point='bar', is_available=True
+    ).select_related('stock_item').prefetch_related('images')
+    bar_items = [item for item in bar_qs if item.is_orderable]
+    bar_categories = sorted(set(i.category for i in bar_items if i.category))
+
     context = {
         'room_types': room_types,
-        'food_items': food_items,
-        'drink_items': drink_items,
+        'dining_items': dining_items,
+        'dining_categories': dining_categories,
+        'bar_items': bar_items,
+        'bar_categories': bar_categories,
     }
     return render(request, 'public_site/home.html', context)
 
 
 def about(request):
     return render(request, 'public_site/about.html')
-
 
 def check_availability(request):
     check_in_str = request.GET.get('check_in')
@@ -62,7 +73,6 @@ def check_availability(request):
         })
 
     return JsonResponse({'room_types': results})
-
 
 @require_POST
 def submit_booking(request):
@@ -103,7 +113,6 @@ def submit_booking(request):
         source='online',
     )
     return JsonResponse({'success': True, 'booking_id': booking.id})
-
 
 @require_POST
 def submit_order(request):
@@ -199,7 +208,6 @@ def send_verification_code(request):
     )
     return JsonResponse({'success': True})
 
-
 @require_POST
 def verify_code(request):
     data = json.loads(request.body)
@@ -230,7 +238,6 @@ def verify_code(request):
     messages = list(conversation.messages.values('sender', 'body', 'created_at'))
     return JsonResponse({'success': True, 'messages': messages})
 
-
 def get_messages(request):
     email = request.session.get('contact_email')
     if not email:
@@ -240,7 +247,6 @@ def get_messages(request):
         return JsonResponse({'messages': []})
     messages = list(conversation.messages.values('sender', 'body', 'created_at'))
     return JsonResponse({'messages': messages})
-
 
 @require_POST
 def send_message(request):
@@ -259,7 +265,6 @@ def send_message(request):
     conversation.save(update_fields=['last_message_at'])
 
     return JsonResponse({'success': True})
-
 
 def contact_logout(request):
     request.session.pop('contact_email', None)
