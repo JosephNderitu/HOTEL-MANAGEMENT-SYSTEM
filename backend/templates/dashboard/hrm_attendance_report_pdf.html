@@ -1,50 +1,439 @@
+{% load static %}
 <!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
+<title>Attendance Report</title>
 <style>
-    @page { size: A4 landscape; margin: 1.5cm; }
-    body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1e293b; font-size: 11px; }
-    h1 { font-size: 18px; color: #0B6B3A; margin-bottom: 2px; }
-    .subtitle { color: #64748b; font-size: 11px; margin-bottom: 16px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    th { background: #0B6B3A; color: #fff; text-align: left; padding: 6px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: .03em; }
-    td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
-    tr:nth-child(even) td { background: #f8fafc; }
-    .dept-header td { background: #ecfdf5; font-weight: bold; color: #0B6B3A; border-bottom: 2px solid #0B6B3A; }
-    .footer { margin-top: 20px; font-size: 9px; color: #94a3b8; }
-    .rate-good { color: #059669; font-weight: bold; }
-    .rate-bad { color: #dc2626; font-weight: bold; }
+    @page {
+        size: A4 landscape;
+        margin: 12mm 10mm 12mm 10mm;
+        @bottom-right {
+            content: "Page " counter(page) " of " counter(pages);
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-size: 8.5pt;
+            color: #64748b;
+        }
+        @bottom-left {
+            content: "Queens Garden Hotel — Human Resource Management";
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-size: 8.5pt;
+            color: #64748b;
+        }
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+        font-family: 'Helvetica Neue', Arial, sans-serif;
+        font-size: 9.5pt;
+        color: #0f172a;
+        line-height: 1.3;
+    }
+
+    /* Header Bar */
+    .header-table {
+        width: 100%;
+        border-collapse: collapse;
+        border-bottom: 2.5px solid #0B6B3A;
+        padding-bottom: 6px;
+        margin-bottom: 8px;
+    }
+    .header-table td { vertical-align: middle; }
+    .header-logo { width: 50px; text-align: left; }
+    .header-logo img { width: 44px; height: 44px; border-radius: 50%; }
+    .header-title h1 {
+        font-size: 16pt;
+        font-weight: 800;
+        color: #0B6B3A;
+        margin: 0;
+        text-transform: uppercase;
+        letter-spacing: -0.02em;
+    }
+    .header-title p {
+        font-size: 9pt;
+        color: #475569;
+        margin-top: 2px;
+    }
+
+    /* Meta Details Bar */
+    .meta-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 8px;
+        font-size: 8.5pt;
+        color: #475569;
+    }
+    .meta-table td { padding: 2px 0; }
+
+    /* Notice Box */
+    .notice-box {
+        background-color: #f0fdf4;
+        border-left: 3px solid #0B6B3A;
+        border-top: 1px solid #dcfce7;
+        border-right: 1px solid #dcfce7;
+        border-bottom: 1px solid #dcfce7;
+        padding: 6px 10px;
+        font-size: 8.5pt;
+        color: #166534;
+        margin-bottom: 12px;
+    }
+
+    /* KPI Summary Panels */
+    .kpi-table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 8px 0;
+        margin-bottom: 14px;
+    }
+    .kpi-card {
+        background: #ffffff;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        padding: 8px 10px;
+        vertical-align: top;
+    }
+    .kpi-title {
+        font-size: 8pt;
+        font-weight: 800;
+        color: #0B6B3A;
+        text-transform: uppercase;
+        border-bottom: 1px solid #e2e8f0;
+        padding-bottom: 3px;
+        margin-bottom: 5px;
+    }
+    .kpi-row {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 8.5pt;
+        margin-bottom: 3px;
+    }
+    .kpi-row td { padding: 2px 0; }
+    .kpi-label { color: #475569; }
+    .kpi-val { text-align: right; font-weight: 700; color: #0f172a; }
+
+    .kpi-total-box {
+        border-top: 1.5px solid #0B6B3A;
+        margin-top: 4px;
+        padding-top: 4px;
+    }
+    .kpi-total-val {
+        font-size: 14pt;
+        font-weight: 800;
+        text-align: right;
+    }
+    .val-good { color: #15803d; }
+    .val-warn { color: #b45309; }
+    .val-bad { color: #b91c1c; }
+
+    /* Main Data Tables */
+    table.data-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 14px;
+    }
+    table.data-table th {
+        background: #0B6B3A;
+        color: #ffffff;
+        font-size: 8.5pt;
+        font-weight: 700;
+        text-align: left;
+        padding: 5px 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+    }
+    table.data-table td {
+        font-size: 8.5pt;
+        padding: 5px 8px;
+        border-bottom: 1px solid #e2e8f0;
+        vertical-align: middle;
+    }
+    table.data-table tr:nth-child(even) td { background: #f8fafc; }
+
+    .dept-header-row td {
+        background: #ecfdf5 !important;
+        font-weight: 800;
+        color: #0B6B3A;
+        border-bottom: 1.5px solid #0B6B3A;
+        font-size: 9pt;
+    }
+
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .center { text-align: center; }
+
+    /* Status Badges */
+    .badge {
+        display: inline-block;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 7.5pt;
+        font-weight: 800;
+        text-transform: uppercase;
+    }
+    .badge-ontime { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+    .badge-late { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
+    .badge-absent { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
+    .badge-leave { background: #fef9c3; color: #854d0e; border: 1px solid #fef08a; }
+    .badge-off { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+    .badge-pending { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+    .badge-noshift { background: #f8fafc; color: #94a3b8; border: 1px solid #e2e8f0; }
+
+    .page-break { page-break-before: always; }
+    .day-container { break-inside: avoid; margin-bottom: 12px; }
+    
+    .day-header {
+        background: #0B6B3A;
+        color: #ffffff;
+        padding: 4px 8px;
+        font-size: 9pt;
+        font-weight: 700;
+    }
+
+    h2.section-heading {
+        font-size: 11pt;
+        font-weight: 800;
+        color: #0B6B3A;
+        margin: 12px 0 6px 0;
+        border-bottom: 1.5px solid #0B6B3A;
+        padding-bottom: 2px;
+        text-transform: uppercase;
+    }
+    
+    .text-danger-no-signout {
+        color: #b91c1c !important;
+        font-weight: 800 !important;
+        background: #fef2f2;
+        padding: 2px 6px;
+        border-radius: 4px;
+        border: 1px solid #fecaca;
+        display: inline-block;
+        font-size: 7.5pt;
+    }
+
+    .text-in-progress {
+        color: #0369a1 !important;
+        font-weight: 700 !important;
+        background: #f0f9ff;
+        padding: 2px 6px;
+        border-radius: 4px;
+        border: 1px solid #bae6fd;
+        display: inline-block;
+        font-size: 7.5pt;
+    }
+    .shift-tag {
+        display: inline-block;
+        padding: 1px 5px;
+        border-radius: 3px;
+        font-size: 7.5pt;
+        font-weight: bold;
+    }
+    .shift-tag-leave { color: #854d0e; background: #fef9c3; border: 1px solid #fef08a; }
+    .shift-tag-off { color: #475569; background: #f1f5f9; border: 1px solid #cbd5e1; }
+    .shift-tag-unscheduled { color: #0369a1; background: #e0f2fe; border: 1px solid #bae6fd; }
+    .shift-tag-none { color: #94a3b8; font-style: italic; }
+    .badge-unscheduled { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
+
+    .footer-note {
+        font-size: 7.5pt;
+        color: #64748b;
+        border-top: 1px solid #e2e8f0;
+        padding-top: 6px;
+        margin-top: 12px;
+    }
 </style>
 </head>
 <body>
-    <h1>Attendance Report</h1>
-    <p class="subtitle">{{ start_date|date:"M d, Y" }} &ndash; {{ end_date|date:"M d, Y" }} &middot; {{ dept_label }} &middot; Generated {{ generated_at|date:"M d, Y H:i" }} by {{ generated_by.get_full_name|default:generated_by.username }}</p>
 
-    <table>
-        <thead>
-            <tr><th>Employee</th><th>Department</th><th>On Time</th><th>Late</th><th>Absent</th><th>On Leave / Off</th><th>Scheduled Days</th><th>Attendance Rate</th></tr>
-        </thead>
-        <tbody>
-            {% regroup rows by department as dept_groups %}
-            {% for group in dept_groups %}
-            <tr class="dept-header"><td colspan="8">{{ group.grouper }}</td></tr>
+<!-- Header -->
+<table class="header-table">
+    <tr>
+        <td class="header-logo"><img src="{% static 'img/queens_Garden_Logo.jpg' %}"></td>
+        <td class="header-title">
+            <h1>Queens Garden Hotel — Attendance Audit Report</h1>
+            <p>Official Workforce Roster & Attendance Breakdown &middot; Department: <strong>{{ dept_label }}</strong></p>
+        </td>
+    </tr>
+</table>
+
+<!-- Meta Details -->
+<table class="meta-table">
+    <tr>
+        <td>Report Period: <strong>{{ start_date|date:"M d, Y" }} &ndash; {{ end_date|date:"M d, Y" }}</strong> ({{ span_days }} Days)</td>
+        <td style="text-align: right;">Generated By: <strong>{{ generated_by.get_full_name|default:generated_by.username }}</strong> on {{ generated_at|date:"M d, Y H:i" }}</td>
+    </tr>
+</table>
+
+<!-- Notice Box -->
+<div class="notice-box">
+    <strong>Executive Audit Notice:</strong> Attendance is evaluated using assigned shift timings, grace windows, biometric clock-in timestamps, approved leaves, and off schedules. Shift statuses are updated in real-time.
+</div>
+
+<!-- KPI Summary Section -->
+<table class="kpi-table">
+    <tr>
+        <!-- Attendance Stats -->
+        <td class="kpi-card" style="width: 50%;">
+            <div class="kpi-title">Attendance & Shift Volume</div>
+            <table class="kpi-row">
+                <tr><td class="kpi-label">Completed / Evaluated Shifts:</td><td class="kpi-val">{{ total_evaluated }}</td></tr>
+                <tr><td class="kpi-label">Clocked-In On Time:</td><td class="kpi-val val-good">{{ total_on_time }}</td></tr>
+                <tr><td class="kpi-label">Clocked-In Late:</td><td class="kpi-val val-warn">{{ total_late }}</td></tr>
+                <tr><td class="kpi-label">Unexcused Absences:</td><td class="kpi-val val-bad">{{ total_absent }}</td></tr>
+            </table>
+            <div class="kpi-total-box">
+                <table class="kpi-row">
+                    <tr>
+                        <td class="kpi-label" style="font-weight: 800;">Overall Attendance Rate:</td>
+                        <td class="kpi-total-val {% if overall_attendance_rate >= 90 %}val-good{% elif overall_attendance_rate >= 75 %}val-warn{% else %}val-bad{% endif %}">
+                            {{ overall_attendance_rate }}%
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </td>
+
+        <!-- Offs and Pending -->
+        <td class="kpi-card" style="width: 50%;">
+            <div class="kpi-title">Roster & Non-Working Days</div>
+            <table class="kpi-row">
+                <tr><td class="kpi-label">Total Staff Evaluated:</td><td class="kpi-val">{{ total_staff_count }} Staff</td></tr>
+                <tr><td class="kpi-label">Approved Leaves / Weekly Offs:</td><td class="kpi-val">{{ total_off_leave }} Days</td></tr>
+                <tr><td class="kpi-label">Upcoming / Grace Period Shifts:</td><td class="kpi-val" style="color: #1d4ed8;">{{ total_pending }} Shifts</td></tr>
+                <tr><td class="kpi-label">Total Late Incidents:</td><td class="kpi-val val-warn">{{ total_late }} Incidents</td></tr>
+            </table>
+            <div class="kpi-total-box">
+                <table class="kpi-row">
+                    <tr>
+                        <td class="kpi-label" style="font-weight: 800;">Absence Rate:</td>
+                        <td class="kpi-total-val {% if total_absent == 0 %}val-good{% else %}val-bad{% endif %}">
+                            {{ total_absent }} Shift{% if total_absent != 1 %}s{% endif %}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </td>
+    </tr>
+</table>
+
+<!-- Section 1: Staff Summary -->
+<h2 class="section-heading">Employee Summary Aggregate</h2>
+<table class="data-table">
+    <thead>
+        <tr>
+            <th style="width:25%;">Staff Member</th>
+            <th style="width:18%;">Department</th>
+            <th style="width:9%;" class="num">On Time</th>
+            <th style="width:9%;" class="num">Late</th>
+            <th style="width:9%;" class="num">Absent</th>
+            <th style="width:10%;" class="num">Leave / Off</th>
+            <th style="width:10%;" class="num">Pending</th>
+            <th style="width:10%;" class="num">Att. Rate</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% regroup rows by department as dept_groups %}
+        {% for group in dept_groups %}
+            <tr class="dept-header-row">
+                <td colspan="8">{{ group.grouper }}</td>
+            </tr>
             {% for r in group.list %}
             <tr>
-                <td>{{ r.name }}</td>
+                <td><strong>{{ r.name }}</strong></td>
                 <td>{{ r.department }}</td>
-                <td>{{ r.on_time }}</td>
-                <td>{{ r.late }}</td>
-                <td>{{ r.absent }}</td>
-                <td>{{ r.off_leave }}</td>
-                <td>{{ r.scheduled }}</td>
-                <td class="{% if r.rate is not None and r.rate >= 90 %}rate-good{% elif r.rate is not None and r.rate < 75 %}rate-bad{% endif %}">{% if r.rate is not None %}{{ r.rate }}%{% else %}&mdash;{% endif %}</td>
+                <td class="num val-good"><strong>{{ r.on_time }}</strong></td>
+                <td class="num val-warn">{{ r.late }}</td>
+                <td class="num val-bad"><strong>{{ r.absent }}</strong></td>
+                <td class="num">{{ r.off_leave }}</td>
+                <td class="num" style="color:#1d4ed8;">{{ r.pending }}</td>
+                <td class="num {% if r.rate is not None and r.rate >= 90 %}val-good{% elif r.rate is not None and r.rate >= 75 %}val-warn{% elif r.rate is not None %}val-bad{% endif %}">
+                    <strong>{% if r.rate is not None %}{{ r.rate }}%{% else %}&mdash;{% endif %}</strong>
+                </td>
             </tr>
             {% endfor %}
+        {% empty %}
+            <tr>
+                <td colspan="8" class="center" style="padding: 16px; color:#94a3b8;">No records found for the selected department or date range.</td>
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<!-- Section 2: Day-by-Day Detailed Breakdown -->
+<div class="page-break"></div>
+<h2 class="section-heading">Day-by-Day Roster Breakdown</h2>
+
+{% for day in daily_breakdown %}
+<div class="day-container">
+    <table class="data-table" style="margin-bottom: 0;">
+        <thead>
+            <tr>
+                <th colspan="6" class="day-header">
+                    {{ day.date|date:"l, F j, Y" }}{% if day.is_today %} &middot; (TODAY){% endif %}
+                </th>
+            </tr>
+            <tr>
+                <th style="width:22%;">Staff Member</th>
+                <th style="width:18%;">Department</th>
+                <th style="width:24%;">Assigned Shift</th>
+                <th style="width:10%;" class="center">Clock In</th>
+                <th style="width:10%;" class="center">Clock Out</th>
+                <th style="width:16%;" class="center">Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in day.rows %}
+            <tr>
+                <td><strong>{{ r.name }}</strong></td>
+                <td>{{ r.department }}</td>
+                <td class="center">
+                    {% if r.status_code == 'on_leave' %}
+                        <span class="shift-tag shift-tag-leave">On Leave (Approved)</span>
+                    {% elif r.status_code == 'off' %}
+                        <span class="shift-tag shift-tag-off">Weekly Off Day</span>
+                    {% elif r.status_code == 'unscheduled' %}
+                        <span class="shift-tag shift-tag-unscheduled">Unscheduled (Present)</span>
+                    {% elif r.status_code == 'no_shift' %}
+                        <span class="shift-tag shift-tag-none">No Shift Scheduled</span>
+                    {% else %}
+                        {{ r.shift }}
+                    {% endif %}
+                </td>
+                <td class="center">{{ r.clock_in }}</td>
+                <td class="center">
+                    {% if r.clock_out == 'Never Signed Out' %}
+                        <span class="text-danger-no-signout">Never Signed Out</span>
+                    {% elif r.clock_out == 'In Progress' %}
+                        <span class="text-in-progress">In Progress</span>
+                    {% else %}
+                        {{ r.clock_out }}
+                    {% endif %}
+                </td>
+                <td class="center">
+                    {% if r.status_code == 'on_time' %}
+                        <span class="badge badge-ontime">On Time</span>
+                    {% elif r.status_code == 'late' %}
+                        <span class="badge badge-late">{{ r.status }}</span>
+                    {% elif r.status_code == 'absent' %}
+                        <span class="badge badge-absent">{{ r.status }}</span>
+                    {% elif r.status_code == 'pending' %}
+                        <span class="badge badge-pending">{{ r.status }}</span>
+                    {% elif r.status_code == 'on_leave' %}
+                        <span class="badge badge-leave">On Leave</span>
+                    {% elif r.status_code == 'off' %}
+                        <span class="badge badge-off">Weekly Off</span>
+                    {% else %}
+                        <span class="badge badge-noshift">No Shift</span>
+                    {% endif %}
+                </td>
+            </tr>
             {% endfor %}
         </tbody>
     </table>
+</div>
+{% endfor %}
 
-    <p class="footer">Generated by the HRM system. This report reflects attendance for staff scheduled during the selected period only.</p>
+<p class="footer-note">
+    <strong>Confidentiality Notice:</strong> Generated by HRM system. Intended solely for management review, payroll verification, and compliance tracking.
+</p>
+
 </body>
 </html>

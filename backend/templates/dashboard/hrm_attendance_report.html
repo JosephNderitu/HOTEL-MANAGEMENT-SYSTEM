@@ -1,178 +1,468 @@
 {% extends "dashboard/base_dashboard.html" %}
+
 {% block dashboard_content %}
 {% include "dashboard/_hrm_styles.html" %}
-<a href="{% url 'dashboard:hrm' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; HRM</a>
 
-<div class="hr-hero-card rounded-2xl p-6 md:p-8 mt-3 mb-6 text-white">
-    <div class="flex flex-wrap items-center justify-between gap-4">
-        <div>
-            <h1 class="text-2xl font-bold flex items-center gap-2"><i class="fa-solid fa-chart-line text-[#C9A227]"></i> Attendance</h1>
-            <p class="text-white/70 text-sm mt-1">{{ roster_date|date:"l, M d, Y" }} &middot; {{ total_active }} active staff</p>
+<style>
+    /* Slate-300 High-Contrast Border & Radius Override */
+    .hr-tile {
+        background: #ffffff !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 1rem !important;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
+        transition: all 0.2s ease-in-out !important;
+    }
+
+    .hr-tile:hover {
+        border-color: #94a3b8 !important;
+        box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.08) !important;
+    }
+
+    /* Form Controls */
+    .hr-filter-input {
+        background-color: #ffffff !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 0.75rem !important;
+        padding: 0.55rem 0.85rem !important;
+        font-size: 0.8125rem !important;
+        color: #0f172a !important;
+        outline: none !important;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+    }
+
+    .hr-filter-input:focus {
+        border-color: #0B6B3A !important;
+        box-shadow: 0 0 0 3px rgba(11, 107, 58, 0.12) !important;
+    }
+
+    /* Segmented Filter Pills */
+    .hr-seg-btn {
+        font-size: 0.75rem !important;
+        font-weight: 700 !important;
+        padding: 0.45rem 0.95rem !important;
+        border-radius: 9999px !important;
+        color: #475569 !important;
+        border: 1px solid #cbd5e1 !important;
+        background-color: #f8fafc !important;
+        transition: all 0.15s ease-in-out !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 0.35rem !important;
+    }
+
+    .hr-seg-btn:hover {
+        background-color: #e2e8f0 !important;
+        color: #0f172a !important;
+    }
+
+    .hr-seg-btn.hr-seg-active {
+        background-color: #0B6B3A !important;
+        border-color: #0B6B3A !important;
+        color: #ffffff !important;
+        box-shadow: 0 2px 6px rgba(11, 107, 58, 0.25) !important;
+    }
+
+    /* Custom Scrollbar */
+    .custom-scrollbar::-webkit-scrollbar {
+        height: 6px;
+        width: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+        background: #f1f5f9;
+        border-radius: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 4px;
+    }
+</style>
+
+<div class="space-y-6">
+    <!-- Top Back Navigation Link -->
+    <div>
+        <a href="{% url 'dashboard:hrm' %}" class="inline-flex items-center gap-2 text-[#0B6B3A] hover:text-[#074726] text-xs font-bold uppercase tracking-wider transition-colors">
+            <i class="fa-solid fa-arrow-left text-xs"></i> Back to HRM Overview
+        </a>
+    </div>
+
+    <!-- Hero Header Banner with Live Metrics -->
+    <div class="hr-hero-card rounded-2xl p-6 md:p-8 text-white flex flex-col lg:flex-row lg:items-center justify-between gap-6 shadow-md bg-gradient-to-r from-[#0B6B3A] via-[#074726] to-[#042e18]">
+        <div class="relative z-10 space-y-1.5">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-white/10 text-[#C9A227] border border-white/15 backdrop-blur-md">
+                <i class="fa-solid fa-clock-rotate-left text-[11px]"></i> Real-time Workforce Monitoring
+            </span>
+            <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight flex items-center gap-3">
+                <i class="fa-solid fa-chart-line text-[#C9A227]"></i> Attendance Trends & Roster
+            </h1>
+            <p class="text-white/80 text-xs md:text-sm">
+                Roster Date: <span class="font-bold text-white uppercase">{{ roster_date|date:"l, M d, Y" }}</span>
+                {% if roster_date == roster_today %}
+                    <span class="bg-[#C9A227] text-slate-900 font-extrabold text-[10px] px-2 py-0.5 rounded-full ml-1 uppercase">Today</span>
+                {% endif %}
+                &middot; <span class="font-bold text-white">{{ total_active }}</span> Active Staff Members
+            </p>
         </div>
-        <div class="flex gap-3 flex-wrap">
-            <div class="hr-stat-pill hr-stat-mini rounded-xl px-4 py-2"><p>{{ status_counts.on_time|default:0 }}</p><p>On Time</p></div>
-            <div class="hr-stat-pill hr-stat-mini rounded-xl px-4 py-2"><p>{{ status_counts.late|default:0 }}</p><p>Late</p></div>
-            <div class="hr-stat-pill hr-stat-mini rounded-xl px-4 py-2"><p>{{ status_counts.absent|default:0 }}</p><p>Absent</p></div>
-            <div class="hr-stat-pill hr-stat-mini rounded-xl px-4 py-2"><p>{{ status_counts.on_leave|default:0 }}</p><p>On Leave</p></div>
-            <div class="hr-stat-pill hr-stat-mini rounded-xl px-4 py-2"><p>{{ status_counts.weekly_off|default:0 }}</p><p>Weekly Off</p></div>
-        </div>
-    </div>
-</div>
 
-{% if messages %}{% for message in messages %}<div class="{% if message.tags == 'error' %}bg-red-50 border-red-300 text-red-700{% else %}bg-[#0B6B3A]/10 border-[#0B6B3A] text-[#0B6B3A]{% endif %} border text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>{% endfor %}{% endif %}
-
-<div class="hr-tile rounded-2xl p-5 mb-6">
-    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <div class="flex items-center gap-2">
-            <a href="?{{ roster_base_qs }}{% if roster_base_qs %}&{% endif %}roster_date={{ roster_prev|date:'Y-m-d' }}" class="w-7 h-7 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:border-[#0B6B3A] hover:text-[#0B6B3A]"><i class="fa-solid fa-chevron-left text-xs"></i></a>
-            <h2 class="font-bold text-black text-sm min-w-[160px] text-center">{{ roster_date|date:"D, M d, Y" }}</h2>
-            <a href="?{{ roster_base_qs }}{% if roster_base_qs %}&{% endif %}roster_date={{ roster_next|date:'Y-m-d' }}" class="w-7 h-7 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:border-[#0B6B3A] hover:text-[#0B6B3A]"><i class="fa-solid fa-chevron-right text-xs"></i></a>
-            {% if roster_date != roster_today %}<a href="?{{ roster_base_qs }}{% if roster_base_qs %}&{% endif %}roster_date={{ roster_today|date:'Y-m-d' }}" class="text-[11px] font-semibold text-[#0B6B3A] hover:underline ml-1">Today</a>{% endif %}
-        </div>
-        <form method="get" class="flex gap-2">
-            <input type="hidden" name="roster_date" value="{{ roster_date|date:'Y-m-d' }}">
-            <input type="hidden" name="days" value="{{ days }}">
-            <input type="text" name="roster_q" value="{{ roster_q }}" placeholder="Search staff..." class="hr-filter-input" style="width:180px;">
-            <button type="submit" class="bg-[#0B6B3A] hover:bg-[#074726] text-white text-xs font-semibold rounded-lg px-3"><i class="fa-solid fa-search"></i></button>
-        </form>
-    </div>
-
-    <div class="flex flex-wrap gap-2 mb-4">
-        <a href="?{{ roster_base_qs }}{% if roster_base_qs %}&{% endif %}roster_status=" class="hr-seg-btn {% if not roster_status_filter %}hr-seg-active{% else %}bg-gray-100{% endif %}">All ({{ total_active }})</a>
-        <a href="?{{ roster_base_qs }}{% if roster_base_qs %}&{% endif %}roster_status=on_time" class="hr-seg-btn {% if roster_status_filter == 'on_time' %}hr-seg-active{% else %}bg-gray-100{% endif %}">On Time ({{ status_counts.on_time|default:0 }})</a>
-        <a href="?{{ roster_base_qs }}{% if roster_base_qs %}&{% endif %}roster_status=late" class="hr-seg-btn {% if roster_status_filter == 'late' %}hr-seg-active{% else %}bg-gray-100{% endif %}">Late ({{ status_counts.late|default:0 }})</a>
-        <a href="?{{ roster_base_qs }}{% if roster_base_qs %}&{% endif %}roster_status=absent" class="hr-seg-btn {% if roster_status_filter == 'absent' %}hr-seg-active{% else %}bg-gray-100{% endif %}">Absent ({{ status_counts.absent|default:0 }})</a>
-        <a href="?{{ roster_base_qs }}{% if roster_base_qs %}&{% endif %}roster_status=on_leave" class="hr-seg-btn {% if roster_status_filter == 'on_leave' %}hr-seg-active{% else %}bg-gray-100{% endif %}">On Leave ({{ status_counts.on_leave|default:0 }})</a>
-        <a href="?{{ roster_base_qs }}{% if roster_base_qs %}&{% endif %}roster_status=weekly_off" class="hr-seg-btn {% if roster_status_filter == 'weekly_off' %}hr-seg-active{% else %}bg-gray-100{% endif %}">Weekly Off ({{ status_counts.weekly_off|default:0 }})</a>
-        <a href="?{{ roster_base_qs }}{% if roster_base_qs %}&{% endif %}roster_status=not_due" class="hr-seg-btn {% if roster_status_filter == 'not_due' %}hr-seg-active{% else %}bg-gray-100{% endif %}">Not Due ({{ status_counts.not_due|default:0 }})</a>
-        <a href="?{{ roster_base_qs }}{% if roster_base_qs %}&{% endif %}roster_status=not_scheduled" class="hr-seg-btn {% if roster_status_filter == 'not_scheduled' %}hr-seg-active{% else %}bg-gray-100{% endif %}">No Shift ({{ status_counts.not_scheduled|default:0 }})</a>
-    </div>
-
-    <div class="overflow-x-auto custom-scrollbar">
-        <table class="hr-table w-full">
-            <thead><tr><th>Staff</th><th>Shift</th><th>Clock In / Out</th><th>Status</th><th>Detail</th></tr></thead>
-            <tbody>
-            {% for r in roster_page %}
-            <tr>
-                <td data-label="Staff">
-                    <div class="flex items-center gap-2">
-                        <div class="hr-avatar" style="width:28px;height:28px;font-size:10px;">{{ r.user.get_full_name|default:r.user.username|slice:":2"|upper }}</div>
-                        <span>{{ r.user.get_full_name|default:r.user.username }}</span>
-                    </div>
-                </td>
-                <td data-label="Shift">{% if r.shift %}<span class="hr-cal-dot {% if r.shift.shift_kind == 'night' %}hr-cal-dot-night{% else %}hr-cal-dot-day{% endif %}"></span> {{ r.shift.name }}{% else %}—{% endif %}</td>
-                <td data-label="Clock In/Out">{% if r.clock_in %}{{ r.clock_in|date:"H:i" }}{% if r.clock_out %} – {{ r.clock_out|date:"H:i" }}{% endif %}{% else %}—{% endif %}</td>
-                <td data-label="Status"><span class="hr-status-chip hr-status-{{ r.status }}">{{ r.label }}</span></td>
-                <td data-label="Detail" class="text-xs text-gray-500">{{ r.detail|default:"—" }}</td>
-            </tr>
-            {% empty %}<tr><td colspan="5"><div class="hr-empty-state"><i class="fa-solid fa-user-clock"></i>No staff match this filter.</div></td></tr>{% endfor %}
-            </tbody>
-        </table>
-    </div>
-
-    {% if roster_page.paginator.num_pages > 1 %}
-    <div class="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
-        <p class="text-xs text-gray-500">Page {{ roster_page.number }} of {{ roster_page.paginator.num_pages }}</p>
-        <div class="flex items-center gap-1">
-            <a href="?{{ roster_base_qs }}{% if roster_base_qs %}&{% endif %}roster_page={{ roster_page.previous_page_number }}" class="hr-page-btn {% if not roster_page.has_previous %}hr-page-disabled{% endif %}"><i class="fa-solid fa-chevron-left text-[10px]"></i></a>
-            <a href="?{{ roster_base_qs }}{% if roster_base_qs %}&{% endif %}roster_page={{ roster_page.next_page_number }}" class="hr-page-btn {% if not roster_page.has_next %}hr-page-disabled{% endif %}"><i class="fa-solid fa-chevron-right text-[10px]"></i></a>
-        </div>
-    </div>
-    {% endif %}
-</div>
-
-<div class="hr-tile rounded-2xl p-5 mb-6">
-    <div class="flex items-center justify-between flex-wrap gap-3 mb-4">
-        <h2 class="font-bold text-black text-sm flex items-center gap-2"><i class="fa-solid fa-chart-bar text-[#0B6B3A]"></i> Attendance by Employee</h2>
-        <div class="flex items-center gap-3 flex-wrap">
-            <form method="get" class="flex items-center gap-2">
-                <input type="hidden" name="roster_date" value="{{ roster_date|date:'Y-m-d' }}">
-                <select name="chart_dept" onchange="this.form.submit()" class="hr-filter-input" style="width:170px;">
-                    <option value="">All Departments</option>
-                    {% for val, label in department_options %}<option value="{{ val }}" {% if chart_dept == val %}selected{% endif %}>{{ label }}</option>{% endfor %}
-                </select>
-                <select name="days" onchange="this.form.submit()" class="hr-filter-input" style="width:130px;">
-                    <option value="7" {% if days == 7 %}selected{% endif %}>Last 7 Days</option>
-                    <option value="30" {% if days == 30 %}selected{% endif %}>Last 30 Days</option>
-                    <option value="90" {% if days == 90 %}selected{% endif %}>Last 90 Days</option>
-                </select>
-            </form>
-            <div class="flex items-center gap-3 text-[11px] text-gray-500">
-                <span class="flex items-center gap-1"><span style="width:10px;height:10px;background:#0B6B3A;border-radius:2px;display:inline-block;"></span> On Time</span>
-                <span class="flex items-center gap-1"><span style="width:10px;height:10px;background:#f59e0b;border-radius:2px;display:inline-block;"></span> Late</span>
-                <span class="flex items-center gap-1"><span style="width:10px;height:10px;background:#dc2626;border-radius:2px;display:inline-block;"></span> Absent</span>
-                <span class="flex items-center gap-1"><span style="width:10px;height:10px;background:repeating-linear-gradient(45deg,#C9A227,#C9A227 2px,#fff 2px,#fff 4px);border:1px solid #C9A227;border-radius:2px;display:inline-block;"></span> On Leave / Off</span>
+        <!-- Metric Counter Pills -->
+        <div class="relative z-10 flex flex-wrap items-center gap-2.5">
+            <div class="hr-stat-pill rounded-xl px-3.5 py-2 text-center min-w-[80px]">
+                <p class="text-lg font-black text-emerald-300 leading-none">{{ status_counts.on_time|default:0 }}</p>
+                <p class="text-[10px] uppercase font-bold text-white/70 mt-1">On Time</p>
+            </div>
+            <div class="hr-stat-pill rounded-xl px-3.5 py-2 text-center min-w-[80px]">
+                <p class="text-lg font-black text-amber-300 leading-none">{{ status_counts.late|default:0 }}</p>
+                <p class="text-[10px] uppercase font-bold text-white/70 mt-1">Late</p>
+            </div>
+            <div class="hr-stat-pill rounded-xl px-3.5 py-2 text-center min-w-[80px]">
+                <p class="text-lg font-black text-rose-300 leading-none">{{ status_counts.absent|default:0 }}</p>
+                <p class="text-[10px] uppercase font-bold text-white/70 mt-1">Absent</p>
+            </div>
+            <div class="hr-stat-pill rounded-xl px-3.5 py-2 text-center min-w-[80px]">
+                <p class="text-lg font-black text-yellow-200 leading-none">{{ status_counts.on_leave|default:0 }}</p>
+                <p class="text-[10px] uppercase font-bold text-white/70 mt-1">On Leave</p>
+            </div>
+            <div class="hr-stat-pill rounded-xl px-3.5 py-2 text-center min-w-[80px]">
+                <p class="text-lg font-black text-slate-300 leading-none">{{ status_counts.weekly_off|default:0 }}</p>
+                <p class="text-[10px] uppercase font-bold text-white/70 mt-1">Weekly Off</p>
             </div>
         </div>
     </div>
-    {% if employee_stats %}
-    <div class="overflow-y-auto custom-scrollbar" style="max-height:520px;">
-        <div style="height:{{ chart_height }}px;"><canvas id="empAttChart"></canvas></div>
-    </div>
-    {% else %}
-    <div class="hr-empty-state"><i class="fa-solid fa-users-slash"></i>No staff match this department filter.</div>
+
+    <!-- Django Messages -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="flex items-center gap-3 border text-xs font-semibold rounded-xl p-4 shadow-sm {% if message.tags == 'error' %}bg-red-50 border-red-200 text-red-800{% else %}bg-emerald-50 border-emerald-200 text-emerald-800{% endif %}">
+                <i class="fa-solid {% if message.tags == 'error' %}fa-circle-exclamation text-red-500{% else %}fa-circle-check text-emerald-600{% endif %} text-base"></i>
+                <span>{{ message }}</span>
+            </div>
+        {% endfor %}
     {% endif %}
-</div>
 
-<div class="hr-tile rounded-2xl p-5 mb-6">
-    <h2 class="font-bold text-black text-sm mb-3 flex items-center gap-2"><i class="fa-solid fa-table-list text-[#0B6B3A]"></i> Summary ({{ days }} days)</h2>
-    <div class="overflow-x-auto custom-scrollbar">
-        <table class="hr-table w-full">
-            <thead><tr><th>Employee</th><th>Department</th><th>On Time</th><th>Late</th><th>Absent</th><th>On Leave/Off</th><th>Attendance Rate</th></tr></thead>
-            <tbody>
-            {% for e in employee_stats %}
-            <tr>
-                <td data-label="Employee">{{ e.name }}</td>
-                <td data-label="Department">{{ e.department }}</td>
-                <td data-label="On Time"><span class="hr-status-chip hr-status-on_time">{{ e.on_time }}</span></td>
-                <td data-label="Late"><span class="hr-status-chip hr-status-late">{{ e.late }}</span></td>
-                <td data-label="Absent"><span class="hr-status-chip hr-status-absent">{{ e.absent }}</span></td>
-                <td data-label="On Leave/Off"><span class="hr-status-chip hr-status-on_leave">{{ e.off_leave }}</span></td>
-                <td data-label="Rate">{% if e.rate is not None %}{{ e.rate }}%{% else %}—{% endif %}</td>
-            </tr>
-            {% empty %}<tr><td colspan="7"><div class="hr-empty-state"><i class="fa-solid fa-table"></i>No data for this range.</div></td></tr>{% endfor %}
-            </tbody>
-        </table>
+    <!-- 1. Daily Roster & Visual Attendance Chart Tile -->
+    <div class="hr-tile rounded-2xl p-5 sm:p-6">
+        <!-- Date Navigator & Department Search Toolbar -->
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 mb-5 border-b border-slate-100">
+            <!-- Date Navigator -->
+            <div class="flex items-center gap-2">
+                <a href="?{{ roster_base_qs }}{% if roster_base_qs %}&{% endif %}roster_date={{ roster_prev|date:'Y-m-d' }}" 
+                   class="w-8 h-8 rounded-xl border border-slate-300 bg-white flex items-center justify-center text-slate-600 hover:border-[#0B6B3A] hover:text-[#0B6B3A] transition-all"
+                   title="Previous Day">
+                    <i class="fa-solid fa-chevron-left text-xs"></i>
+                </a>
+
+                <h2 class="font-extrabold text-slate-900 text-sm min-w-[200px] text-center bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+                    {{ roster_date|date:"D, M d, Y" }}
+                    {% if roster_date == roster_today %}
+                        <span class="text-[#0B6B3A] font-extrabold ml-1">(Today)</span>
+                    {% endif %}
+                </h2>
+
+                <a href="?{{ roster_base_qs }}{% if roster_base_qs %}&{% endif %}roster_date={{ roster_next|date:'Y-m-d' }}" 
+                   class="w-8 h-8 rounded-xl border border-slate-300 bg-white flex items-center justify-center text-slate-600 hover:border-[#0B6B3A] hover:text-[#0B6B3A] transition-all"
+                   title="Next Day">
+                    <i class="fa-solid fa-chevron-right text-xs"></i>
+                </a>
+
+                {% if roster_date != roster_today %}
+                    <a href="?{{ roster_base_qs }}{% if roster_base_qs %}&{% endif %}roster_date={{ roster_today|date:'Y-m-d' }}" 
+                       class="text-xs font-bold text-[#0B6B3A] hover:underline bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl ml-1 transition-all">
+                        Jump to Today
+                    </a>
+                {% endif %}
+            </div>
+
+            <!-- Department & Staff Search Form -->
+            <form method="get" class="flex flex-wrap items-center gap-2">
+                <input type="hidden" name="roster_date" value="{{ roster_date|date:'Y-m-d' }}">
+                <input type="hidden" name="days" value="{{ days }}">
+                
+                <select name="dept" onchange="this.form.submit()" class="hr-filter-input min-w-[160px]">
+                    <option value="">All Departments</option>
+                    {% for val, label in department_options %}
+                        <option value="{{ val }}" {% if dept == val %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+
+                <div class="relative flex-1 sm:w-48">
+                    <input type="text" name="roster_q" value="{{ roster_q }}" placeholder="Search staff..." class="hr-filter-input w-full pr-8">
+                    <button type="submit" class="absolute right-2.5 top-2.5 text-slate-400 hover:text-[#0B6B3A] text-xs">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Segmented Status Filters -->
+        <div class="flex flex-wrap gap-2 mb-4">
+            <a href="?{{ roster_base_qs }}{% if roster_base_qs %}&{% endif %}roster_status=" class="hr-seg-btn {% if not roster_status_filter %}hr-seg-active{% endif %}">
+                All ({{ total_active }})
+            </a>
+            <a href="?{{ roster_base_qs }}{% if roster_base_qs %}&{% endif %}roster_status=on_time" class="hr-seg-btn {% if roster_status_filter == 'on_time' %}hr-seg-active{% endif %}">
+                <i class="fa-solid fa-circle-check text-[10px] text-emerald-500"></i> On Time ({{ status_counts.on_time|default:0 }})
+            </a>
+            <a href="?{{ roster_base_qs }}{% if roster_base_qs %}&{% endif %}roster_status=late" class="hr-seg-btn {% if roster_status_filter == 'late' %}hr-seg-active{% endif %}">
+                <i class="fa-solid fa-clock text-[10px] text-amber-500"></i> Late ({{ status_counts.late|default:0 }})
+            </a>
+            <a href="?{{ roster_base_qs }}{% if roster_base_qs %}&{% endif %}roster_status=absent" class="hr-seg-btn {% if roster_status_filter == 'absent' %}hr-seg-active{% endif %}">
+                <i class="fa-solid fa-circle-xmark text-[10px] text-rose-500"></i> Absent ({{ status_counts.absent|default:0 }})
+            </a>
+            <a href="?{{ roster_base_qs }}{% if roster_base_qs %}&{% endif %}roster_status=on_leave" class="hr-seg-btn {% if roster_status_filter == 'on_leave' %}hr-seg-active{% endif %}">
+                <i class="fa-solid fa-plane-departure text-[10px] text-[#C9A227]"></i> On Leave ({{ status_counts.on_leave|default:0 }})
+            </a>
+            <a href="?{{ roster_base_qs }}{% if roster_base_qs %}&{% endif %}roster_status=weekly_off" class="hr-seg-btn {% if roster_status_filter == 'weekly_off' %}hr-seg-active{% endif %}">
+                <i class="fa-solid fa-mug-hot text-[10px] text-slate-400"></i> Weekly Off ({{ status_counts.weekly_off|default:0 }})
+            </a>
+            <a href="?{{ roster_base_qs }}{% if roster_base_qs %}&{% endif %}roster_status=not_due" class="hr-seg-btn {% if roster_status_filter == 'not_due' %}hr-seg-active{% endif %}">
+                <i class="fa-solid fa-hourglass-start text-[10px] text-blue-500"></i> Not Due ({{ status_counts.not_due|default:0 }})
+            </a>
+            <a href="?{{ roster_base_qs }}{% if roster_base_qs %}&{% endif %}roster_status=not_scheduled" class="hr-seg-btn {% if roster_status_filter == 'not_scheduled' %}hr-seg-active{% endif %}">
+                <i class="fa-solid fa-calendar-xmark text-[10px] text-slate-400"></i> No Shift ({{ status_counts.not_scheduled|default:0 }})
+            </a>
+        </div>
+
+        <!-- Legend Ribbon -->
+        <div class="flex items-center gap-4 text-[11px] font-semibold text-slate-500 mb-4 flex-wrap bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-[#0B6B3A]"></span> On Time</span>
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-amber-500"></span> Late</span>
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-rose-600"></span> Absent</span>
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded border border-[#C9A227] bg-[#C9A227]/30"></span> On Leave</span>
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-slate-400"></span> Weekly Off</span>
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-blue-500"></span> Not Due</span>
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-slate-300"></span> No Shift</span>
+        </div>
+
+        <!-- Interactive Horizontal Bar Chart -->
+        {% if not chart_payload_json|length or chart_payload_json == "[]" %}
+            <div class="p-12 text-center rounded-xl bg-slate-50 border border-dashed border-slate-200 my-4">
+                <i class="fa-solid fa-users-slash text-3xl text-slate-300 mb-2"></i>
+                <p class="font-bold text-slate-700 text-sm">No staff match this attendance filter.</p>
+            </div>
+        {% else %}
+            <div class="overflow-y-auto custom-scrollbar mb-6 p-2 bg-slate-50/50 rounded-xl border border-slate-200/80" style="max-height:480px;">
+                <div style="height:{{ chart_height }}px;">
+                    <canvas id="dayAttChart"></canvas>
+                </div>
+            </div>
+        {% endif %}
+
+        <!-- Detailed Roster Table -->
+        <div class="overflow-x-auto custom-scrollbar rounded-xl border border-slate-200">
+            <table class="w-full text-left border-collapse min-w-[700px]">
+                <thead>
+                    <tr class="bg-slate-50/80 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                        <th class="py-3.5 px-4">Staff Member</th>
+                        <th class="py-3.5 px-4">Assigned Shift</th>
+                        <th class="py-3.5 px-4">Clock In / Out</th>
+                        <th class="py-3.5 px-4">Status</th>
+                        <th class="py-3.5 px-4">Details / Location</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 text-sm">
+                    {% for r in roster_page %}
+                    <tr class="hover:bg-slate-50/60 transition-colors">
+                        <td class="py-3.5 px-4">
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-full bg-slate-100 text-[#0B6B3A] border border-slate-200 font-bold text-xs flex items-center justify-center shrink-0">
+                                    {{ r.user.get_full_name|default:r.user.username|slice:":2"|upper }}
+                                </div>
+                                <span class="font-bold text-slate-900">{{ r.user.get_full_name|default:r.user.username }}</span>
+                            </div>
+                        </td>
+                        <td class="py-3.5 px-4 text-xs font-medium text-slate-700">
+                            {% if r.shift %}
+                                <span class="inline-flex items-center gap-1.5">
+                                    <span class="w-2 h-2 rounded-full {% if r.shift.shift_kind == 'night' %}bg-slate-800{% else %}bg-[#C9A227]{% endif %}"></span> 
+                                    {{ r.shift.name }}
+                                </span>
+                            {% else %}
+                                <span class="text-slate-400 italic">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="py-3.5 px-4 text-xs font-bold text-slate-800">
+                            {% if r.clock_in %}
+                                {{ r.clock_in|date:"H:i" }}
+                                {% if r.clock_out %} &ndash; {{ r.clock_out|date:"H:i" }}{% endif %}
+                            {% else %}
+                                <span class="text-slate-400 font-normal italic">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="py-3.5 px-4">
+                            <span class="hr-status-chip hr-status-{{ r.status }}">{{ r.label }}</span>
+                        </td>
+                        <td class="py-3.5 px-4 text-xs text-slate-500 font-medium">
+                            {{ r.detail|default:"—" }}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" class="py-12 text-center text-slate-400 text-xs">
+                            <i class="fa-solid fa-user-clock text-2xl text-slate-300 block mb-2"></i>
+                            No staff records match the selected filter.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Roster Pagination Controls -->
+        {% if roster_page.paginator.num_pages > 1 %}
+        <div class="flex items-center justify-between mt-4 pt-4 border-t border-slate-100 text-xs">
+            <p class="text-slate-500">Showing page <b>{{ roster_page.number }}</b> of <b>{{ roster_page.paginator.num_pages }}</b></p>
+            <div class="flex items-center gap-1">
+                <a href="?{{ roster_base_qs }}{% if roster_base_qs %}&{% endif %}roster_page={{ roster_page.previous_page_number }}" 
+                   class="hr-page-btn {% if not roster_page.has_previous %}hr-page-disabled{% endif %}">
+                    <i class="fa-solid fa-chevron-left text-[10px]"></i>
+                </a>
+                <a href="?{{ roster_base_qs }}{% if roster_base_qs %}&{% endif %}roster_page={{ roster_page.next_page_number }}" 
+                   class="hr-page-btn {% if not roster_page.has_next %}hr-page-disabled{% endif %}">
+                    <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                </a>
+            </div>
+        </div>
+        {% endif %}
     </div>
-</div>
 
-<div class="hr-tile rounded-2xl p-5 mb-6">
-    <h2 class="font-bold text-black text-sm mb-3 flex items-center gap-2"><i class="fa-solid fa-file-arrow-down text-[#0B6B3A]"></i> Download Attendance Report (PDF)</h2>
-    <form method="get" action="{% url 'dashboard:hrm_attendance_report_pdf' %}" id="pdf-report-form" class="grid sm:grid-cols-2 lg:grid-cols-5 gap-2.5 items-end">
-        <div>
-            <label class="text-xs font-semibold text-gray-600 mb-1 block">From</label>
-            <input type="date" name="start_date" id="pdf-start" class="hr-filter-input" required>
+    <!-- 2. Historical Range Aggregate Summary Tile -->
+    <div class="hr-tile rounded-2xl p-5 sm:p-6">
+        <div class="flex items-center justify-between flex-wrap gap-3 pb-4 mb-4 border-b border-slate-100">
+            <div>
+                <h2 class="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                    <i class="fa-solid fa-table-list text-[#0B6B3A]"></i> Historical Range Summary
+                </h2>
+                <p class="text-xs text-slate-500 mt-0.5">Aggregated performance stats over the selected timeframe</p>
+            </div>
+            
+            <!-- Quick Window Selectors -->
+            <div class="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                <a href="?days=7&roster_date={{ roster_date|date:'Y-m-d' }}&dept={{ dept }}" class="text-xs font-bold px-3 py-1.5 rounded-lg transition-all {% if days == 7 %}bg-[#0B6B3A] text-white shadow-sm{% else %}text-slate-600 hover:text-slate-900{% endif %}">7 Days</a>
+                <a href="?days=30&roster_date={{ roster_date|date:'Y-m-d' }}&dept={{ dept }}" class="text-xs font-bold px-3 py-1.5 rounded-lg transition-all {% if days == 30 %}bg-[#0B6B3A] text-white shadow-sm{% else %}text-slate-600 hover:text-slate-900{% endif %}">30 Days</a>
+                <a href="?days=90&roster_date={{ roster_date|date:'Y-m-d' }}&dept={{ dept }}" class="text-xs font-bold px-3 py-1.5 rounded-lg transition-all {% if days == 90 %}bg-[#0B6B3A] text-white shadow-sm{% else %}text-slate-600 hover:text-slate-900{% endif %}">90 Days</a>
+            </div>
         </div>
-        <div>
-            <label class="text-xs font-semibold text-gray-600 mb-1 block">To</label>
-            <input type="date" name="end_date" id="pdf-end" class="hr-filter-input" required>
-        </div>
-        <div>
-            <label class="text-xs font-semibold text-gray-600 mb-1 block">Department</label>
-            <select name="dept" class="hr-filter-input">
-                <option value="">All Departments</option>
-                {% for val, label in department_options %}<option value="{{ val }}">{{ label }}</option>{% endfor %}
-            </select>
-        </div>
-        <div class="flex gap-1.5">
-            <button type="button" data-preset="week" class="flex-1 text-xs border border-gray-300 rounded-lg px-2 py-2.5 hover:border-[#0B6B3A]">This Week</button>
-            <button type="button" data-preset="month" class="flex-1 text-xs border border-gray-300 rounded-lg px-2 py-2.5 hover:border-[#0B6B3A]">This Month</button>
-        </div>
-        <button type="submit" class="bg-[#0B6B3A] hover:bg-[#074726] text-white text-xs font-semibold rounded-lg px-3 py-2.5 flex items-center justify-center gap-1.5"><i class="fa-solid fa-download"></i> Download PDF</button>
-    </form>
-    <p class="text-[11px] text-gray-400 mt-2" id="pdf-range-note">Reports are limited to a 30-day range at a time.</p>
-</div>
 
-<div class="hr-tile rounded-2xl p-5">
-    <h2 class="font-bold text-black text-sm mb-3 flex items-center gap-2"><i class="fa-solid fa-location-crosshairs text-[#0B6B3A]"></i> Flagged (Outside Geofence)</h2>
-    {% for r in flagged %}<div class="flex justify-between text-sm border-b border-gray-50 py-1.5"><span>{{ r.staff.get_full_name|default:r.staff.username }} — {{ r.date }}</span><span class="hr-badge bg-red-100 text-red-600">flagged</span></div>{% empty %}<div class="hr-empty-state"><i class="fa-solid fa-shield-check"></i>Nothing flagged.</div>{% endfor %}
+        <div class="overflow-x-auto custom-scrollbar rounded-xl border border-slate-200">
+            <table class="w-full text-left border-collapse min-w-[700px]">
+                <thead>
+                    <tr class="bg-slate-50/80 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                        <th class="py-3.5 px-4">Employee</th>
+                        <th class="py-3.5 px-4">Department</th>
+                        <th class="py-3.5 px-4">On Time</th>
+                        <th class="py-3.5 px-4">Late</th>
+                        <th class="py-3.5 px-4">Absent</th>
+                        <th class="py-3.5 px-4">Leave / Off</th>
+                        <th class="py-3.5 px-4 text-right">Attendance Rate</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 text-sm">
+                    {% for e in employee_stats %}
+                    <tr class="hover:bg-slate-50/60 transition-colors">
+                        <td class="py-3.5 px-4 font-bold text-slate-900">{{ e.name }}</td>
+                        <td class="py-3.5 px-4 text-xs font-semibold text-slate-600">{{ e.department }}</td>
+                        <td class="py-3.5 px-4"><span class="hr-status-chip hr-status-on_time">{{ e.on_time }}</span></td>
+                        <td class="py-3.5 px-4"><span class="hr-status-chip hr-status-late">{{ e.late }}</span></td>
+                        <td class="py-3.5 px-4"><span class="hr-status-chip hr-status-absent">{{ e.absent }}</span></td>
+                        <td class="py-3.5 px-4"><span class="hr-status-chip hr-status-on_leave">{{ e.off_leave }}</span></td>
+                        <td class="py-3.5 px-4 text-right font-black text-slate-900">
+                            {% if e.rate is not None %}{{ e.rate }}%{% else %}<span class="text-slate-400 font-normal">—</span>{% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="py-12 text-center text-slate-400 text-xs">
+                            <i class="fa-solid fa-table text-2xl text-slate-300 block mb-2"></i>
+                            No summary data computed for this date range.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 3. Export PDF Report Generator Tile -->
+    <div class="hr-tile rounded-2xl p-5 sm:p-6">
+        <div class="pb-3 mb-4 border-b border-slate-100">
+            <h2 class="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                <i class="fa-solid fa-file-arrow-down text-[#0B6B3A]"></i> Export Attendance Report (PDF)
+            </h2>
+            <p class="text-xs text-slate-500 mt-0.5">Generate formal PDF executive summaries for formal HR reviews.</p>
+        </div>
+
+        <form method="get" action="{% url 'dashboard:hrm_attendance_report_pdf' %}" id="pdf-report-form" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+            <div>
+                <label class="text-xs font-bold text-slate-600 uppercase block mb-1.5">From Date</label>
+                <input type="date" name="start_date" id="pdf-start" class="hr-filter-input" required>
+            </div>
+            <div>
+                <label class="text-xs font-bold text-slate-600 uppercase block mb-1.5">To Date</label>
+                <input type="date" name="end_date" id="pdf-end" class="hr-filter-input" required>
+            </div>
+            <div>
+                <label class="text-xs font-bold text-slate-600 uppercase block mb-1.5">Department</label>
+                <select name="dept" class="hr-filter-input">
+                    <option value="">All Departments</option>
+                    {% for val, label in department_options %}
+                        <option value="{{ val }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="flex gap-2">
+                <button type="button" data-preset="week" class="flex-1 text-xs font-bold border border-slate-300 rounded-xl py-2.5 hover:border-[#0B6B3A] hover:text-[#0B6B3A] bg-white transition-all">
+                    This Week
+                </button>
+                <button type="button" data-preset="month" class="flex-1 text-xs font-bold border border-slate-300 rounded-xl py-2.5 hover:border-[#0B6B3A] hover:text-[#0B6B3A] bg-white transition-all">
+                    This Month
+                </button>
+            </div>
+            <button type="submit" class="bg-[#0B6B3A] hover:bg-[#074726] text-white text-xs font-bold rounded-xl py-2.5 px-4 flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer">
+                <i class="fa-solid fa-download"></i> Download PDF
+            </button>
+        </form>
+        <p class="text-[11px] font-medium text-slate-400 mt-2.5" id="pdf-range-note">
+            Reports are limited to a maximum of 30 days per download. Includes total counts and day-by-day logs.
+        </p>
+    </div>
+
+    <!-- 4. Location Geofence Flagged Exceptions Tile -->
+    <div class="hr-tile rounded-2xl p-5 sm:p-6">
+        <div class="pb-3 mb-4 border-b border-slate-100 flex items-center justify-between">
+            <h2 class="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                <i class="fa-solid fa-location-crosshairs text-rose-600"></i> Location Anomalies (Outside Geofence)
+            </h2>
+            <span class="text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 px-3 py-1 rounded-full">
+                {{ flagged|length }} Flagged
+            </span>
+        </div>
+
+        <div class="divide-y divide-slate-100 max-h-64 overflow-y-auto custom-scrollbar">
+            {% for r in flagged %}
+                <div class="flex items-center justify-between py-2.5 text-sm">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-triangle-exclamation text-rose-500 text-xs"></i>
+                        <span class="font-bold text-slate-900">{{ r.staff.get_full_name|default:r.staff.username }}</span>
+                        <span class="text-slate-400 text-xs">&ndash; {{ r.date|date:"M d, Y" }}</span>
+                    </div>
+                    <span class="hr-status-chip bg-rose-50 text-rose-700 border border-rose-200">
+                        Outside Fence
+                    </span>
+                </div>
+            {% empty %}
+                <div class="p-8 text-center">
+                    <i class="fa-solid fa-shield-check text-3xl text-emerald-600 block mb-2"></i>
+                    <p class="font-bold text-slate-800 text-sm">No Location Anomalies</p>
+                    <p class="text-xs text-slate-400 mt-0.5">All employee clock-ins recorded within valid geofenced boundaries.</p>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
 (function () {
-    var stats = {{ employee_stats_json|safe }};
-    if (stats.length) {
+    var stats = {{ chart_payload_json|safe }};
+    if (stats && stats.length) {
         function stripePattern(color) {
             var c = document.createElement('canvas');
             c.width = 8; c.height = 8;
@@ -182,66 +472,105 @@
             ctx.beginPath(); ctx.moveTo(0, 8); ctx.lineTo(8, 0); ctx.stroke();
             return ctx.createPattern(c, 'repeat');
         }
-        var labels = stats.map(function (s) { return s.name; });
-        var departments = stats.map(function (s) { return s.department; });
 
-        new Chart(document.getElementById('empAttChart'), {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [
-                    { label: 'On Time', data: stats.map(function (s) { return s.on_time; }), backgroundColor: '#0B6B3A' },
-                    { label: 'Late', data: stats.map(function (s) { return s.late; }), backgroundColor: '#f59e0b' },
-                    { label: 'Absent', data: stats.map(function (s) { return s.absent; }), backgroundColor: '#dc2626' },
-                    { label: 'On Leave / Off', data: stats.map(function (s) { return s.off_leave; }), backgroundColor: stripePattern('#C9A227'), borderColor: '#C9A227', borderWidth: 1 },
-                ]
-            },
-            options: {
-                indexAxis: 'y',
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: { callbacks: { afterTitle: function (items) { return departments[items[0].dataIndex]; } } }
-                },
-                scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
-            }
+        var STATUS_COLORS = {
+            on_time: '#0B6B3A', 
+            late: '#f59e0b', 
+            absent: '#dc2626',
+            weekly_off: '#94a3b8', 
+            not_due: '#3b82f6', 
+            not_scheduled: '#cbd5e1'
+        };
+
+        var stripe = stripePattern('#C9A227');
+        var colors = stats.map(function (s) { 
+            return s.status === 'on_leave' ? stripe : (STATUS_COLORS[s.status] || '#94a3b8'); 
         });
+        var labels = stats.map(function (s) { return s.name; });
+
+        var chartCanvas = document.getElementById('dayAttChart');
+        if (chartCanvas) {
+            new Chart(chartCanvas, {
+                type: 'bar',
+                data: { 
+                    labels: labels, 
+                    datasets: [{ 
+                        label: 'Status', 
+                        data: stats.map(function (s) { return s.value; }), 
+                        backgroundColor: colors, 
+                        borderColor: colors.map(function(c, i) { return stats[i].status === 'on_leave' ? '#C9A227' : c; }), 
+                        borderWidth: 1 
+                    }] 
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function (ctx) {
+                                    var d = stats[ctx.dataIndex];
+                                    var lines = [d.label];
+                                    if (d.clock_in) lines.push('In: ' + d.clock_in + (d.clock_out ? '  Out: ' + d.clock_out : ''));
+                                    if (d.detail) lines.push(d.detail);
+                                    return lines;
+                                }
+                            }
+                        }
+                    },
+                    scales: { 
+                        x: { 
+                            beginAtZero: true, 
+                            ticks: { precision: 0 },
+                            grid: { color: '#f1f5f9' }
+                        },
+                        y: {
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+        }
     }
 
+    /* PDF Form Range Presets */
     var startInput = document.getElementById('pdf-start');
     var endInput = document.getElementById('pdf-end');
     var note = document.getElementById('pdf-range-note');
     var form = document.getElementById('pdf-report-form');
 
-    document.querySelectorAll('[data-preset]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            var today = new Date(), start, end = new Date(today);
-            if (btn.dataset.preset === 'week') {
-                start = new Date(today);
-                var dow = today.getDay();
-                start.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
-            } else {
-                start = new Date(today.getFullYear(), today.getMonth(), 1);
-            }
-            startInput.value = start.toISOString().slice(0, 10);
-            endInput.value = end.toISOString().slice(0, 10);
+    if (form && startInput && endInput) {
+        document.querySelectorAll('[data-preset]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var today = new Date(), start, end = new Date(today);
+                if (btn.dataset.preset === 'week') {
+                    start = new Date(today);
+                    var dow = today.getDay();
+                    start.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
+                } else {
+                    start = new Date(today.getFullYear(), today.getMonth(), 1);
+                }
+                startInput.value = start.toISOString().slice(0, 10);
+                endInput.value = end.toISOString().slice(0, 10);
+            });
         });
-    });
 
-    form.addEventListener('submit', function (e) {
-        if (!startInput.value || !endInput.value) return;
-        var diffDays = Math.round((new Date(endInput.value) - new Date(startInput.value)) / 86400000) + 1;
-        if (diffDays > 30) {
-            e.preventDefault();
-            note.textContent = 'That range is ' + diffDays + ' days — please pick 30 days or fewer.';
-            note.classList.add('text-red-500');
-        } else if (diffDays < 1) {
-            e.preventDefault();
-            note.textContent = 'End date must be on or after the start date.';
-            note.classList.add('text-red-500');
-        }
-    });
+        form.addEventListener('submit', function (e) {
+            if (!startInput.value || !endInput.value) return;
+            var diffDays = Math.round((new Date(endInput.value) - new Date(startInput.value)) / 86400000) + 1;
+            if (diffDays > 30) {
+                e.preventDefault();
+                note.textContent = 'Selected range is ' + diffDays + ' days — please select 30 days or fewer.';
+                note.classList.add('text-red-500');
+            } else if (diffDays < 1) {
+                e.preventDefault();
+                note.textContent = 'End date must be on or after the start date.';
+                note.classList.add('text-red-500');
+            }
+        });
+    }
 })();
 </script>
 {% endblock %}

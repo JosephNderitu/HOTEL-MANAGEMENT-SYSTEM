@@ -39,6 +39,8 @@
             <a href="?status=on_shift{% if time_frame %}&time_frame={{ time_frame }}{% endif %}" class="px-3 py-1.5 rounded-full text-xs font-bold border border-slate-300 whitespace-nowrap {% if status_filter == 'on_shift' %}bg-emerald-600 text-white border-emerald-600{% else %}bg-white text-slate-700{% endif %}"><i class="fa-solid fa-bolt mr-1"></i> On Shift</a>
             <a href="?status=scheduled{% if time_frame %}&time_frame={{ time_frame }}{% endif %}" class="px-3 py-1.5 rounded-full text-xs font-bold border border-slate-300 whitespace-nowrap {% if status_filter == 'scheduled' %}bg-blue-600 text-white border-blue-600{% else %}bg-white text-slate-700{% endif %}"><i class="fa-regular fa-clock mr-1"></i> Scheduled</a>
             <a href="?status=completed{% if time_frame %}&time_frame={{ time_frame }}{% endif %}" class="px-3 py-1.5 rounded-full text-xs font-bold border border-slate-300 whitespace-nowrap {% if status_filter == 'completed' %}bg-slate-700 text-white border-slate-700{% else %}bg-white text-slate-700{% endif %}"><i class="fa-solid fa-check mr-1"></i> Completed</a>
+            <a href="?status=absent{% if time_frame %}&time_frame={{ time_frame }}{% endif %}" class="px-3 py-1.5 rounded-full text-xs font-bold border border-slate-300 whitespace-nowrap {% if status_filter == 'absent' %}bg-red-600 text-white border-red-600{% else %}bg-white text-slate-700{% endif %}"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Absent</a>
+            <a href="?status=on_leave{% if time_frame %}&time_frame={{ time_frame }}{% endif %}" class="px-3 py-1.5 rounded-full text-xs font-bold border border-slate-300 whitespace-nowrap {% if status_filter == 'on_leave' %}bg-[#C9A227] text-black border-[#C9A227]{% else %}bg-white text-slate-700{% endif %}"><i class="fa-solid fa-plane-departure mr-1"></i> On Leave</a>
         </div>
     </div>
 
@@ -112,19 +114,31 @@
                     <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-300">
                         <i class="fa-solid fa-bolt text-emerald-600 text-[10px]"></i> Today's Shift
                     </span>
-                {% elif a.date < today or a.status == 'completed' %}
-                    <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-300">
-                        <i class="fa-solid fa-check text-slate-500 text-[10px]"></i> Completed
+                                {% elif a.display_status == 'completed' %}
+                    <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-300" title="{{ a.display_detail }}">
+                        <i class="fa-solid fa-check text-slate-500 text-[10px]"></i> Completed{% if a.display_detail %} &middot; {{ a.display_detail }}{% endif %}
                     </span>
-                {% elif a.status == 'scheduled' %}
+                {% elif a.display_status == 'absent' %}
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-50 text-red-700 border border-red-300">
+                        <i class="fa-solid fa-triangle-exclamation text-red-600 text-[10px]"></i> Absent
+                    </span>
+                {% elif a.display_status == 'on_leave' %}
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#C9A227]/10 text-[#8f7115] border border-[#C9A227]/40">
+                        <i class="fa-solid fa-plane-departure text-[10px]"></i> On Leave{% if a.display_detail %} &middot; {{ a.display_detail }}{% endif %}
+                    </span>
+                {% elif a.display_status == 'weekly_off' %}
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500 border border-slate-300">
+                        Weekly Off
+                    </span>
+                {% elif a.display_status == 'scheduled' %}
                     <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-800 border border-blue-300">
                         <i class="fa-regular fa-calendar-check text-blue-600 text-[10px]"></i> Scheduled
                     </span>
-                {% elif a.status == 'swapped' %}
+                {% elif a.display_status == 'swapped' %}
                     <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-300">
                         <i class="fa-solid fa-repeat text-amber-600 text-[10px]"></i> Swapped
                     </span>
-                {% elif a.status == 'cancelled' %}
+                {% elif a.display_status == 'cancelled' %}
                     <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-300">
                         Cancelled
                     </span>
