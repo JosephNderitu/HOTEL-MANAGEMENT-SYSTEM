@@ -1,69 +1,265 @@
 {% extends "dashboard/base_dashboard.html" %}
+
 {% block dashboard_content %}
 {% include "dashboard/_hrm_styles.html" %}
-<a href="{% url 'dashboard:hrm_shift_calendar' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; Shift Calendar</a>
-<h1 class="text-xl font-bold text-black mt-1 mb-6 flex items-center gap-2"><i class="fa-solid fa-calendar-xmark text-[#0B6B3A]"></i> Weekly Off-Days</h1>
 
-{% if messages %}{% for message in messages %}
-<div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
-{% endfor %}{% endif %}
-
-<div class="grid lg:grid-cols-3 gap-6">
-    <div class="hr-tile rounded-2xl p-5">
-        <h2 class="font-bold text-black text-sm mb-1 flex items-center gap-2"><i class="fa-solid fa-user-clock text-[#0B6B3A]"></i> Set Off-Days</h2>
-        <p class="text-xs text-gray-500 mb-4">Selecting a staff member below shows their current pattern loaded automatically once you pick them; adjust and save.</p>
-        <form method="post" class="space-y-4">
-            {% csrf_token %}
-            <div>
-                <label class="text-xs font-semibold text-gray-600 mb-1 block">Staff</label>
-                {{ form.staff }}
-            </div>
-            <div>
-                <label class="text-xs font-semibold text-gray-600 mb-2 block">Days off</label>
-                <div class="flex flex-wrap gap-2">
-                    {% for checkbox in form.weekdays %}
-                    <label class="hr-day-chip">
-                        {{ checkbox.tag }}
-                        <span>{{ checkbox.choice_label }}</span>
-                    </label>
-                    {% endfor %}
-                </div>
-            </div>
-            <button type="submit" class="w-full bg-[#0B6B3A] hover:bg-[#074726] transition-colors text-white font-bold py-2.5 rounded-full flex items-center justify-center gap-2"><i class="fa-solid fa-check"></i> Save Pattern</button>
-        </form>
+<div class="space-y-6">
+    <!-- Navigation Back Link -->
+    <div>
+        <a href="{% url 'dashboard:hrm_shift_calendar' %}" class="inline-flex items-center gap-2 text-[#0B6B3A] hover:text-[#074726] text-xs font-bold uppercase tracking-wider transition-colors">
+            <i class="fa-solid fa-arrow-left text-xs"></i> Back to Shift Calendar
+        </a>
     </div>
 
-    <div class="lg:col-span-2 hr-tile rounded-2xl p-5">
-        <h2 class="font-bold text-black text-sm mb-3 flex items-center gap-2"><i class="fa-solid fa-table-list text-[#0B6B3A]"></i> Current Patterns</h2>
-        <div class="overflow-x-auto custom-scrollbar max-h-[480px]">
-            <table class="hr-table w-full">
-                <thead><tr><th>Staff</th><th>Off Days</th></tr></thead>
-                <tbody>
-                {% for staff, days in staff_offs.items %}
-                <tr>
-                    <td data-label="Staff">{{ staff.get_full_name|default:staff.username }}</td>
-                    <td data-label="Off Days">
-                        {% for d in days %}<span class="hr-badge bg-gray-200 text-gray-700 mr-1">{{ d }}</span>{% endfor %}
-                    </td>
-                </tr>
-                {% empty %}<tr><td colspan="2" class="text-center text-gray-400 py-6">No weekly off-days set yet.</td></tr>{% endfor %}
-                </tbody>
-            </table>
+    <!-- Hero Header Banner -->
+    <div class="hr-hero-card rounded-2xl p-6 md:p-8 text-white flex flex-col lg:flex-row lg:items-center justify-between gap-6 shadow-md">
+        <div class="relative z-10 space-y-1">
+            <span class="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-xs font-semibold bg-white/10 text-[#C9A227] border border-white/15 backdrop-blur-md">
+                <i class="fa-solid fa-calendar-xmark text-[11px]"></i> Roster Configuration
+            </span>
+            <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight flex items-center gap-2.5">
+                <i class="fa-solid fa-calendar-days text-[#C9A227]"></i> Weekly Off-Days Management
+            </h1>
+            <p class="text-white/80 text-xs md:text-sm">
+                Define and configure recurring staff weekly rest patterns to automatically skip off-days during shift assignments.
+            </p>
+        </div>
+
+        <div class="relative z-10 flex items-center gap-3">
+            <div class="hr-stat-pill rounded-xl px-4 py-2 text-center min-w-[95px] border border-white/20">
+                <p class="text-xl font-black text-[#C9A227] leading-none" id="totalConfiguredCount">{{ staff_offs|length }}</p>
+                <p class="text-[10px] uppercase font-bold text-white/70 mt-1">Configured</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Messages -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="flex items-center gap-3 border text-xs font-semibold rounded-xl p-3.5 shadow-sm {% if message.tags == 'error' %}bg-red-50 border-red-300 text-red-800{% else %}bg-emerald-50 border-emerald-300 text-emerald-800{% endif %}">
+                <i class="fa-solid {% if message.tags == 'error' %}fa-circle-exclamation text-red-500{% else %}fa-circle-check text-emerald-600{% endif %}"></i>
+                <span>{{ message }}</span>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <!-- Main Grid Content -->
+    <div class="grid lg:grid-cols-3 gap-6">
+        <!-- Set Off-Days Form Tile -->
+        <div class="hr-tile rounded-2xl p-6 shadow-sm border border-slate-300 bg-white">
+            <div class="pb-3 mb-4 border-b border-slate-200 flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-lg bg-[#0B6B3A]/10 text-[#0B6B3A] flex items-center justify-center font-bold border border-[#0B6B3A]/20">
+                    <i class="fa-solid fa-user-clock text-sm"></i>
+                </div>
+                <div>
+                    <h2 class="font-extrabold text-slate-900 text-sm">Configure Off-Days</h2>
+                    <p class="text-[11px] text-slate-500">Assign recurring rest days</p>
+                </div>
+            </div>
+
+            <p class="text-xs text-slate-600 mb-5 leading-relaxed">
+                Select a staff member below. Their existing pattern will load automatically; modify and save to update.
+            </p>
+
+            <form method="post" class="space-y-4">
+                {% csrf_token %}
+                <div>
+                    <label class="text-[11px] font-bold text-slate-700 uppercase block mb-1.5">Staff Member</label>
+                    <div class="hr-form-control">
+                        {{ form.staff }}
+                    </div>
+                    {% if form.staff.errors %}<p class="text-red-600 font-semibold text-[11px] mt-1">{{ form.staff.errors.0 }}</p>{% endif %}
+                </div>
+
+                <div>
+                    <label class="text-[11px] font-bold text-slate-700 uppercase block mb-2">Select Off Days</label>
+                    <div class="flex flex-wrap gap-2">
+                        {% for checkbox in form.weekdays %}
+                        <label class="hr-day-chip">
+                            {{ checkbox.tag }}
+                            <span>{{ checkbox.choice_label }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    {% if form.weekdays.errors %}<p class="text-red-600 font-semibold text-[11px] mt-1">{{ form.weekdays.errors.0 }}</p>{% endif %}
+                </div>
+
+                <button type="submit" class="w-full bg-[#0B6B3A] hover:bg-[#074726] transition-all text-white font-bold text-xs py-3 px-4 rounded-xl mt-4 flex items-center justify-center gap-2 shadow-sm cursor-pointer border border-[#074726]">
+                    <i class="fa-solid fa-check"></i> Save Pattern
+                </button>
+            </form>
+        </div>
+
+        <!-- Current Patterns Table Tile with Pagination -->
+        <div class="lg:col-span-2 hr-tile rounded-2xl p-6 shadow-sm border border-slate-300 bg-white flex flex-col justify-between">
+           <div>
+                <div class="pb-3 mb-4 border-b border-slate-200 flex items-center justify-between flex-wrap gap-2">
+                    <div class="flex items-center gap-2.5">
+                        <div class="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center font-bold border border-slate-300">
+                            <i class="fa-solid fa-table-list text-sm"></i>
+                        </div>
+                        <div>
+                            <h2 class="font-extrabold text-slate-900 text-sm">Current Active Off-Day Patterns</h2>
+                            <p class="text-[11px] text-slate-500">Overview of staff rest schedules</p>
+                        </div>
+                    </div>
+                    <span class="text-[11px] font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded-full border border-slate-300">
+                        Total: <span id="tableRecordCount">{{ staff_offs|length }}</span>
+                    </span>
+                </div>
+
+                <div class="overflow-x-auto custom-scrollbar rounded-xl border border-slate-300 bg-white">
+                    <table class="w-full text-left border-collapse min-w-[500px]" id="offDaysTable">
+                        <thead>
+                            <tr class="bg-slate-100 border-b border-slate-300 text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                                <th class="py-3 px-4 border-r border-slate-200">Staff Member</th>
+                                <th class="py-3 px-4">Scheduled Off Days</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-200 text-sm" id="offDaysTableBody">
+                            {% for staff, days in staff_offs.items %}
+                            <tr class="hover:bg-slate-50 transition-colors off-day-row">
+                                <td class="py-3.5 px-4 font-bold text-slate-900 border-r border-slate-200">
+                                    <div class="flex items-center gap-2.5">
+                                        <div class="hr-avatar text-xs border border-slate-300">{{ staff.get_full_name|default:staff.username|slice:":2"|upper }}</div>
+                                        <div>
+                                            <p class="text-xs font-bold text-slate-900">{{ staff.get_full_name|default:staff.username }}</p>
+                                            <p class="text-[10px] text-slate-500 font-normal">{{ staff.staff_profile.position|default:"Staff Member" }}</p>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="py-3.5 px-4">
+                                    <div class="flex flex-wrap gap-1.5">
+                                        {% for d in days %}
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-300 shadow-2xs">
+                                            {{ d }}
+                                        </span>
+                                        {% endfor %}
+                                    </div>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="2" class="py-12 text-center text-slate-400 text-xs">
+                                    <i class="fa-regular fa-calendar-xmark text-3xl block mb-2 opacity-50"></i>
+                                    No weekly off-days have been configured yet.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+           </div>
+
+           <!-- Pagination Footer Controls -->
+           <div id="tablePaginationContainer" class="flex items-center justify-between mt-4 pt-3 border-t border-slate-200 text-xs hidden">
+               <p class="text-slate-600 font-medium" id="paginationInfoText">Showing 1-5 of 10</p>
+               <div class="flex items-center gap-1.5">
+                   <button type="button" id="prevPageBtn" class="hr-page-btn">
+                       <i class="fa-solid fa-chevron-left text-[10px]"></i> Prev
+                   </button>
+                   <span id="pageIndicator" class="px-3 py-1 font-bold text-slate-700 bg-slate-100 border border-slate-300 rounded-md">1 / 1</span>
+                   <button type="button" id="nextPageBtn" class="hr-page-btn">
+                       Next <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                   </button>
+               </div>
+           </div>
         </div>
     </div>
 </div>
 
 <script>
-document.getElementById('id_staff').addEventListener('change', function () {
-    var staffId = this.value;
-    if (!staffId) return;
-    fetch("{% url 'dashboard:hrm_weekly_off_lookup' 0 %}".replace('0', staffId))
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
+document.addEventListener('DOMContentLoaded', function () {
+    var staffSelect = document.getElementById('id_staff');
+    if (staffSelect) {
+        staffSelect.classList.add('hr-filter-input');
+        
+        staffSelect.addEventListener('change', function () {
+            var staffId = this.value;
             document.querySelectorAll('input[name="weekdays"]').forEach(function (cb) {
-                cb.checked = data.weekdays.includes(parseInt(cb.value, 10));
+                cb.checked = false;
             });
+
+            if (!staffId) return;
+
+            fetch("{% url 'dashboard:hrm_weekly_off_lookup' 0 %}".replace('0', staffId))
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (data && data.weekdays) {
+                        document.querySelectorAll('input[name="weekdays"]').forEach(function (cb) {
+                            cb.checked = data.weekdays.includes(parseInt(cb.value, 10));
+                        });
+                    }
+                })
+                .catch(function (err) {
+                    console.error('Failed to load staff weekly off pattern', err);
+                });
         });
+    }
+
+    // ---------- Client-Side Pagination for Current Patterns Table ----------
+    var rows = Array.from(document.querySelectorAll('#offDaysTableBody .off-day-row'));
+    var pageSize = 5;
+    var currentPage = 1;
+    var totalRows = rows.length;
+
+    if (totalRows > pageSize) {
+        var paginationContainer = document.getElementById('tablePaginationContainer');
+        paginationContainer.classList.remove('hidden');
+
+        var prevBtn = document.getElementById('prevPageBtn');
+        var nextBtn = document.getElementById('nextPageBtn');
+        var pageIndicator = document.getElementById('pageIndicator');
+        var paginationInfoText = document.getElementById('paginationInfoText');
+
+        function renderTablePage() {
+            var totalPages = Math.ceil(totalRows / pageSize);
+            if (currentPage < 1) currentPage = 1;
+            if (currentPage > totalPages) currentPage = totalPages;
+
+            var start = (currentPage - 1) * pageSize;
+            var end = start + pageSize;
+
+            rows.forEach(function (row, idx) {
+                row.style.display = (idx >= start && idx < end) ? '' : 'none';
+            });
+
+            pageIndicator.textContent = currentPage + ' / ' + totalPages;
+            paginationInfoText.textContent = 'Showing ' + (totalRows === 0 ? 0 : (start + 1)) + '-' + Math.min(end, totalRows) + ' of ' + totalRows;
+
+            prevBtn.disabled = currentPage === 1;
+            nextBtn.disabled = currentPage === totalPages;
+            
+            if (currentPage === 1) {
+                prevBtn.classList.add('opacity-40', 'pointer-events-none');
+            } else {
+                prevBtn.classList.remove('opacity-40', 'pointer-events-none');
+            }
+
+            if (currentPage === totalPages) {
+                nextBtn.classList.add('opacity-40', 'pointer-events-none');
+            } else {
+                nextBtn.classList.remove('opacity-40', 'pointer-events-none');
+            }
+        }
+
+        prevBtn.addEventListener('click', function () {
+            if (currentPage > 1) {
+                currentPage--;
+                renderTablePage();
+            }
+        });
+
+        nextBtn.addEventListener('click', function () {
+            var totalPages = Math.ceil(totalRows / pageSize);
+            if (currentPage < totalPages) {
+                currentPage++;
+                renderTablePage();
+            }
+        });
+
+        renderTablePage();
+    }
 });
 </script>
 {% endblock %}
