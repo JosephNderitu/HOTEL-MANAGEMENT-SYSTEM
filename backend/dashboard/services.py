@@ -1,35 +1,129 @@
 from django.db import transaction
-from store.models import StockItem
+from django.db.models import F
+from store.models import StockItem, DailyUsageLog
+from public_site.models import Order, OrderItem
 from .models import Payment
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 import uuid
 from decimal import Decimal
+from django.utils import timezone
 
-def confirm_order_and_deduct_stock(order):
+
+def compute_requirements_for_selection(menu_item, quantity):
+    recipe = getattr(menu_item, 'recipe', None)
+    if recipe:
+        reqs = []
+        for line in recipe.lines.select_related('stock_item').all():
+            if not line.is_tracked:
+                continue  # not yet in stock catalog — nothing to deduct, but still costed below
+            per_unit_qty = line.quantity_in_stock_unit / recipe.yield_quantity
+            reqs.append((line.stock_item, per_unit_qty * quantity))
+        return reqs
+    stock = getattr(menu_item, 'stock_item', None)
+    if stock:
+        return [(stock, Decimal(quantity))]
+    return []
+
+
+def _snapshot_cost_for(menu_item, quantity):
+    """Full recipe cost for this quantity, tracked + untracked ingredients combined."""
+    recipe = getattr(menu_item, 'recipe', None)
+    if recipe and recipe.lines.exists():
+        return (recipe.cost_per_yield * quantity).quantize(Decimal('0.01'))
+    return None
+
+
+def _aggregate_and_lock(needed_totals):
+    locked_stock, shortfalls = {}, []
+    for stock_id, (stock, total_qty) in needed_totals.items():
+        locked = StockItem.objects.select_for_update().get(id=stock_id)
+        if total_qty > locked.quantity_on_hand:
+            shortfalls.append(
+                f"{locked.name} (need {total_qty:g} {locked.get_unit_display()}, have {locked.quantity_on_hand:g})"
+            )
+        locked_stock[stock_id] = locked
+    return locked_stock, shortfalls
+
+def reserve_stock_and_create_items(order, selections):
+    """selections: list of (menu_item, tier, quantity, unit_price_override)."""
+    needed_totals = {}
+    for menu_item, tier, qty, _ in selections:
+        for stock, req_qty in compute_requirements_for_selection(menu_item, qty):
+            stock_obj, total = needed_totals.get(stock.id, (stock, Decimal('0')))
+            needed_totals[stock.id] = (stock_obj, total + req_qty)
+
     with transaction.atomic():
-        shortfalls = []
-        for order_item in order.items.select_related('menu_item__stock_item'):
-            stock = getattr(order_item.menu_item, 'stock_item', None)
-            if stock and stock.quantity_on_hand < order_item.quantity:
-                shortfalls.append(order_item.menu_item.name)
+        locked_stock, shortfalls = _aggregate_and_lock(needed_totals)
+        if shortfalls:
+            return [], shortfalls
 
+        created = []
+        for menu_item, tier, qty, price_override in selections:
+            order_item = OrderItem.objects.create(
+                order=order, menu_item=menu_item, tier=tier, quantity=qty,
+                unit_price_override=price_override,
+                prep_status='ready' if menu_item.is_quick_serve else 'queued',
+            )
+            reqs = compute_requirements_for_selection(menu_item, qty)
+            for stock, req_qty in reqs:
+                locked_stock[stock.id].quantity_on_hand -= req_qty
+            order_item.recipe_cost_snapshot = _snapshot_cost_for(menu_item, qty)
+            order_item.save(update_fields=['recipe_cost_snapshot'])
+            created.append(order_item)
+
+        for locked in locked_stock.values():
+            locked.save(update_fields=['quantity_on_hand'])
+            from store.services import notify_low_stock_if_needed
+            notify_low_stock_if_needed(locked)
+
+    return created, []
+
+def reserve_stock_for_existing_items(order_items):
+    """For orders whose OrderItems already exist (e.g. a pending order being confirmed)."""
+    needed_totals = {}
+    for oi in order_items:
+        for stock, req_qty in compute_requirements_for_selection(oi.menu_item, oi.quantity):
+            stock_obj, total = needed_totals.get(stock.id, (stock, Decimal('0')))
+            needed_totals[stock.id] = (stock_obj, total + req_qty)
+
+    with transaction.atomic():
+        locked_stock, shortfalls = _aggregate_and_lock(needed_totals)
         if shortfalls:
             return False, shortfalls
 
-        for order_item in order.items.select_related('menu_item__stock_item'):
-            stock = getattr(order_item.menu_item, 'stock_item', None)
-            if stock:
-                StockItem.objects.filter(id=stock.id).select_for_update().update(
-                    quantity_on_hand=stock.quantity_on_hand - order_item.quantity
-                )
-                from store.services import notify_low_stock_if_needed
-                notify_low_stock_if_needed(stock)
+        for oi in order_items:
+            reqs = compute_requirements_for_selection(oi.menu_item, oi.quantity)
+            for stock, req_qty in reqs:
+                locked_stock[stock.id].quantity_on_hand -= req_qty
+            oi.recipe_cost_snapshot = _snapshot_cost_for(oi.menu_item, oi.quantity)
+            oi.prep_status = 'ready' if oi.menu_item.is_quick_serve else 'queued'
+            oi.save(update_fields=['recipe_cost_snapshot', 'prep_status'])
 
-            order_item.prep_status = 'ready' if order_item.menu_item.is_quick_serve else 'queued'
-            order_item.save(update_fields=['prep_status'])
+        for locked in locked_stock.values():
+            locked.save(update_fields=['quantity_on_hand'])
+            from store.services import notify_low_stock_if_needed
+            notify_low_stock_if_needed(locked)
 
+    return True, []
+
+def restore_stock_for_order_item(order_item):
+    """Reverses the deduction for one OrderItem — recipe ingredients or a direct stock link."""
+    reqs = compute_requirements_for_selection(order_item.menu_item, order_item.quantity)
+    if not reqs:
+        return
+    with transaction.atomic():
+        for stock, qty in reqs:
+            StockItem.objects.filter(id=stock.id).update(quantity_on_hand=F('quantity_on_hand') + qty)
+
+
+def confirm_order_and_deduct_stock(order):
+    with transaction.atomic():
+        order_items = list(order.items.select_related('menu_item__stock_item', 'menu_item__recipe'))
+        success, shortfalls = reserve_stock_for_existing_items(order_items)
+        if not success:
+            return False, shortfalls
         order.status = 'confirmed'
         order.save(update_fields=['status'])
 
@@ -44,8 +138,58 @@ def confirm_order_and_deduct_stock(order):
                 'source': order.table.number if order.table_id else order.get_order_type_display(),
             },
         })
-
     return True, []
+
+
+def build_kitchen_reconciliation(department, date):
+    """
+    Compares ACTUAL stock withdrawn (DailyUsageItem, chef-declared) against
+    THEORETICAL stock required by what was actually sold that day (recipes).
+    """
+    from .views import _local_day_bounds  # reuse your existing helper
+
+    log = DailyUsageLog.objects.filter(department=department, date=date).first()
+    actual_by_stock = {}
+    if log:
+        for item in log.items.select_related('stock_item'):
+            if item.stock_item_id:
+                actual_by_stock[item.stock_item_id] = actual_by_stock.get(item.stock_item_id, Decimal('0')) + item.quantity
+
+    day_start, day_end = _local_day_bounds(date, date)
+    orders = Order.objects.filter(
+        status='confirmed', created_at__gte=day_start, created_at__lt=day_end
+    ).prefetch_related('items__menu_item__recipe__lines__stock_item')
+
+    theoretical_by_stock = {}
+    for order in orders:
+        if department == 'kitchen':
+            items = order.kitchen_items()
+        else:
+            items = [i for i in order.items.all() if not i.is_cancelled
+                     and i.menu_item.item_type == 'drink' and i.menu_item.serving_point == 'bar']
+        for oi in items:
+            for stock, qty in compute_requirements_for_selection(oi.menu_item, oi.quantity):
+                theoretical_by_stock[stock.id] = theoretical_by_stock.get(stock.id, Decimal('0')) + qty
+
+    all_ids = set(actual_by_stock) | set(theoretical_by_stock)
+    stock_items = {s.id: s for s in StockItem.objects.filter(id__in=all_ids)}
+
+    rows = []
+    for sid in all_ids:
+        stock = stock_items[sid]
+        actual = actual_by_stock.get(sid, Decimal('0'))
+        theoretical = theoretical_by_stock.get(sid, Decimal('0'))
+        variance = actual - theoretical
+        rows.append({
+            'stock_item': stock, 'actual': actual, 'theoretical': theoretical,
+            'variance': variance,
+            'variance_pct': float(variance / theoretical * 100) if theoretical else None,
+            'variance_cost': (variance * stock.last_unit_cost).quantize(Decimal('0.01')),
+        })
+    rows.sort(key=lambda r: abs(r['variance_cost']), reverse=True)
+
+    total_variance_cost = sum((r['variance_cost'] for r in rows), Decimal('0'))
+    return rows, total_variance_cost
 
 def settle_booking_stay(booking, amount, amount_tendered, method, reference, user):
     debts = []

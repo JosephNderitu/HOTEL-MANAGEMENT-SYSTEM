@@ -1,0 +1,531 @@
+{% extends "dashboard/base_dashboard.html" %}
+
+{% block dashboard_content %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+    /* ---------- Hero Banner ---------- */
+    .rf-hero {
+        background: linear-gradient(135deg, #0B6B3A 0%, #074726 50%, #042e18 100%);
+        border-radius: 1.25rem;
+        padding: 1.75rem 2rem;
+        color: #fff;
+        margin-bottom: 1.5rem;
+        position: relative;
+        overflow: hidden;
+        box-shadow: 0 10px 30px -10px rgba(11, 107, 58, 0.35);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+    .rf-hero::after {
+        content: '';
+        position: absolute; right: -30px; top: -30px; width: 180px; height: 180px;
+        background: radial-gradient(circle, rgba(201, 162, 39, 0.25) 0%, transparent 70%);
+        border-radius: 50%; pointer-events: none;
+    }
+    .rf-hero h1 { font-size: 1.35rem; font-weight: 800; letter-spacing: -0.025em; position: relative; z-index: 1; }
+    .rf-hero p { font-size: 0.8125rem; position: relative; z-index: 1; color: rgba(255, 255, 255, 0.85); }
+
+    /* ---------- Cost & Financial Banner ---------- */
+    .rf-cost-banner {
+        background: #ffffff;
+        border: 1px solid #cbd5e1;
+        border-radius: 1rem;
+        padding: 1.25rem 1.5rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1.5rem;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04);
+    }
+    .rf-cost-banner .cost-block { display: flex; align-items: center; gap: 1rem; }
+    .rf-cost-banner .icon-circle {
+        width: 3rem; height: 3rem; border-radius: 0.875rem; background: #C9A227; color: #000;
+        display: flex; align-items: center; justify-content: center; font-size: 1.125rem; flex-shrink: 0;
+        box-shadow: 0 2px 6px rgba(201, 162, 39, 0.3);
+    }
+    .rf-cost-banner .lbl { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; }
+    .rf-cost-banner .amt { font-size: 1.625rem; font-weight: 800; color: #0B6B3A; line-height: 1.1; }
+    .rf-price-side { text-align: right; font-size: 0.8125rem; color: #475569; }
+    .rf-price-side .selling { font-weight: 700; color: #0f172a; font-size: 1rem; }
+    
+    .margin-pill {
+        display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 700;
+        padding: 0.25rem 0.75rem; border-radius: 9999px; margin-top: 0.35rem; border: 1px solid transparent;
+    }
+    .margin-pill.good { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
+    .margin-pill.thin { background: #fefce8; color: #854d0e; border-color: #fef08a; }
+    .margin-pill.bad { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+
+    /* ---------- Panel Layout ---------- */
+    .rf-panel {
+        background: #ffffff;
+        border: 1px solid #cbd5e1;
+        border-radius: 1.25rem;
+        padding: 1.5rem;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04);
+    }
+    .rf-section-label {
+        font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em;
+        color: #0B6B3A; display: flex; align-items: center; gap: 8px; margin-bottom: 0.85rem;
+    }
+    .rf-section-label i { color: #C9A227; }
+
+    .rf-yield-row {
+        display: flex; align-items: center; gap: 1rem; background: #f8fafc; border: 1px solid #cbd5e1;
+        border-radius: 1rem; padding: 1rem 1.25rem; margin-bottom: 1.5rem;
+    }
+    .rf-yield-input {
+        width: 90px; text-align: center; border: 1.5px solid #0B6B3A; border-radius: 0.75rem;
+        padding: 0.5rem 0.75rem; font-size: 1rem; font-weight: 700; color: #0B6B3A; background: #ffffff;
+    }
+    .rf-yield-input:focus { outline: none; box-shadow: 0 0 0 3px rgba(11,107,58,0.12); }
+
+    /* ---------- Ingredient Table & Scrollable Dropdown ---------- */
+    .ing-header { display: none; }
+    @media (min-width: 900px) {
+        .ing-header {
+            display: grid; grid-template-columns: 2.3fr 1fr 1fr 1.5fr 40px; gap: 14px;
+            font-size: 0.65rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;
+            color: #64748b; padding: 0 1rem 0.5rem; border-bottom: 1px solid #e2e8f0; margin-bottom: 0.75rem;
+        }
+    }
+
+    #ingredient-rows { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.25rem; }
+    .ing-card {
+        background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 1rem; padding: 1rem;
+        display: grid; grid-template-columns: 1fr; gap: 1rem;
+        transition: all 0.15s ease; position: relative;
+    }
+    .ing-card:hover { border-color: #94a3b8; box-shadow: 0 4px 12px rgba(0,0,0,0.04); }
+    .ing-card.marked-for-delete { opacity: 0.4; background: #f1f5f9; }
+    @media (min-width: 900px) {
+        .ing-card { grid-template-columns: 2.3fr 1fr 1fr 1.5fr 40px; align-items: start; padding: 0.85rem 1rem; }
+    }
+
+    .ing-mobile-label { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b; display: block; margin-bottom: 0.25rem; }
+    @media (min-width: 900px) { .ing-mobile-label { display: none; } }
+
+    .ing-field select, .ing-field input {
+        width: 100%; border: 1px solid #cbd5e1; border-radius: 0.75rem; padding: 0.5rem 0.75rem; font-size: 0.8125rem;
+        background: #fff; color: #0f172a; transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .ing-field select:focus, .ing-field input:focus {
+        outline: none; border-color: #0B6B3A; box-shadow: 0 0 0 3px rgba(11,107,58,0.12);
+    }
+    
+    /* Scrollable Select Dropdown */
+    .ing-field select {
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 0.75rem center;
+        background-size: 1rem;
+        padding-right: 2.5rem;
+    }
+    .ing-field select option { padding: 8px; }
+
+    .custom-wrap { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem; }
+    .custom-wrap .custom-sub-row { display: flex; gap: 0.5rem; }
+    .hidden { display: none !important; }
+
+    /* Toggle Switch */
+    .ing-toggle { display: inline-flex; align-items: center; gap: 8px; margin-top: 0.5rem; cursor: pointer; user-select: none; }
+    .ing-toggle input { display: none; }
+    .ing-toggle-track {
+        width: 34px; height: 19px; background: #cbd5e1; border-radius: 9999px; position: relative; flex-shrink: 0;
+        transition: background 0.2s;
+    }
+    .ing-toggle-track::after {
+        content: ''; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px; background: #fff;
+        border-radius: 50%; transition: transform 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    }
+    .ing-toggle input:checked + .ing-toggle-track { background: #C9A227; }
+    .ing-toggle input:checked + .ing-toggle-track::after { transform: translateX(15px); }
+    .ing-toggle-text { font-size: 0.7rem; color: #475569; font-weight: 600; }
+
+    /* Delete Button */
+    .ing-actions { display: flex; justify-content: flex-end; align-items: center; }
+    @media (min-width: 900px) { .ing-actions { justify-content: center; padding-top: 0.35rem; } }
+    .ing-delete-btn {
+        width: 32px; height: 32px; border-radius: 0.5rem; display: flex; align-items: center; justify-content: center;
+        color: #dc2626; background: #fef2f2; border: 1px solid #fecaca; cursor: pointer; transition: all 0.15s; font-size: 0.75rem;
+    }
+    .ing-delete-btn:hover { background: #fee2e2; }
+
+    #add-ingredient-btn {
+        border: 1.5px dashed #0B6B3A; color: #0B6B3A; background: #f0fdf4; width: 100%;
+        padding: 0.75rem; border-radius: 0.875rem; font-size: 0.8125rem; font-weight: 700;
+        display: flex; align-items: center; justify-content: center; gap: 8px;
+        transition: all 0.15s; cursor: pointer;
+    }
+    #add-ingredient-btn:hover { background: #dcfce7; border-color: #074726; }
+
+    .rf-notes { width: 100%; border: 1px solid #cbd5e1; border-radius: 0.875rem; padding: 0.75rem 1rem; font-size: 0.8125rem; resize: vertical; background: #fff; }
+    .rf-notes:focus { outline: none; border-color: #0B6B3A; box-shadow: 0 0 0 3px rgba(11,107,58,0.12); }
+    
+    .rf-save-btn {
+        background: #0B6B3A; color: #fff; font-weight: 800; font-size: 0.875rem;
+        padding: 0.75rem 2rem; border-radius: 9999px; display: inline-flex; align-items: center; gap: 8px;
+        transition: all 0.15s; box-shadow: 0 2px 6px rgba(11,107,58,0.25); cursor: pointer;
+    }
+    .rf-save-btn:hover { background: #074726; transform: translateY(-1px); }
+
+    .rf-actions-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid #cbd5e1; }
+    .rf-empty-state { text-align: center; padding: 2.5rem 1rem; color: #64748b; font-size: 0.8125rem; }
+    .rf-empty-state i { font-size: 1.75rem; margin-bottom: 0.5rem; display: block; opacity: 0.5; }
+</style>
+
+<div>
+    <a href="{% url 'dashboard:recipe_list' %}" class="inline-flex items-center gap-1.5 text-[#0B6B3A] hover:text-[#074726] text-xs font-bold uppercase tracking-wider transition-colors">
+        <i class="fa-solid fa-arrow-left text-xs"></i> Back to All Recipes
+    </a>
+</div>
+
+<div class="rf-hero mt-3 shadow-md">
+    <div class="relative z-10 space-y-1">
+        <span class="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-xs font-semibold bg-white/10 text-[#C9A227] border border-white/15 backdrop-blur-md">
+            <i class="fa-solid fa-utensils text-[11px]"></i> Recipe Editor
+        </span>
+        <h1 class="text-xl md:text-2xl font-extrabold tracking-tight flex items-center gap-2.5">
+            <i class="fa-solid fa-book-open text-[#C9A227]"></i> Recipe Specifications — {{ menu_item.name }}
+        </h1>
+        <p class="text-white/80 text-xs md:text-sm">
+            Configure ingredients, batch yields, and ingredient rations for accurate cost accounting and profit margins.
+        </p>
+    </div>
+</div>
+
+{% if messages %}
+    {% for message in messages %}
+    <div class="flex items-center gap-3 border text-xs font-semibold rounded-xl p-3.5 mb-5 shadow-sm {% if message.tags == 'error' %}bg-red-50 border-red-300 text-red-800{% else %}bg-emerald-50 border-emerald-300 text-emerald-800{% endif %}">
+        <i class="fa-solid {% if message.tags == 'error' %}fa-circle-exclamation text-red-500{% else %}fa-circle-check text-emerald-600{% endif %}"></i>
+        <span>{{ message }}</span>
+    </div>
+    {% endfor %}
+{% endif %}
+
+<!-- Top Financial Overview Banner -->
+<div class="rf-cost-banner">
+    <div class="cost-block">
+        <div class="icon-circle"><i class="fa-solid fa-coins"></i></div>
+        <div>
+            <p class="lbl">Cost Per Serving</p>
+            <p class="amt">KSh <span id="displayCostPerServing">{{ recipe.cost_per_yield|floatformat:2 }}</span></p>
+        </div>
+    </div>
+    <div class="rf-price-side">
+        <p>Selling Price: <span class="selling">KSh {{ menu_item.regular_price|floatformat:0 }}</span></p>
+        {% if margin is not None %}
+        <span class="margin-pill {{ menu_item.margin_status }}" id="marginBadge">
+            <i class="fa-solid {% if menu_item.margin_status == 'good' %}fa-circle-check{% elif menu_item.margin_status == 'thin' %}fa-triangle-exclamation{% else %}fa-circle-exclamation{% endif %}"></i>
+            Margin: KSh {{ margin|floatformat:2 }}
+        </span>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Main Split Grid: Form (Left) & Visual Analytics Chart (Right) -->
+<div class="grid lg:grid-cols-12 gap-6 items-start">
+    
+    <!-- Left Panel: Formset -->
+    <div class="lg:col-span-8 rf-panel">
+        <form method="post" id="recipe-form">
+            {% csrf_token %}
+
+            <p class="rf-section-label"><i class="fa-solid fa-layer-group"></i> Batch Size Configuration</p>
+            <div class="rf-yield-row">
+                <label class="text-xs font-bold text-slate-700 uppercase">This batch makes</label>
+                <input type="number" name="yield_quantity" id="id_yield_quantity" value="{{ recipe.yield_quantity }}" min="1" class="rf-yield-input">
+                <span class="text-xs font-bold text-slate-600">serving(s)</span>
+            </div>
+
+            <!-- Ingredient Filter & Search Bar -->
+            <div class="flex items-center justify-between gap-3 mb-4 flex-wrap">
+                <p class="rf-section-label mb-0"><i class="fa-solid fa-carrot"></i> Recipe Ingredients</p>
+                <div class="relative w-full sm:w-64">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                    <input type="text" id="ingredientSearchInput" placeholder="Filter ingredients..." class="w-full bg-slate-50 border border-slate-300 rounded-lg py-1.5 pl-8 pr-3 text-xs text-slate-800 focus:outline-none focus:border-[#0B6B3A]">
+                </div>
+            </div>
+
+            {{ formset.management_form }}
+
+            <div class="ing-header">
+                <span>Ingredient / Stock Item</span>
+                <span>Quantity</span>
+                <span>Unit</span>
+                <span>Preparation Note</span>
+                <span></span>
+            </div>
+
+            <div id="ingredient-rows">
+                {% for form in formset %}
+                <div class="ing-card" data-ingredient-row>
+                    {{ form.id }}
+                    <div class="ing-field">
+                        <span class="ing-mobile-label">Ingredient</span>
+                        <div data-role="stock-wrap" class="{% if form.instance.custom_name %}hidden{% endif %}">
+                            {{ form.stock_item }}
+                        </div>
+                        <div data-role="custom-wrap" class="custom-wrap {% if not form.instance.custom_name %}hidden{% endif %}">
+                            {{ form.custom_name }}
+                            <div class="custom-sub-row">
+                                {{ form.custom_unit }}
+                                {{ form.custom_unit_cost }}
+                            </div>
+                        </div>
+                        <label class="ing-toggle">
+                            <input type="checkbox" data-role="toggle-custom" {% if form.instance.custom_name %}checked{% endif %}>
+                            <span class="ing-toggle-track"></span>
+                            <span class="ing-toggle-text">Custom / Not in stock</span>
+                        </label>
+                    </div>
+                    <div class="ing-field">
+                        <span class="ing-mobile-label">Quantity</span>
+                        {{ form.quantity }}
+                    </div>
+                    <div class="ing-field">
+                        <span class="ing-mobile-label">Unit</span>
+                        {{ form.unit }}
+                    </div>
+                    <div class="ing-field">
+                        <span class="ing-mobile-label">Note</span>
+                        {{ form.note }}
+                    </div>
+                    <div class="ing-actions">
+                        {% if form.instance.pk %}
+                        <label class="ing-delete-btn" data-role="delete-label" title="Remove ingredient">
+                            <input type="checkbox" class="hidden" data-role="delete-checkbox" name="{{ form.DELETE.html_name }}">
+                            <i class="fa-solid fa-trash"></i>
+                        </label>
+                        {% else %}
+                        <span class="ing-delete-btn" data-role="remove-new-row" title="Remove row">
+                            <i class="fa-solid fa-trash"></i>
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% empty %}
+                <div class="rf-empty-state">
+                    <i class="fa-regular fa-circle-question"></i>
+                    No ingredients declared yet. Add your first ingredient below.
+                </div>
+                {% endfor %}
+            </div>
+
+            <button type="button" id="add-ingredient-btn">
+                <i class="fa-solid fa-plus text-xs"></i> Add Another Ingredient
+            </button>
+
+            <p class="rf-section-label mt-6"><i class="fa-solid fa-note-sticky"></i> Preparation & Chef Notes</p>
+            <textarea name="notes" rows="2" class="rf-notes" placeholder="Prep guidelines, quality standards, or substitutions...">{{ recipe.notes }}</textarea>
+
+            <div class="rf-actions-bar">
+                <span class="text-xs text-slate-500 font-medium"><i class="fa-solid fa-circle-info text-[#0B6B3A]"></i> Changes recalculate inventory and margins on save.</span>
+                <button type="submit" class="rf-save-btn">
+                    <i class="fa-solid fa-floppy-disk"></i> Save Recipe
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Right Panel: Live Visual Ratios & Cost Analytics Chart -->
+    <div class="lg:col-span-4 space-y-6">
+        <div class="rf-panel space-y-4">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+                <h3 class="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                    <i class="fa-solid fa-chart-pie text-[#C9A227]"></i> Cost Ratios & Breakdown
+                </h3>
+                <span class="text-[10px] font-bold bg-emerald-50 text-[#0B6B3A] border border-emerald-200 px-2 py-0.5 rounded-full uppercase">Live Analytics</span>
+            </div>
+
+            <p class="text-xs text-slate-500">
+                Visual representation of ingredient cost distributions and profit margin proportions per serving.
+            </p>
+
+            <!-- Chart Canvas Container -->
+            <div class="relative w-full h-64 flex items-center justify-center">
+                <canvas id="recipeCostChart"></canvas>
+            </div>
+
+            <div class="pt-3 border-t border-slate-200 space-y-2 text-xs text-slate-600">
+                <div class="flex justify-between font-semibold">
+                    <span>Total Batch Cost:</span>
+                    <span id="summaryBatchCost" class="text-slate-900">KSh 0.00</span>
+                </div>
+                <div class="flex justify-between font-semibold">
+                    <span>Selling Price:</span>
+                    <span class="text-slate-900">KSh {{ menu_item.regular_price|floatformat:0 }}</span>
+                </div>
+                <div class="flex justify-between font-bold text-[#0B6B3A]">
+                    <span>Estimated Profit / Margin:</span>
+                    <span id="summaryProfitMargin">KSh {{ margin|floatformat:2|default:"0.00" }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Hidden clone template for adding new ingredient rows -->
+<script type="text/template" id="empty-form-template">
+<div class="ing-card" data-ingredient-row>
+    {{ formset.empty_form.id }}
+    <div class="ing-field">
+        <span class="ing-mobile-label">Ingredient</span>
+        <div data-role="stock-wrap">
+            {{ formset.empty_form.stock_item }}
+        </div>
+        <div data-role="custom-wrap" class="custom-wrap hidden">
+            {{ formset.empty_form.custom_name }}
+            <div class="custom-sub-row">
+                {{ formset.empty_form.custom_unit }}
+                {{ formset.empty_form.custom_unit_cost }}
+            </div>
+        </div>
+        <label class="ing-toggle">
+            <input type="checkbox" data-role="toggle-custom">
+            <span class="ing-toggle-track"></span>
+            <span class="ing-toggle-text">Custom / Not in stock</span>
+        </label>
+    </div>
+    <div class="ing-field">
+        <span class="ing-mobile-label">Quantity</span>
+        {{ formset.empty_form.quantity }}
+    </div>
+    <div class="ing-field">
+        <span class="ing-mobile-label">Unit</span>
+        {{ formset.empty_form.unit }}
+    </div>
+    <div class="ing-field">
+        <span class="ing-mobile-label">Note</span>
+        {{ formset.empty_form.note }}
+    </div>
+    <div class="ing-actions">
+        <span class="ing-delete-btn" data-role="remove-new-row" title="Remove row">
+            <i class="fa-solid fa-trash"></i>
+        </span>
+    </div>
+</div>
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const container = document.getElementById('ingredient-rows');
+    const totalForms = document.getElementById('id_lines-TOTAL_FORMS');
+    const emptyFormHtml = document.getElementById('empty-form-template').innerHTML;
+    const emptyState = container.querySelector('.rf-empty-state');
+    const searchInput = document.getElementById('ingredientSearchInput');
+
+    // ---------- Chart.js Initialization ----------
+    var ctx = document.getElementById('recipeCostChart').getContext('2d');
+    var recipeChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Ingredient Cost', 'Estimated Net Profit'],
+            datasets: [{
+                data: [{{ recipe.cost_per_yield|default:1 }}, Math.max(0, {{ menu_item.regular_price }} - {{ recipe.cost_per_yield|default:0 }})],
+                backgroundColor: ['#0B6B3A', '#C9A227'],
+                borderWidth: 2,
+                borderColor: '#ffffff'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { font: { size: 11, weight: '700' }, boxWidth: 12 }
+                }
+            }
+        }
+    });
+
+    function updateChartMetrics() {
+        recipeChart.update();
+    }
+
+    function bindRow(row) {
+        const toggle = row.querySelector('[data-role="toggle-custom"]');
+        const stockWrap = row.querySelector('[data-role="stock-wrap"]');
+        const customWrap = row.querySelector('[data-role="custom-wrap"]');
+
+        if (toggle) {
+            toggle.addEventListener('change', function () {
+                stockWrap.classList.toggle('hidden', toggle.checked);
+                customWrap.classList.toggle('hidden', !toggle.checked);
+                if (toggle.checked) {
+                    const select = stockWrap.querySelector('select');
+                    if (select) select.value = '';
+                } else {
+                    customWrap.querySelectorAll('input').forEach(i => i.value = '');
+                }
+                updateChartMetrics();
+            });
+        }
+
+        const removeBtn = row.querySelector('[data-role="remove-new-row"]');
+        if (removeBtn) {
+            removeBtn.addEventListener('click', function () {
+                row.remove();
+                if (!container.querySelector('[data-ingredient-row]') && emptyState) {
+                    container.appendChild(emptyState);
+                }
+                updateChartMetrics();
+            });
+        }
+
+        const deleteLabel = row.querySelector('[data-role="delete-label"]');
+        if (deleteLabel) {
+            deleteLabel.addEventListener('click', function (e) {
+                e.preventDefault();
+                const checkbox = row.querySelector('[data-role="delete-checkbox"]');
+                checkbox.checked = !checkbox.checked;
+                row.classList.toggle('marked-for-delete', checkbox.checked);
+                updateChartMetrics();
+            });
+        }
+
+        const qtyInput = row.querySelector('input[name$="-quantity"]');
+        if (qtyInput) {
+            qtyInput.addEventListener('input', updateChartMetrics);
+        }
+    }
+
+    container.querySelectorAll('[data-ingredient-row]').forEach(bindRow);
+
+    document.getElementById('add-ingredient-btn').addEventListener('click', function () {
+        if (emptyState && emptyState.parentElement) emptyState.remove();
+        const index = parseInt(totalForms.value, 10);
+        const html = emptyFormHtml.replaceAll('__prefix__', index);
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = html.trim();
+        const newRow = wrapper.firstElementChild;
+        container.appendChild(newRow);
+        totalForms.value = index + 1;
+        bindRow(newRow);
+        newRow.querySelector('input, select')?.focus();
+    });
+
+    // ---------- Ingredient Search / Filter ----------
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            var q = this.value.toLowerCase().trim();
+            var rows = container.querySelectorAll('[data-ingredient-row]');
+            rows.forEach(function(r) {
+                var text = r.textContent.toLowerCase();
+                r.style.display = (!q || text.includes(q)) ? '' : 'none';
+            });
+        });
+    }
+
+    var yieldInput = document.getElementById('id_yield_quantity');
+    if (yieldInput) {
+        yieldInput.addEventListener('input', updateChartMetrics);
+    }
+});
+</script>
+{% endblock %}

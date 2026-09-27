@@ -1,0 +1,122 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+<style>
+    .rc-hero { background: linear-gradient(135deg, #0B6B3A, #095430); border-radius: 18px; padding: 20px 26px; color: #fff; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 22px; }
+    .rc-hero h1 { font-size: 20px; font-weight: 800; }
+    .rc-filter-bar { background: #fff; border: 1px solid #eef0ee; border-radius: 14px; padding: 14px 18px; display: flex; gap: 12px; align-items: end; flex-wrap: wrap; margin-bottom: 20px; }
+    .rc-filter-bar label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #8a8f8a; display: block; margin-bottom: 4px; }
+    .rc-select, .rc-date { border: 1px solid #e2e5e2; border-radius: 10px; padding: 8px 12px; font-size: 13px; }
+
+    .rc-summary-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-bottom: 22px; }
+    @media (min-width: 768px) { .rc-summary-grid { grid-template-columns: repeat(3, 1fr); } }
+    .rc-summary-card { background: #fff; border: 1px solid #eef0ee; border-radius: 16px; padding: 18px; }
+    .rc-summary-card .lbl { font-size: 11px; color: #8a8f8a; text-transform: uppercase; letter-spacing: 0.04em; }
+    .rc-summary-card .val { font-size: 24px; font-weight: 800; margin-top: 4px; }
+    .rc-summary-card.loss .val { color: #dc2626; }
+    .rc-summary-card.saving .val { color: #0B6B3A; }
+
+    .rc-table { width: 100%; border-collapse: collapse; }
+    .rc-table th { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; color: #8a8f8a; text-align: left; padding: 10px 16px; border-bottom: 1px solid #f2f4f2; }
+    .rc-table td { padding: 12px 16px; font-size: 13px; border-bottom: 1px solid #f7f8f7; }
+    .rc-table tr:last-child td { border-bottom: none; }
+    .right { text-align: right; }
+    .variance-pill { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 9999px; display: inline-block; }
+    .variance-pill.over { background: #FEF2F2; color: #dc2626; }
+    .variance-pill.under { background: #FFFBEB; color: #92722a; }
+    .variance-pill.ok { background: #F3F4F6; color: #6b7280; }
+    .cost-tag { font-weight: 700; }
+    .cost-tag.bad { color: #dc2626; }
+    .cost-tag.good { color: #0B6B3A; }
+</style>
+
+<div class="rc-hero">
+    <div>
+        <h1><i class="fa-solid fa-scale-balanced mr-2"></i>Usage Reconciliation</h1>
+        <p class="text-white/70 text-xs mt-1">What was taken from the store vs. what the recipes say should have been used, for {{ date }}.</p>
+    </div>
+</div>
+
+<form method="get" class="rc-filter-bar">
+    <div>
+        <label>Department</label>
+        <select name="department" class="rc-select" onchange="this.form.submit()">
+            <option value="kitchen" {% if department == 'kitchen' %}selected{% endif %}>Kitchen</option>
+            <option value="bar" {% if department == 'bar' %}selected{% endif %}>Bar</option>
+        </select>
+    </div>
+    <div>
+        <label>Date</label>
+        <input type="date" name="date" value="{{ date|date:'Y-m-d' }}" class="rc-date" onchange="this.form.submit()">
+    </div>
+</form>
+
+<div class="rc-summary-grid">
+    <div class="rc-summary-card">
+        <p class="lbl">Ingredients Compared</p>
+        <p class="val">{{ rows|length }}</p>
+    </div>
+    <div class="rc-summary-card {% if total_variance_cost > 0 %}loss{% elif total_variance_cost < 0 %}saving{% endif %}">
+        <p class="lbl">Net Variance Value</p>
+        <p class="val">{% if total_variance_cost > 0 %}+{% endif %}KSh {{ total_variance_cost|floatformat:0 }}</p>
+    </div>
+    <div class="rc-summary-card">
+        <p class="lbl">What This Means</p>
+        <p class="text-xs text-gray-500 mt-1">
+            Positive = more was taken from the store than the day's confirmed sales can account for
+            (waste, over-portioning, or possible misuse). Negative = less was taken than recipes require
+            (under-portioning, or an out-of-date recipe).
+        </p>
+    </div>
+</div>
+
+<div class="kd-panel bg-white rounded-2xl border border-[#eef0ee]">
+    <div class="overflow-x-auto">
+        <table class="rc-table">
+            <thead>
+                <tr>
+                    <th>Ingredient</th>
+                    <th class="right">Taken From Store</th>
+                    <th class="right">Theoretically Required</th>
+                    <th class="right">Variance</th>
+                    <th class="right">Cost Impact</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    <td class="font-semibold">{{ row.stock_item.name }}</td>
+                    <td class="right">{{ row.actual|floatformat:"-2" }} {{ row.stock_item.get_unit_display }}</td>
+                    <td class="right">{{ row.theoretical|floatformat:"-2" }} {{ row.stock_item.get_unit_display }}</td>
+                    <td class="right">
+                        {% if row.variance > 0 %}
+                        <span class="variance-pill over">+{{ row.variance|floatformat:"-2" }} {{ row.stock_item.unit }}{% if row.variance_pct %} ({{ row.variance_pct|floatformat:0 }}%){% endif %}</span>
+                        {% elif row.variance < 0 %}
+                        <span class="variance-pill under">{{ row.variance|floatformat:"-2" }} {{ row.stock_item.unit }}{% if row.variance_pct %} ({{ row.variance_pct|floatformat:0 }}%){% endif %}</span>
+                        {% else %}
+                        <span class="variance-pill ok">Exact match</span>
+                        {% endif %}
+                    </td>
+                    <td class="right">
+                        {% if row.variance_cost > 0 %}
+                        <span class="cost-tag bad">+KSh {{ row.variance_cost|floatformat:0 }}</span>
+                        {% elif row.variance_cost < 0 %}
+                        <span class="cost-tag good">−KSh {{ row.variance_cost|floatformat:0|cut:"-" }}</span>
+                        {% else %}
+                        <span class="text-gray-400">KSh 0</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" class="text-center text-gray-400 py-14">No usage logged or sales recorded for {{ department }} on this date.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<p class="text-xs text-gray-400 mt-4">
+    <i class="fa-solid fa-circle-info mr-1"></i>
+    Cost impact uses each ingredient's current stock price, not the price on the day itself — treat it as
+    today's-money terms for comparing severity across items, not as an exact historical loss figure.
+</p>
+{% endblock %}

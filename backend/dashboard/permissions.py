@@ -113,3 +113,10 @@ def can_manage_target(acting_user, target_user):
     if acting_user.id == target_user.id:
         return False
     return get_role_rank(acting_user) < get_role_rank(target_user)
+
+RECIPE_MANAGER_GROUPS = FULL_ACCESS_GROUPS | {'Chef'}
+
+def can_manage_recipes(user):
+    if user.is_superuser:
+        return True
+    return user.groups.filter(name__in=RECIPE_MANAGER_GROUPS).exists()

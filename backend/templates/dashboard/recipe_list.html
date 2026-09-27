@@ -1,0 +1,418 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+<style>
+    /* ---------- Premium Design Tokens & Hero ---------- */
+    .rl-hero {
+        background: linear-gradient(135deg, #0B6B3A 0%, #074726 50%, #042e18 100%);
+        border-radius: 1.25rem;
+        padding: 1.75rem 2rem;
+        color: #ffffff;
+        margin-bottom: 1.5rem;
+        position: relative;
+        overflow: hidden;
+        box-shadow: 0 10px 30px -10px rgba(11, 107, 58, 0.35);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+    .rl-hero::after {
+        content: '';
+        position: absolute;
+        right: -30px;
+        top: -30px;
+        width: 180px;
+        height: 180px;
+        background: radial-gradient(circle, rgba(201, 162, 39, 0.25) 0%, transparent 70%);
+        border-radius: 50%;
+        pointer-events: none;
+    }
+    .rl-hero h1 { font-size: 1.35rem; font-weight: 800; letter-spacing: -0.025em; position: relative; z-index: 1; }
+    .rl-hero p { font-size: 0.8125rem; position: relative; z-index: 1; color: rgba(255, 255, 255, 0.85); }
+
+    /* ---------- Filter & Search Bar ---------- */
+    .rl-filter-bar {
+        background: #ffffff;
+        border: 1px solid #cbd5e1;
+        border-radius: 1rem;
+        padding: 0.85rem 1.15rem;
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 1rem;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04);
+        transition: border-color 0.2s ease;
+    }
+    .rl-filter-bar:hover { border-color: #94a3b8; }
+    
+    .rl-search-wrap { position: relative; flex: 1; min-width: 240px; }
+    .rl-search-wrap i {
+        position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #64748b; font-size: 0.8125rem;
+    }
+    .rl-filter-bar input[type="text"] {
+        width: 100%;
+        background-color: #ffffff;
+        border: 1px solid #cbd5e1;
+        border-radius: 0.75rem;
+        padding: 0.55rem 0.85rem 0.55rem 2.35rem;
+        font-size: 0.8125rem;
+        color: #0f172a;
+        outline: none;
+        transition: all 0.15s ease;
+    }
+    .rl-filter-bar input[type="text"]:focus {
+        border-color: #0B6B3A;
+        box-shadow: 0 0 0 3px rgba(11, 107, 58, 0.12);
+    }
+    .rl-search-btn {
+        background: #0B6B3A;
+        color: #ffffff;
+        font-size: 0.75rem;
+        font-weight: 700;
+        padding: 0.55rem 1.25rem;
+        border-radius: 9999px;
+        transition: all 0.15s ease;
+        box-shadow: 0 2px 5px rgba(11, 107, 58, 0.2);
+        cursor: pointer;
+    }
+    .rl-search-btn:hover { background: #074726; }
+    .rl-clear-link { font-size: 0.75rem; color: #64748b; font-weight: 600; transition: color 0.15s; }
+    .rl-clear-link:hover { color: #dc2626; }
+
+    /* ---------- Status Filter Pills ---------- */
+    .rl-status-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 1.5rem; }
+    .rl-status-pill {
+        font-size: 0.75rem;
+        font-weight: 700;
+        padding: 0.4rem 1rem;
+        border-radius: 9999px;
+        border: 1px solid #cbd5e1;
+        color: #475569;
+        background: #ffffff;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+        transition: all 0.15s ease;
+    }
+    .rl-status-pill:hover:not(.active) { border-color: #0B6B3A; color: #0B6B3A; background: #f8fafc; }
+    .rl-status-pill.active { background: #0B6B3A; color: #ffffff; border-color: #0B6B3A; box-shadow: 0 2px 6px rgba(11,107,58,0.2); }
+    .rl-status-pill .pill-count {
+        font-size: 0.65rem;
+        font-weight: 800;
+        background: #f1f5f9;
+        color: #334155;
+        padding: 1px 6px;
+        border-radius: 9999px;
+    }
+    .rl-status-pill.active .pill-count { background: rgba(255, 255, 255, 0.25); color: #ffffff; }
+
+    /* ---------- Section Typography & Containers ---------- */
+    .rl-section-label {
+        font-size: 0.7rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #0B6B3A;
+        margin: 1.75rem 0 0.75rem;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .rl-section-label i { color: #C9A227; }
+    .rl-section-label .count {
+        background: #f1f5f9;
+        color: #475569;
+        border: 1px solid #cbd5e1;
+        padding: 1px 8px;
+        border-radius: 9999px;
+        font-size: 0.65rem;
+        font-weight: 700;
+    }
+
+    .rl-cards { display: flex; flex-direction: column; gap: 10px; }
+    .rl-card {
+        background: #ffffff;
+        border: 1px solid #cbd5e1;
+        border-radius: 1rem;
+        padding: 1rem 1.25rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.03);
+    }
+    .rl-card:hover {
+        box-shadow: 0 6px 16px -4px rgba(11, 107, 58, 0.1);
+        border-color: #94a3b8;
+        transform: translateY(-1.5px);
+    }
+    .rl-card.rl-hidden { display: none !important; }
+
+    .rl-card-icon {
+        width: 2.375rem;
+        height: 2.375rem;
+        border-radius: 0.75rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.875rem;
+        flex-shrink: 0;
+        margin-right: 4px;
+        border: 1px solid rgba(0,0,0,0.06);
+    }
+    .rl-card-main { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
+    .rl-card-icon.food { background: #e0e7ff; color: #3730a3; border-color: #c7d2fe; }
+    .rl-card-icon.drink { background: #e0f2fe; color: #0369a1; border-color: #bae6fd; }
+
+    .rl-badge {
+        font-size: 0.625rem;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 9999px;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }
+    .rl-badge.has-recipe { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+    .rl-badge.no-recipe { background: #f8fafc; color: #475569; border: 1px solid #cbd5e1; }
+
+    .rl-margin {
+        font-size: 0.75rem;
+        font-weight: 700;
+        white-space: nowrap;
+        padding: 3px 8px;
+        border-radius: 6px;
+        background: #f8fafc;
+        border: 1px solid #cbd5e1;
+    }
+    .rl-margin.good { color: #0B6B3A; background: #f0fdf4; border-color: #bbf7d0; }
+    .rl-margin.thin { color: #854d0e; background: #fefce8; border-color: #fef08a; }
+    .rl-margin.bad { color: #991b1b; background: #fef2f2; border-color: #fecaca; }
+
+    .rl-empty { text-align: center; padding: 3.5rem 1rem; color: #64748b; font-size: 0.8125rem; }
+    .rl-empty i { font-size: 2rem; margin-bottom: 0.5rem; display: block; opacity: 0.6; }
+    .rl-section-empty {
+        text-align: center;
+        padding: 1.5rem 1rem;
+        color: #64748b;
+        font-size: 0.75rem;
+        background: #f8fafc;
+        border: 1.5px dashed #cbd5e1;
+        border-radius: 1rem;
+    }
+
+    /* ---------- Pagination ---------- */
+    .rl-pagination { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 1.25rem 0 0.5rem; }
+    .rl-page-btn {
+        min-width: 32px;
+        height: 32px;
+        padding: 0 8px;
+        border-radius: 0.5rem;
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #475569;
+        background: #ffffff;
+        border: 1px solid #cbd5e1;
+        transition: all 0.15s ease;
+        cursor: pointer;
+    }
+    .rl-page-btn:hover:not(:disabled):not(.active) { border-color: #0B6B3A; color: #0B6B3A; background: #f8fafc; }
+    .rl-page-btn.active { background: #0B6B3A; color: #ffffff; border-color: #0B6B3A; box-shadow: 0 2px 4px rgba(11,107,58,0.2); }
+    .rl-page-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .rl-page-ellipsis { color: #94a3b8; font-size: 0.75rem; padding: 0 2px; }
+</style>
+
+<div>
+    <a href="{% url 'dashboard:restaurant_kitchen_display' %}" class="inline-flex items-center gap-1.5 text-[#0B6B3A] hover:text-[#074726] text-xs font-bold uppercase tracking-wider transition-colors">
+        <i class="fa-solid fa-arrow-left text-xs"></i> Kitchen Display
+    </a>
+</div>
+
+<div class="rl-hero mt-3 shadow-md">
+    <div class="relative z-10 space-y-1">
+        <span class="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-xs font-semibold bg-white/10 text-[#C9A227] border border-white/15 backdrop-blur-md">
+            <i class="fa-solid fa-utensils text-[11px]"></i> Culinary Management
+        </span>
+        <h1 class="text-xl md:text-2xl font-extrabold tracking-tight flex items-center gap-2.5">
+            <i class="fa-solid fa-book-open text-[#C9A227]"></i> Recipe Specifications
+        </h1>
+        <p class="text-white/80 text-xs md:text-sm">
+            Declare precise ingredients per dish or drink to unlock accurate costing, nutritional mapping, and live inventory reconciliation.
+        </p>
+    </div>
+</div>
+
+<form method="get" class="rl-filter-bar">
+    <div class="rl-search-wrap">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="text" name="q" value="{{ search_query }}" placeholder="Search dishes, drinks, or ingredients...">
+    </div>
+    <button type="submit" class="rl-search-btn flex items-center gap-1.5">
+        <i class="fa-solid fa-filter text-[10px]"></i> Search
+    </button>
+    {% if search_query %}
+    <a href="{% url 'dashboard:recipe_list' %}" class="rl-clear-link flex items-center gap-1 ml-2">
+        Clear <i class="fa-solid fa-xmark"></i>
+    </a>
+    {% endif %}
+</form>
+
+<div class="rl-status-bar" data-status-filter-group>
+    <button type="button" class="rl-status-pill active" data-status="all">
+        All Items <span class="pill-count" data-count-all>0</span>
+    </button>
+    <button type="button" class="rl-status-pill" data-status="set">
+        <i class="fa-solid fa-check text-[10px] text-emerald-600"></i> Recipe Set <span class="pill-count" data-count-set>0</span>
+    </button>
+    <button type="button" class="rl-status-pill" data-status="unset">
+        <i class="fa-solid fa-triangle-exclamation text-[10px] text-amber-500"></i> Not Set <span class="pill-count" data-count-unset>0</span>
+    </button>
+</div>
+
+{% regroup menu_items by item_type as items_by_type %}
+{% for group in items_by_type %}
+<p class="rl-section-label">
+    {% if group.grouper == 'food' %}<i class="fa-solid fa-utensils"></i>Food Recipes{% else %}<i class="fa-solid fa-martini-glass"></i>Drink Recipes{% endif %}
+    <span class="count">{{ group.list|length }}</span>
+</p>
+
+<div class="rl-cards" data-paginate-section data-page-size="6">
+    {% for item in group.list %}
+    <div class="rl-card" data-paginate-item data-recipe-status="{% if item.recipe and item.recipe.lines.exists %}set{% else %}unset{% endif %}">
+        <div class="rl-card-main">
+            <div class="rl-card-icon {{ item.item_type }}">
+                <i class="fa-solid {% if item.item_type == 'food' %}fa-utensils{% else %}fa-mug-hot{% endif %}"></i>
+            </div>
+            <div class="min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <p class="font-bold text-sm text-slate-900 truncate">{{ item.name }}</p>
+                    {% if item.recipe and item.recipe.lines.exists %}
+                        <span class="rl-badge has-recipe">Recipe Set</span>
+                    {% else %}
+                        <span class="rl-badge no-recipe">No Recipe Yet</span>
+                    {% endif %}
+                </div>
+                <p class="text-xs text-slate-500 mt-0.5">
+                    {{ item.category|default:"Uncategorized" }} &middot; Selling at <strong class="text-slate-800">KSh {{ item.regular_price|floatformat:0 }}</strong>
+                </p>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+            {% if item.recipe and item.recipe.lines.exists %}
+            <span class="rl-margin {{ item.margin_status }}">
+                Cost: KSh {{ item.recipe.cost_per_yield|floatformat:2 }}
+            </span>
+            {% endif %}
+            <a href="{% url 'dashboard:recipe_edit' item.id %}" class="bg-[#0B6B3A] text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-[#074726] transition shadow-sm whitespace-nowrap flex items-center gap-1.5 border border-[#074726]">
+                <i class="fa-solid {% if item.recipe and item.recipe.lines.exists %}fa-pen-to-square{% else %}fa-plus{% endif %} text-[10px]"></i>
+                {% if item.recipe and item.recipe.lines.exists %}Edit Recipe{% else %}Declare Recipe{% endif %}
+            </a>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+<p class="rl-section-empty" data-section-empty style="display:none;">No items in this section match the current filter criteria.</p>
+<div class="rl-pagination" data-paginate-controls></div>
+
+{% empty %}
+<div class="rl-empty hr-tile rounded-2xl border border-slate-300">
+    <i class="fa-regular fa-circle-question"></i>
+    No menu items found{% if search_query %} matching "{{ search_query }}"{% endif %}.
+</div>
+{% endfor %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const allCards = Array.from(document.querySelectorAll('[data-paginate-item]'));
+    const statusGroup = document.querySelector('[data-status-filter-group]');
+    let activeStatus = 'all';
+
+    // ---- Status pill counts update ----
+    const countAll = document.querySelector('[data-count-all]');
+    const countSet = document.querySelector('[data-count-set]');
+    const countUnset = document.querySelector('[data-count-unset]');
+
+    if (countAll) countAll.textContent = allCards.length;
+    if (countSet) countSet.textContent = allCards.filter(c => c.dataset.recipeStatus === 'set').length;
+    if (countUnset) countUnset.textContent = allCards.filter(c => c.dataset.recipeStatus === 'unset').length;
+
+    const sections = Array.from(document.querySelectorAll('[data-paginate-section]')).map(function (section) {
+        const controls = section.nextElementSibling.nextElementSibling; // cards -> section-empty -> pagination
+        const emptyMsg = section.nextElementSibling; // cards -> section-empty
+        const pageSize = parseInt(section.dataset.pageSize, 10) || 6;
+        const items = Array.from(section.querySelectorAll('[data-paginate-item]'));
+        return { section, controls, emptyMsg, pageSize, items, currentPage: 1 };
+    });
+
+    function visibleItems(s) {
+        return s.items.filter(item => activeStatus === 'all' || item.dataset.recipeStatus === activeStatus);
+    }
+
+    function renderSection(s) {
+        const matching = visibleItems(s);
+        const totalPages = Math.max(1, Math.ceil(matching.length / s.pageSize));
+        s.currentPage = Math.min(s.currentPage, totalPages);
+
+        s.items.forEach(item => item.classList.add('rl-hidden'));
+        matching.forEach(function (item, i) {
+            const page = Math.floor(i / s.pageSize) + 1;
+            if (page === s.currentPage) item.classList.remove('rl-hidden');
+        });
+
+        s.emptyMsg.style.display = matching.length === 0 ? 'block' : 'none';
+        s.section.style.display = matching.length === 0 && s.items.length > 0 ? 'none' : '';
+
+        renderControls(s, totalPages);
+    }
+
+    function renderControls(s, totalPages) {
+        s.controls.innerHTML = '';
+        if (totalPages <= 1) return;
+
+        function makeBtn(label, page, opts) {
+            opts = opts || {};
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'rl-page-btn' + (opts.active ? ' active' : '');
+            btn.textContent = label;
+            btn.disabled = !!opts.disabled;
+            if (!opts.disabled) {
+                btn.addEventListener('click', function () {
+                    s.currentPage = page;
+                    renderSection(s);
+                    s.section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                });
+            }
+            return btn;
+        }
+
+        s.controls.appendChild(makeBtn('‹', s.currentPage - 1, { disabled: s.currentPage === 1 }));
+        const windowSize = 2;
+        for (let p = 1; p <= totalPages; p++) {
+            const nearEdge = p === 1 || p === totalPages;
+            const nearCurrent = Math.abs(p - s.currentPage) <= windowSize;
+            if (nearEdge || nearCurrent) {
+                s.controls.appendChild(makeBtn(p, p, { active: p === s.currentPage }));
+            } else if (p === s.currentPage - windowSize - 1 || p === s.currentPage + windowSize + 1) {
+                const dots = document.createElement('span');
+                dots.className = 'rl-page-ellipsis';
+                dots.textContent = '…';
+                s.controls.appendChild(dots);
+            }
+        }
+        s.controls.appendChild(makeBtn('›', s.currentPage + 1, { disabled: s.currentPage === totalPages }));
+    }
+
+    statusGroup.addEventListener('click', function (e) {
+        const pill = e.target.closest('[data-status]');
+        if (!pill) return;
+        activeStatus = pill.dataset.status;
+        statusGroup.querySelectorAll('.rl-status-pill').forEach(p => p.classList.toggle('active', p === pill));
+        sections.forEach(function (s) { s.currentPage = 1; renderSection(s); });
+    });
+
+    sections.forEach(renderSection);
+});
+</script>
+{% endblock %}

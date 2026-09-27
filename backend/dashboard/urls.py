@@ -88,6 +88,10 @@ urlpatterns = [
     
     path('restaurant/revenue-trend/', views.restaurant_revenue_trend, name='restaurant_revenue_trend'),
     path('bar/revenue-trend/', views.bar_revenue_trend, name='bar_revenue_trend'),
+    
+    path('recipes/', views.recipe_list, name='recipe_list'),
+    path('recipes/<int:menu_item_id>/', views.recipe_edit, name='recipe_edit'),
+    path('store/reconciliation/', views.kitchen_reconciliation_view, name='kitchen_reconciliation'),
         
     path('gate/', views.gate_view, name='gate'),
     path('gate/exit/<int:log_id>/', views.gate_log_exit, name='gate_log_exit'),

@@ -228,11 +228,7 @@ def reception_order_action(request, order_id, action):
         if order.status == 'confirmed':
             with transaction.atomic():
                 for order_item in order.items.select_related('menu_item__stock_item'):
-                    stock = getattr(order_item.menu_item, 'stock_item', None)
-                    if stock:
-                        StockItem.objects.filter(id=stock.id).select_for_update().update(
-                            quantity_on_hand=stock.quantity_on_hand + order_item.quantity
-                        )
+                    restore_stock_for_order_item(order_item)
         order.status = 'cancelled'
         order.save(update_fields=['status'])
     else:
@@ -906,7 +902,6 @@ def restaurant_add_items(request, order_id):
     if request.method != 'POST':
         return redirect('dashboard:restaurant_kitchen')
     order = get_object_or_404(Order, id=order_id)
-
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:
@@ -916,29 +911,18 @@ def restaurant_add_items(request, order_id):
     if not raw_items:
         return JsonResponse({'error': 'Add at least one item.'}, status=400)
 
-    resolved = []
+    selections = []
     for item in raw_items:
         try:
-            menu_item = MenuItem.objects.select_related('stock_item').get(id=item['id'], is_available=True)
+            menu_item = MenuItem.objects.select_related('stock_item', 'recipe').get(id=item['id'], is_available=True)
         except (MenuItem.DoesNotExist, KeyError):
             continue
         tier = item.get('tier') if item.get('tier') in ('regular', 'vip') else 'regular'
-        resolved.append((menu_item, tier, max(int(item.get('qty', 1)), 1)))
+        selections.append((menu_item, tier, max(int(item.get('qty', 1)), 1), None))
 
-    shortfalls = [mi.name for mi, _, qty in resolved if getattr(mi, 'stock_item', None) and mi.stock_item.quantity_on_hand < qty]
+    created, shortfalls = reserve_stock_and_create_items(order, selections)
     if shortfalls:
         return JsonResponse({'error': f"Insufficient stock: {', '.join(shortfalls)}."}, status=409)
-
-    with transaction.atomic():
-        for menu_item, tier, qty in resolved:
-            OrderItem.objects.create(
-                order=order, menu_item=menu_item, tier=tier, quantity=qty,
-                prep_status='ready' if menu_item.is_quick_serve else 'queued',
-            )
-            stock = getattr(menu_item, 'stock_item', None)
-            if stock:
-                StockItem.objects.filter(id=stock.id).select_for_update().update(quantity_on_hand=stock.quantity_on_hand - qty)
-
     return JsonResponse({'success': True})
 
 @staff_module_required('restaurant_kitchen')
@@ -1338,11 +1322,7 @@ def restaurant_cancel_item(request, item_id):
         messages.error(request, f"Can't cancel {order_item.menu_item.name}, it's already {order_item.get_prep_status_display().lower()}.")
     else:
         with transaction.atomic():
-            stock = getattr(order_item.menu_item, 'stock_item', None)
-            if stock:
-                StockItem.objects.filter(id=stock.id).select_for_update().update(
-                    quantity_on_hand=stock.quantity_on_hand + order_item.quantity
-                )
+            restore_stock_for_order_item(order_item)
             order_item.is_cancelled = True
             order_item.cancel_reason = reason
             order_item.cancelled_by = request.user
@@ -1378,11 +1358,7 @@ def restaurant_cancel_order(request, order_id):
 
     with transaction.atomic():
         for order_item in cancellable:
-            stock = getattr(order_item.menu_item, 'stock_item', None)
-            if stock:
-                StockItem.objects.filter(id=stock.id).select_for_update().update(
-                    quantity_on_hand=stock.quantity_on_hand + order_item.quantity
-                )
+            restore_stock_for_order_item(order_item)
             order_item.is_cancelled = True
             order_item.cancel_reason = reason
             order_item.cancelled_by = request.user
@@ -1763,9 +1739,7 @@ def bar_cancel_item(request, item_id):
         messages.error(request, f"Can't cancel {order_item.menu_item.name}, it's already {order_item.get_prep_status_display().lower()}.")
     else:
         with transaction.atomic():
-            stock = getattr(order_item.menu_item, 'stock_item', None)
-            if stock:
-                StockItem.objects.filter(id=stock.id).select_for_update().update(quantity_on_hand=stock.quantity_on_hand + order_item.quantity)
+            restore_stock_for_order_item(order_item)
             order_item.is_cancelled = True
             order_item.cancel_reason = reason
             order_item.cancelled_by = request.user
@@ -1798,9 +1772,7 @@ def bar_cancel_order(request, order_id):
 
     with transaction.atomic():
         for order_item in cancellable:
-            stock = getattr(order_item.menu_item, 'stock_item', None)
-            if stock:
-                StockItem.objects.filter(id=stock.id).select_for_update().update(quantity_on_hand=stock.quantity_on_hand + order_item.quantity)
+            restore_stock_for_order_item(order_item)
             order_item.is_cancelled = True
             order_item.cancel_reason = reason
             order_item.cancelled_by = request.user
@@ -2550,7 +2522,83 @@ def booking_bill(request, booking_id):
         'hotel_address': settings.HOTEL_ADDRESS,
         'hotel_phone': settings.HOTEL_PHONE,
     })
-    
+
+
+@recipe_manager_required
+def recipe_list(request):
+    search_query = request.GET.get('q', '').strip()
+
+    menu_items = MenuItem.objects.filter(
+        Q(item_type='food') | Q(item_type='drink', serving_point='kitchen')
+    ).select_related('recipe').prefetch_related(
+        'recipe__lines__stock_item'
+    ).order_by('item_type', 'category', 'name')
+
+    if search_query:
+        menu_items = menu_items.filter(name__icontains=search_query)
+
+    menu_items = list(menu_items)
+    total_food = sum(1 for m in menu_items if m.item_type == 'food')
+    total_drinks = sum(1 for m in menu_items if m.item_type == 'drink')
+
+    return render(request, 'dashboard/recipe_list.html', {
+        'menu_items': menu_items,
+        'search_query': search_query,
+        'total_food': total_food,
+        'total_drinks': total_drinks,
+    })
+
+
+@recipe_manager_required
+def recipe_edit(request, menu_item_id):
+    menu_item = get_object_or_404(MenuItem, id=menu_item_id)
+    if menu_item.item_type == 'drink' and menu_item.serving_point == 'bar':
+        messages.error(request, "Bar drinks are purchased ready-made and don't need a recipe.")
+        return redirect('dashboard:recipe_list')
+
+    recipe = getattr(menu_item, 'recipe', None) or Recipe(menu_item=menu_item, yield_quantity=1)
+
+    if request.method == 'POST':
+        try:
+            recipe.yield_quantity = max(int(request.POST.get('yield_quantity', 1)), 1)
+        except (TypeError, ValueError):
+            pass
+        recipe.notes = request.POST.get('notes', '').strip()
+
+        formset = RecipeIngredientFormSet(request.POST, instance=recipe)
+        if formset.is_valid():
+            with transaction.atomic():
+                if recipe.pk is None:
+                    recipe.created_by = request.user
+                recipe.save()          # only now does a row get created
+                formset.save()         # child rows now attach to a real pk
+            messages.success(request, f"Recipe saved. Cost per serving: KSh {recipe.cost_per_yield:,.2f}")
+            return redirect('dashboard:recipe_edit', menu_item_id=menu_item.id)
+        messages.error(request, "Please fix the errors below.")
+    else:
+        formset = RecipeIngredientFormSet(instance=recipe)
+
+    formset.form.base_fields['stock_item'].queryset = StockItem.objects.filter(
+        department=menu_item.recipe_department, is_active=True
+    ).order_by('name')
+
+    return render(request, 'dashboard/recipe_edit.html', {
+        'menu_item': menu_item, 'recipe': recipe, 'formset': formset,
+        'margin': menu_item.margin_amount,
+    })
+
+@staff_module_required('store')
+def kitchen_reconciliation_view(request):
+    department = request.GET.get('department', 'kitchen')
+    if department not in ('kitchen', 'bar'):
+        department = 'kitchen'
+    date = _parse_date_input(request.GET.get('date', ''), timezone.localdate())
+    rows, total_variance_cost = build_kitchen_reconciliation(department, date)
+    return render(request, 'dashboard/kitchen_reconciliation.html', {
+        'rows': rows, 'department': department, 'date': date,
+        'total_variance_cost': total_variance_cost,
+    })
+ 
 # ==============================================================================
 # HRM Views
 # ==============================================================================

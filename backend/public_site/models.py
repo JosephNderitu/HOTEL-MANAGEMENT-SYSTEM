@@ -10,6 +10,7 @@ from django.core.mail import send_mail
 from django.conf import settings
 from django.utils import timezone
 from datetime import timedelta
+from decimal import Decimal
 
 MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
 MAX_IMAGES_PER_ITEM = 4
@@ -431,6 +432,40 @@ class MenuItem(models.Model):
     def is_orderable(self):
         return self.is_available and self.is_in_stock
     
+    @property
+    def effective_cost_price(self):
+        recipe = getattr(self, 'recipe', None)
+        if recipe and recipe.pk and recipe.lines.exists():
+            return recipe.cost_per_yield
+        return self.cost_price
+    
+    @property
+    def recipe_department(self):
+        """Which StockItem.department this item's recipe ingredients should be drawn from."""
+        if self.item_type == 'drink':
+            return self.serving_point  # 'kitchen' or 'bar'
+        return 'kitchen'
+
+    @property
+    def margin_status(self):
+        """'good' (>=40% margin), 'thin' (10-40%), 'bad' (<10% or unpriced) — for at-a-glance UI coloring."""
+        cost = self.effective_cost_price
+        if not cost or not self.regular_price:
+            return 'bad'
+        margin_pct = (self.regular_price - cost) / self.regular_price * 100
+        if margin_pct >= 40:
+            return 'good'
+        if margin_pct >= 10:
+            return 'thin'
+        return 'bad'
+
+    @property
+    def margin_amount(self):
+        cost = self.effective_cost_price
+        if not cost or not self.regular_price:
+            return None
+        return self.regular_price - cost
+    
     def clean(self):
         if self.vip_price is not None and self.vip_price < self.regular_price:
             raise ValidationError("VIP price should not be lower than the regular price.")
@@ -572,6 +607,11 @@ class OrderItem(models.Model):
     cancelled_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='order_items_cancelled')
     cancelled_at = models.DateTimeField(null=True, blank=True)
     unit_price_override = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    recipe_cost_snapshot = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text="Ingredient cost for this line, captured the moment stock was deducted. "
+                   "Frozen even if ingredient prices or the recipe change later."
+    )
 
     @property
     def unit_price(self):
@@ -583,6 +623,8 @@ class OrderItem(models.Model):
     
     @property
     def cost_total(self):
+        if self.recipe_cost_snapshot is not None:
+            return self.recipe_cost_snapshot
         if self.menu_item.cost_price is None:
             return None
         return self.menu_item.cost_price * self.quantity
@@ -601,7 +643,119 @@ class OrderItem(models.Model):
     def __str__(self):
         return f"{self.quantity} x {self.menu_item.name} ({self.get_tier_display()})"
 
+# ==============================================================================
+# RECIPES (Bill of Materials for MenuItems)
+# ==============================================================================
 
+# Keep this in sync with store.models.StockItem.UNIT_CHOICES — duplicated here
+# to avoid a circular import (store/models.py already imports from public_site).
+RECIPE_UNIT_CHOICES = [
+    ('kg', 'Kilogram'), ('g', 'Gram'), ('l', 'Litre'), ('ml', 'Millilitre'),
+    ('piece', 'Piece'), ('pack', 'Pack'), ('box', 'Box'), ('bottle', 'Bottle'),
+]
+
+# (family, factor-to-base-unit). Base unit for mass = gram, for volume = ml.
+# 'count' units (piece/pack/box/bottle) have no fixed relationship to each other.
+UNIT_FAMILIES = {
+    'kg': ('mass', Decimal('1000')), 'g': ('mass', Decimal('1')),
+    'l': ('volume', Decimal('1000')), 'ml': ('volume', Decimal('1')),
+    'piece': ('count', Decimal('1')), 'pack': ('count', Decimal('1')),
+    'box': ('count', Decimal('1')), 'bottle': ('count', Decimal('1')),
+}
+
+
+def convert_quantity(quantity, from_unit, to_unit):
+    """Converts within mass (kg<->g) or volume (l<->ml) families only."""
+    if from_unit == to_unit:
+        return quantity
+    from_family, from_factor = UNIT_FAMILIES[from_unit]
+    to_family, to_factor = UNIT_FAMILIES[to_unit]
+    if from_family != to_family or from_family == 'count':
+        raise ValueError(f"Can't convert {from_unit} to {to_unit} — not compatible units.")
+    return (quantity * from_factor) / to_factor
+
+
+class Recipe(models.Model):
+    menu_item = models.OneToOneField(MenuItem, on_delete=models.CASCADE, related_name='recipe')
+    yield_quantity = models.PositiveIntegerField(
+        default=1, help_text="How many servings/plates this batch produces, e.g. 20 for '20 chapatis'"
+    )
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='recipes_created')
+    updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def total_cost(self):
+        if not self.pk:
+            return Decimal('0')
+        return sum((line.line_cost for line in self.lines.select_related('stock_item').all()), Decimal('0'))
+
+    @property
+    def cost_per_yield(self):
+        if not self.pk or not self.yield_quantity:
+            return Decimal('0')
+        return (self.total_cost / self.yield_quantity).quantize(Decimal('0.01'))
+
+    def __str__(self):
+        return f"Recipe: {self.menu_item.name}"
+
+
+class RecipeIngredient(models.Model):
+    recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, related_name='lines')
+    stock_item = models.ForeignKey(
+        'store.StockItem', on_delete=models.PROTECT, null=True, blank=True, related_name='recipe_uses'
+    )
+    custom_name = models.CharField(
+        max_length=150, blank=True,
+        help_text="For ingredients not yet in the stock catalog (e.g. eggs) — leave stock item blank instead."
+    )
+    custom_unit = models.CharField(max_length=10, choices=RECIPE_UNIT_CHOICES, blank=True)
+    custom_unit_cost = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text="Estimated cost per unit, since this isn't tracked in stock yet"
+    )
+    quantity = models.DecimalField(max_digits=10, decimal_places=3)
+    unit = models.CharField(max_length=10, choices=RECIPE_UNIT_CHOICES)
+    note = models.CharField(max_length=100, blank=True, help_text="e.g. 'diced' — not used in costing")
+
+    def clean(self):
+        if not self.stock_item_id and not self.custom_name:
+            raise ValidationError("Pick an ingredient from stock, or check 'Not yet in stock' and give it a name.")
+        if self.stock_item_id and self.custom_name:
+            raise ValidationError("An ingredient line can't be both a stock item and a custom name — pick one.")
+        if self.stock_item_id and self.unit != self.stock_item.unit:
+            from_family = UNIT_FAMILIES.get(self.unit, (None,))[0]
+            to_family = UNIT_FAMILIES.get(self.stock_item.unit, (None,))[0]
+            if from_family != to_family or from_family == 'count':
+                raise ValidationError(
+                    f"Can't use '{self.get_unit_display()}' for {self.stock_item.name}, which is "
+                    f"stocked in '{self.stock_item.get_unit_display()}'. Use kg/g, l/ml, or match "
+                    "the stock item's own unit exactly."
+                )
+
+    @property
+    def is_tracked(self):
+        return self.stock_item_id is not None
+
+    @property
+    def display_name(self):
+        return self.stock_item.name if self.is_tracked else self.custom_name
+
+    @property
+    def quantity_in_stock_unit(self):
+        if not self.is_tracked:
+            return self.quantity
+        return convert_quantity(self.quantity, self.unit, self.stock_item.unit)
+
+    @property
+    def line_cost(self):
+        if self.is_tracked:
+            return (self.quantity_in_stock_unit * self.stock_item.last_unit_cost).quantize(Decimal('0.01'))
+        return (self.quantity * (self.custom_unit_cost or Decimal('0'))).quantize(Decimal('0.01'))
+
+    def __str__(self):
+        return f"{self.quantity} {self.get_unit_display()} {self.display_name}"
+    
 #######Mesaaging/contact models for public site (guest-facing) #######
 
 class Conversation(models.Model):

@@ -90,9 +90,14 @@
             <span id="live-label" class="text-xs text-white/70">connecting live updates...</span>
         </div>
     </div>
-    <a href="{% url 'dashboard:kitchen_usage_log' %}" class="bg-white text-[#0B6B3A] font-bold text-sm px-5 py-2.5 rounded-full hover:bg-[#C9A227] hover:text-black transition flex items-center gap-2">
-        <i class="fa-solid fa-clipboard-list"></i> Today's Ingredient Usage
-    </a>
+    <div class="flex items-center gap-2 flex-wrap">
+        <a href="{% url 'dashboard:recipe_list' %}" class="bg-white/10 border border-white/25 text-white font-bold text-sm px-5 py-2.5 rounded-full hover:bg-white/20 transition flex items-center gap-2">
+            <i class="fa-solid fa-book-open"></i> Recipes
+        </a>
+        <a href="{% url 'dashboard:kitchen_usage_log' %}" class="bg-white text-[#0B6B3A] font-bold text-sm px-5 py-2.5 rounded-full hover:bg-[#C9A227] hover:text-black transition flex items-center gap-2">
+            <i class="fa-solid fa-clipboard-list"></i> Today's Ingredient Usage
+        </a>
+    </div>
 </div>
 
 <div class="kd-stat-grid">
@@ -193,7 +198,16 @@ ORDER_DETAIL_TEMPLATES[{{ order.id }}] = `
         <div class="border border-gray-200 rounded-xl p-3 flex items-center justify-between">
             <div>
                 <p class="font-semibold text-sm">{{ item.quantity }}x {{ item.menu_item.name }}{% if item.tier == 'vip' %} <span class="vip-tag">VIP</span>{% endif %}</p>
-                <span class="qty-badge qty-{{ item.prep_status }}">{{ item.get_prep_status_display }}</span>
+                <div class="flex items-center gap-2 mt-0.5">
+                    <span class="qty-badge qty-{{ item.prep_status }}">{{ item.get_prep_status_display }}</span>
+                    {% if item.menu_item.item_type == 'food' or item.menu_item.serving_point == 'kitchen' %}
+                    <a href="{% url 'dashboard:recipe_edit' item.menu_item.id %}" target="_blank" rel="noopener"
+                    class="text-[10px] font-semibold text-[#0B6B3A] hover:underline flex items-center gap-1"
+                    title="View or edit this dish's recipe">
+                        <i class="fa-solid fa-book-open"></i> Recipe
+                    </a>
+                    {% endif %}
+                </div>
             </div>
             <div class="flex gap-1.5">
                 {% if item.prep_status == 'queued' %}

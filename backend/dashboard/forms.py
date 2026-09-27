@@ -111,6 +111,25 @@ class RoomCheckinForm(forms.Form):
     check_out = forms.DateField(widget=forms.DateInput(attrs={'class': FIELD_CLASS, 'type': 'date'}))
     amount = forms.DecimalField(widget=forms.NumberInput(attrs={'class': FIELD_CLASS, 'step': '0.01', 'placeholder': 'Rate per night'}))
     
+from django.forms import inlineformset_factory
+from public_site.models import Recipe, RecipeIngredient
+
+RECIPE_FIELD_CLASS = 'w-full border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm'
+
+RecipeIngredientFormSet = inlineformset_factory(
+    Recipe, RecipeIngredient,
+    fields=['stock_item', 'custom_name', 'custom_unit', 'custom_unit_cost', 'quantity', 'unit', 'note'],
+    extra=1, can_delete=True,
+    widgets={
+        'stock_item': forms.Select(attrs={'class': RECIPE_FIELD_CLASS, 'data-role': 'stock-select'}),
+        'custom_name': forms.TextInput(attrs={'class': RECIPE_FIELD_CLASS, 'placeholder': 'Ingredient name'}),
+        'custom_unit': forms.Select(attrs={'class': RECIPE_FIELD_CLASS}),
+        'custom_unit_cost': forms.NumberInput(attrs={'class': RECIPE_FIELD_CLASS, 'step': '0.01', 'placeholder': 'Est. cost/unit'}),
+        'quantity': forms.NumberInput(attrs={'class': RECIPE_FIELD_CLASS, 'step': '0.001'}),
+        'unit': forms.Select(attrs={'class': RECIPE_FIELD_CLASS}),
+        'note': forms.TextInput(attrs={'class': RECIPE_FIELD_CLASS, 'placeholder': 'optional, e.g. diced'}),
+    }
+)
 ##############################################
 ######### ---------HRM-----------#############
     
