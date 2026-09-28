@@ -5,12 +5,11 @@ from . import views
 app_name = 'dashboard'
 
 urlpatterns = [
-    path('login/', auth_views.LoginView.as_view(
-        template_name='registration/staff_login.html',
-        redirect_authenticated_user=True,
-    ), name='staff_login'),
+    path('login/', auth_views.LoginView.as_view(template_name='registration/staff_login.html',redirect_authenticated_user=True,), name='staff_login'),
     path('logout/', auth_views.LogoutView.as_view(next_page='home'), name='staff_logout'),
     path('dashboard/', views.dashboard_home, name='home'),
+    
+    path('finance/', views.finance_view, name='finance'),
     
     path('reception/', views.reception_view, name='reception'),
     path('reception/booking/<int:booking_id>/bill/', views.booking_bill, name='booking_bill'),
@@ -151,7 +150,6 @@ urlpatterns = [
     
     ##receipt uRLs
     path('receipt/<int:order_id>/', views.order_receipt, name='order_receipt'),
-    
     path('housekeeping-usage-log/', views.housekeeping_usage_log_view, name='housekeeping_usage_log'),
     path('housekeeping-usage-log/add/', views.housekeeping_usage_log_add, name='housekeeping_usage_log_add'),
     path('housekeeping-usage-log/<int:item_id>/delete/', views.housekeeping_usage_log_delete, name='housekeeping_usage_log_delete'),

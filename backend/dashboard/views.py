@@ -2600,6 +2600,36 @@ def kitchen_reconciliation_view(request):
     })
  
 # ==============================================================================
+# Finance Views
+# ==============================================================================
+@staff_module_required('finance')
+def finance_view(request):
+    today = timezone.localdate()
+    month_start = today.replace(day=1)
+
+    today_revenue = Payment.objects.filter(created_at__date=today).aggregate(total=Sum('amount'))['total'] or 0
+    month_revenue = Payment.objects.filter(created_at__date__gte=month_start).aggregate(total=Sum('amount'))['total'] or 0
+
+    month_purchases = PurchaseLog.objects.filter(purchased_at__date__gte=month_start)
+    month_expenditure = sum((p.total_cost for p in month_purchases), Decimal('0'))
+
+    month_payroll = PayrollRecord.objects.filter(period_month=today.month, period_year=today.year, status='finalized')
+    month_payroll_total = sum((p.net_pay for p in month_payroll), Decimal('0'))
+
+    net_position = month_revenue - month_expenditure - month_payroll_total
+
+    revenue_by_method = {
+        code: Payment.objects.filter(created_at__date__gte=month_start, method=code).aggregate(total=Sum('amount'))['total'] or 0
+        for code, _ in Payment.METHOD_CHOICES
+    }
+
+    return render(request, 'dashboard/finance.html', {
+        'today_revenue': today_revenue, 'month_revenue': month_revenue,
+        'month_expenditure': month_expenditure, 'month_payroll_total': month_payroll_total,
+        'net_position': net_position, 'revenue_by_method': revenue_by_method,
+    })
+
+# ==============================================================================
 # HRM Views
 # ==============================================================================
 

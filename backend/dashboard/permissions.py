@@ -1,41 +1,14 @@
 FULL_ACCESS_GROUPS = {'Owner', 'General Manager'}
 
 MODULES = {
-    'reception': {
-        'label': 'Reception',
-        'icon': 'fa-bell-concierge',
-        'url_name': 'dashboard:reception',
-    },
-    'rooms': {
-        'label': 'Rooms',
-        'icon': 'fa-bed',
-        'url_name': 'dashboard:rooms',
-    },
-    'restaurant_kitchen': {
-        'label': 'Restaurant & Kitchen',
-        'icon': 'fa-utensils',
-        'url_name': 'dashboard:restaurant_kitchen',
-    },
-    'bar': {
-        'label': 'Bar',
-        'icon': 'fa-martini-glass-citrus',
-        'url_name': 'dashboard:bar',
-    },
-    'gate': {
-        'label': 'Gate',
-        'icon': 'fa-shield-halved',
-        'url_name': 'dashboard:gate',
-    },
-    'hrm': {
-        'label': 'HRM & Management',
-        'icon': 'fa-users-gear',
-        'url_name': 'dashboard:hrm',
-    },
-    'store': {
-        'label': 'Store & Inventory',
-        'icon': 'fa-boxes-stacked',
-        'url_name': 'dashboard:store',
-    },
+    'reception': {'label': 'Reception', 'icon': 'fa-bell-concierge', 'url_name': 'dashboard:reception',},
+    'rooms': {'label': 'Rooms','icon': 'fa-bed','url_name': 'dashboard:rooms',},
+    'restaurant_kitchen': {'label': 'Restaurant & Kitchen','icon': 'fa-utensils','url_name': 'dashboard:restaurant_kitchen',},
+    'bar': {'label': 'Bar','icon': 'fa-martini-glass-citrus','url_name': 'dashboard:bar',},
+    'gate': {'label': 'Gate','icon': 'fa-shield-halved','url_name': 'dashboard:gate',},
+    'hrm': {'label': 'HRM & Management', 'icon': 'fa-users-gear', 'url_name': 'dashboard:hrm',},
+    'store': {'label': 'Store & Inventory', 'icon': 'fa-boxes-stacked', 'url_name': 'dashboard:store',},
+    'finance': {'label': 'Finance', 'icon': 'fa-chart-pie', 'url_name': 'dashboard:finance'},
 }
 
 # None means full access, handled separately via FULL_ACCESS_GROUPS

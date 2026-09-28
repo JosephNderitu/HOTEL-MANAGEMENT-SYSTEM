@@ -44,8 +44,11 @@
     <!-- Desktop sidebar -->
     <aside id="dash-sidebar" class="hidden md:flex flex-col">
         <div class="flex items-center justify-between px-5 py-5 border-b border-white/10">
-            <span class="dash-brand-text text-white font-bold text-sm">Staff Panel</span>
-            <button id="dash-collapse-toggle" class="text-white/60 hover:text-white">
+            <a href="{% url 'dashboard:home' %}" class="dash-brand-text text-white font-bold text-sm hover:text-[#C9A227] transition-colors flex items-center gap-2 group">
+                <span>Staff Panel</span>
+                <i class="fa-solid fa-arrow-up-right-from-square text-[10px] opacity-60 group-hover:opacity-100 transition-opacity"></i>
+            </a>
+            <button id="dash-collapse-toggle" class="text-white/60 hover:text-white transition-colors">
                 <i class="fa-solid fa-bars"></i>
             </button>
         </div>

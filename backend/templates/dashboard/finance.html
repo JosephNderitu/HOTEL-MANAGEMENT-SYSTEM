@@ -1,0 +1,47 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+{% include "dashboard/_hrm_styles.html" %}
+<style>
+    .fin-hero { background: linear-gradient(135deg, #0B6B3A 0%, #095430 60%, #073d24 100%); border-radius: 20px; padding: 24px 28px; color: #fff; margin-bottom: 24px; }
+    .fin-stat { background: #fff; border: 1px solid #eef0ee; border-radius: 16px; padding: 18px 20px; }
+    .fin-stat .num { font-size: 24px; font-weight: 800; }
+    .fin-stat .lbl { font-size: 10.5px; color: #9a9f9a; text-transform: uppercase; letter-spacing: 0.04em; }
+</style>
+
+<div class="fin-hero">
+    <h1 class="text-xl font-extrabold"><i class="fa-solid fa-chart-pie mr-2"></i>Finance Overview</h1>
+    <p class="text-white/70 text-xs mt-1">Owner &amp; General Manager only</p>
+</div>
+
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+    <div class="fin-stat"><p class="num text-[#0B6B3A]">KSh {{ today_revenue|floatformat:0 }}</p><p class="lbl">Revenue Today</p></div>
+    <div class="fin-stat"><p class="num text-[#0B6B3A]">KSh {{ month_revenue|floatformat:0 }}</p><p class="lbl">Revenue This Month</p></div>
+    <div class="fin-stat"><p class="num text-red-600">KSh {{ month_expenditure|floatformat:0 }}</p><p class="lbl">Store Spend (Month)</p></div>
+    <div class="fin-stat"><p class="num text-red-600">KSh {{ month_payroll_total|floatformat:0 }}</p><p class="lbl">Payroll (Month)</p></div>
+</div>
+
+<div class="hr-card mb-8">
+    <p class="text-xs text-gray-500 uppercase mb-1">Net Position This Month</p>
+    <p class="text-3xl font-extrabold {% if net_position >= 0 %}text-[#0B6B3A]{% else %}text-red-600{% endif %}">KSh {{ net_position|floatformat:0 }}</p>
+    <p class="text-[11px] text-gray-400 mt-1">Revenue minus Store expenditure minus finalized payroll</p>
+</div>
+
+<div class="hr-card mb-8">
+    <h2 class="font-bold text-black text-sm mb-4">Revenue by Payment Method (This Month)</h2>
+    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+        {% for code, total in revenue_by_method.items %}
+        <div class="fin-stat"><p class="num text-black text-lg">KSh {{ total|floatformat:0 }}</p><p class="lbl">{{ code }}</p></div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="hr-card">
+    <h2 class="font-bold text-black text-sm mb-4">Detailed Reports</h2>
+    <div class="flex flex-wrap gap-3">
+        <a href="{% url 'dashboard:store_expenditure_report' %}" class="text-xs font-semibold bg-[#C9A227] text-black px-4 py-2 rounded-full">Store Expenditure</a>
+        <a href="{% url 'dashboard:restaurant_export_pdf' %}" class="text-xs font-semibold border border-[#0B6B3A] text-[#0B6B3A] px-4 py-2 rounded-full">Restaurant Sales PDF</a>
+        <a href="{% url 'dashboard:bar_export_pdf' %}" class="text-xs font-semibold border border-[#0B6B3A] text-[#0B6B3A] px-4 py-2 rounded-full">Bar Sales PDF</a>
+        <a href="{% url 'dashboard:hrm_payroll_list' %}" class="text-xs font-semibold border border-[#0B6B3A] text-[#0B6B3A] px-4 py-2 rounded-full">Payroll</a>
+    </div>
+</div>
+{% endblock %}
