@@ -326,58 +326,192 @@ class MenuItemAdmin(admin.ModelAdmin):
         first = obj.images.first()
         return image_thumb(first.image if first else None)
 
+# ---------------------------------------------------------------------------
+# Order — department badges, viewed tracking, date filters, safe cancel
+# ---------------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# Order (inline items, each item can be billed at regular or VIP rate)
-# ---------------------------------------------------------------------------
+from django.db.models import Count, Q as _Q
+from django.utils import timezone as _tz
+
+
+class DepartmentFilter(admin.SimpleListFilter):
+    title = 'department'
+    parameter_name = 'department'
+
+    def lookups(self, request, model_admin):
+        return (
+            ('restaurant', 'Restaurant (Table)'),
+            ('bar', 'Bar'),
+            ('room_service', 'Room Service'),
+            ('takeaway', 'Takeaway'),
+            ('conference', 'Conference Catering'),
+            ('event', 'Event / Bulk'),
+        )
+
+    def queryset(self, request, queryset):
+        v = self.value()
+        if v == 'restaurant':
+            return queryset.filter(table__isnull=False)
+        if v == 'bar':
+            return queryset.filter(bar_tab__isnull=False)
+        if v == 'room_service':
+            return queryset.filter(room_booking__isnull=False)
+        if v in ('takeaway', 'conference', 'event'):
+            return queryset.filter(order_type=v, table__isnull=True, bar_tab__isnull=True, room_booking__isnull=True)
+        return queryset
+
+
+class KitchenViewedFilter(admin.SimpleListFilter):
+    title = 'kitchen viewed'
+    parameter_name = 'kitchen_viewed'
+
+    def lookups(self, request, model_admin):
+        return (('yes', 'Viewed'), ('no', 'Not viewed yet'))
+
+    def queryset(self, request, queryset):
+        if self.value() == 'yes':
+            return queryset.filter(kitchen_viewed_at__isnull=False)
+        if self.value() == 'no':
+            return queryset.filter(kitchen_viewed_at__isnull=True)
+        return queryset
+
+
+def _order_department_label(order):
+    if order.table_id:
+        return 'restaurant', f"Table {order.table.number}"
+    if order.bar_tab_id:
+        return 'bar', order.bar_tab.customer_name
+    if order.room_booking_id:
+        return 'room_service', f"Room {order.room_booking.assigned_room.number}" if order.room_booking.assigned_room_id else "Room Service"
+    if order.order_type in ('takeaway', 'conference', 'event'):
+        return order.order_type, order.get_order_type_display()
+    return 'other', '—'
+
+
+DEPARTMENT_COLORS = {
+    'restaurant': '#0B6B3A', 'bar': '#9d174d', 'room_service': '#1e40af',
+    'takeaway': '#92722a', 'conference': '#4338ca', 'event': '#C9A227', 'other': '#6b7280',
+}
+
 
 class OrderItemInline(admin.TabularInline):
     model = OrderItem
     extra = 0
     autocomplete_fields = ('menu_item',)
-    fields = ('menu_item', 'tier', 'quantity', 'line_total')
-    readonly_fields = ('line_total',)
+    fields = ('menu_item', 'tier', 'quantity', 'prep_status', 'is_cancelled', 'line_total_display', 'cost_display', 'profit_display')
+    readonly_fields = ('line_total_display', 'cost_display', 'profit_display')
 
     @admin.display(description='Line Total')
-    def line_total(self, obj):
-        if obj.menu_item_id:
-            return f"KSh {obj.unit_price * obj.quantity:,.0f}"
-        return "—"
+    def line_total_display(self, obj):
+        if not obj.menu_item_id:
+            return "—"
+        return f"KSh {obj.line_total:,.0f}"
+
+    @admin.display(description='Cost')
+    def cost_display(self, obj):
+        if not obj.menu_item_id or obj.cost_total is None:
+            return format_html('<span style="color:#9ca3af;">—</span>')
+        source = "recipe snapshot" if obj.recipe_cost_snapshot is not None else "manual cost"
+        return format_html('<span title="{}">KSh {}</span>', source, f"{obj.cost_total:,.0f}")
+
+    @admin.display(description='Profit')
+    def profit_display(self, obj):
+        if not obj.menu_item_id or obj.profit is None:
+            return format_html('<span style="color:#9ca3af;">—</span>')
+        color = '#0B6B3A' if obj.profit >= 0 else '#dc2626'
+        return format_html('<span style="color:{}; font-weight:600;">KSh {}</span>', color, f"{obj.profit:,.0f}")
 
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
-    list_display = ('id', 'customer_name', 'customer_phone', 'status_display', 'order_total', 'created_at')
-    list_filter = ('status', 'created_at')
-    search_fields = ('customer_name', 'customer_phone')
+    list_display = (
+        'id', 'customer_name', 'department_badge', 'status_display',
+        'kitchen_viewed_badge', 'item_count_display', 'order_total', 'profit_display', 'created_at',
+    )
+    list_filter = (DepartmentFilter, 'status', KitchenViewedFilter, ('created_at', admin.DateFieldListFilter))
+    search_fields = ('customer_name', 'customer_phone', 'table__number', 'bar_tab__customer_name', 'room_booking__guest_name')
     date_hierarchy = 'created_at'
     ordering = ('-created_at',)
-    readonly_fields = ('created_at',)
+    readonly_fields = ('created_at', 'kitchen_viewed_at', 'kitchen_viewed_by')
     inlines = [OrderItemInline]
-    actions = ['mark_confirmed', 'mark_cancelled']
+    actions = ['mark_confirmed', 'mark_cancelled', 'mark_kitchen_viewed']
 
     fieldsets = (
         ('Customer', {'fields': ('customer_name', 'customer_phone', 'notes')}),
+        ('Type & Placement', {'fields': ('order_type', 'served_at', 'party_size', 'table', 'bar_tab', 'room_booking')}),
         ('Status', {'fields': ('status', 'created_at')}),
+        ('Kitchen Tracking', {'fields': ('kitchen_viewed_at', 'kitchen_viewed_by')}),
     )
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.select_related('table', 'bar_tab', 'room_booking', 'room_booking__assigned_room', 'kitchen_viewed_by').annotate(
+            _item_count=Count('items', filter=_Q(items__is_cancelled=False))
+        )
 
     @admin.display(description='Status', ordering='status')
     def status_display(self, obj):
         return status_badge(obj.status, obj.get_status_display())
 
+    @admin.display(description='Department')
+    def department_badge(self, obj):
+        code, label = _order_department_label(obj)
+        color = DEPARTMENT_COLORS.get(code, '#6b7280')
+        return format_html(
+            '<span style="background:{}; color:white; padding:3px 10px; border-radius:9999px; font-size:11px; font-weight:600;">{}</span>',
+            color, label,
+        )
+
+    @admin.display(description='Kitchen Viewed')
+    def kitchen_viewed_badge(self, obj):
+        if not obj.has_kitchen_items:
+            return format_html('<span style="color:#9ca3af;">N/A</span>')
+        if not obj.kitchen_viewed_at:
+            return format_html('<span style="color:#dc2626; font-weight:700;">● Unviewed</span>')
+        who = obj.kitchen_viewed_by.get_full_name() or obj.kitchen_viewed_by.username if obj.kitchen_viewed_by else "unknown"
+        return format_html(
+            '<span style="color:#0B6B3A;" title="Viewed by {} at {}">✓ Viewed</span>',
+            who, obj.kitchen_viewed_at.strftime('%b %d, %H:%M'),
+        )
+
+    @admin.display(description='Items', ordering='_item_count')
+    def item_count_display(self, obj):
+        return obj._item_count
+
     @admin.display(description='Order Total')
     def order_total(self, obj):
-        total = sum(item.unit_price * item.quantity for item in obj.items.all())
-        return f"KSh {total:,.0f}"
+        return f"KSh {obj.total_amount:,.0f}"
+
+    @admin.display(description='Profit')
+    def profit_display(self, obj):
+        profit = obj.total_profit
+        if profit is None:
+            return format_html('<span style="color:#9ca3af;">—</span>')
+        color = '#0B6B3A' if profit >= 0 else '#dc2626'
+        return format_html('<span style="color:{}; font-weight:600;">KSh {}</span>', color, f"{profit:,.0f}")
 
     @admin.action(description='Mark selected orders as Confirmed')
     def mark_confirmed(self, request, queryset):
         queryset.update(status='confirmed')
 
-    @admin.action(description='Cancel selected orders')
+    @admin.action(description='Cancel selected orders (restores stock/ingredients correctly)')
     def mark_cancelled(self, request, queryset):
-        queryset.update(status='cancelled')
+        from dashboard.services import restore_stock_for_order_item  # deferred import: avoids app-loading order issues
+        cancelled_count = 0
+        for order in queryset.exclude(status='cancelled').prefetch_related('items__menu_item'):
+            for order_item in order.items.filter(is_cancelled=False):
+                restore_stock_for_order_item(order_item)
+            order.status = 'cancelled'
+            order.save(update_fields=['status'])
+            cancelled_count += 1
+        self.message_user(request, f"Cancelled {cancelled_count} order(s) and restored their ingredients/stock.")
 
+    @admin.action(description='Mark kitchen-viewed (clears Pending flag)')
+    def mark_kitchen_viewed(self, request, queryset):
+        updated = queryset.filter(kitchen_viewed_at__isnull=True).update(
+            kitchen_viewed_at=_tz.now(), kitchen_viewed_by=request.user
+        )
+        self.message_user(request, f"Marked {updated} order(s) as viewed.")
 
 # ---------------------------------------------------------------------------
 # ContactMessage — read-only inbox

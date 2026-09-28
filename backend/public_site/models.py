@@ -526,6 +526,11 @@ class Order(models.Model):
     room_booking = models.ForeignKey('Booking', on_delete=models.SET_NULL, null=True, blank=True, related_name='room_service_orders')
     table = models.ForeignKey(Table, on_delete=models.SET_NULL, null=True, blank=True, related_name='orders')
     bar_tab = models.ForeignKey(BarTab, on_delete=models.SET_NULL, null=True, blank=True, related_name='orders')
+    kitchen_viewed_at = models.DateTimeField(null=True, blank=True)
+    kitchen_viewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='kitchen_orders_viewed'
+    )
 
     @property
     def total_amount(self):
@@ -586,6 +591,30 @@ class Order(models.Model):
     @property
     def has_vip_kitchen_item(self):
         return any(i.tier == 'vip' for i in self.kitchen_items())
+    
+    @property
+    def kitchen_is_viewed(self):
+        return self.kitchen_viewed_at is not None
+
+    @property
+    def kitchen_pending_age_level(self):
+        """For orders still awaiting a kitchen view (and not yet served): 'warning' after 1hr, 'danger' after 1 day."""
+        if self.kitchen_is_viewed or self.kitchen_fully_served:
+            return None
+        age = timezone.now() - self.created_at
+        if age >= timedelta(days=1):
+            return 'danger'
+        if age >= timedelta(hours=1):
+            return 'warning'
+        return None
+
+    @property
+    def kitchen_needs_reminder(self):
+        """Viewed, not fully served, and idle 15+ minutes since it was viewed."""
+        if not self.kitchen_is_viewed or self.kitchen_fully_served:
+            return False
+        return timezone.now() - self.kitchen_viewed_at >= timedelta(minutes=15)
+    
     def __str__(self):
         return f"Order #{self.id} — {self.customer_name}"
 

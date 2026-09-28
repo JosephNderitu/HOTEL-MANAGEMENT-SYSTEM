@@ -967,34 +967,110 @@ def restaurant_new_order(request, table_id):
 def restaurant_kitchen_display(request):
     today = timezone.localdate()
 
-    todays_orders = Order.objects.filter(status='confirmed', created_at__date=today).prefetch_related('items__menu_item')
-    kitchen_orders_today = [o for o in todays_orders if o.has_kitchen_items]
+    # ---------- Stat cards: independent period selector ----------
+    period = request.GET.get('period', 'today')
+    if period == 'week':
+        period_start = today - timedelta(days=today.weekday())
+    elif period == 'month':
+        period_start = today.replace(day=1)
+    else:
+        period = 'today'
+        period_start = today
+    range_start, range_end = _local_day_bounds(period_start, today)
 
-    total_orders = len(kitchen_orders_today)
-    served_count = sum(1 for o in kitchen_orders_today if o.kitchen_fully_served)
-    pending_count = sum(1 for o in kitchen_orders_today if all(i.prep_status == 'queued' for i in o.kitchen_items()))
-    in_progress_count = total_orders - served_count - pending_count
+    period_orders = Order.objects.filter(
+        status='confirmed', created_at__gte=range_start, created_at__lt=range_end
+    ).prefetch_related('items__menu_item')
+    kitchen_period_orders = [o for o in period_orders if o.has_kitchen_items]
+    
+    served_count = sum(1 for o in kitchen_period_orders if o.kitchen_fully_served)
+    pending_count = sum(1 for o in kitchen_period_orders if not o.kitchen_fully_served and not o.kitchen_is_viewed)
+    in_progress_count = sum(1 for o in kitchen_period_orders if not o.kitchen_fully_served and o.kitchen_is_viewed)
+    total_orders = served_count + pending_count + in_progress_count
+    pending_warning_count = sum(1 for o in kitchen_period_orders if o.kitchen_pending_age_level == 'warning')
+    pending_danger_count = sum(1 for o in kitchen_period_orders if o.kitchen_pending_age_level == 'danger')
 
-    active_orders = [
-        o for o in Order.objects.filter(status='confirmed').prefetch_related('items__menu_item', 'table')
-        if o.has_kitchen_items and not o.kitchen_fully_served
-    ]
-    active_orders.sort(key=lambda o: o.created_at)
+    # ---------- Active orders feed: status + day filters, default = every active order regardless of day ----------
+    status_filter = request.GET.get('status', 'active')  # active | pending | in_progress | served | all
+    day_filter = request.GET.get('day', 'all')            # all | today | week | month
 
-    closed_orders = [o for o in kitchen_orders_today if o.kitchen_fully_served]
-    closed_orders.sort(key=lambda o: o.created_at, reverse=True)
+    feed_qs = Order.objects.filter(status='confirmed').prefetch_related('items__menu_item', 'table')
+    if day_filter != 'all':
+        if day_filter == 'today':
+            f_start, f_end = _local_day_bounds(today, today)
+        elif day_filter == 'week':
+            f_start, f_end = _local_day_bounds(today - timedelta(days=today.weekday()), today)
+        else:
+            f_start, f_end = _local_day_bounds(today.replace(day=1), today)
+        feed_qs = feed_qs.filter(created_at__gte=f_start, created_at__lt=f_end)
+
+    feed_orders = [o for o in feed_qs if o.has_kitchen_items]
+    if status_filter == 'pending':
+        feed_orders = [o for o in feed_orders if not o.kitchen_fully_served and not o.kitchen_is_viewed]
+    elif status_filter == 'in_progress':
+        feed_orders = [o for o in feed_orders if not o.kitchen_fully_served and o.kitchen_is_viewed]
+    elif status_filter == 'served':
+        feed_orders = [o for o in feed_orders if o.kitchen_fully_served]
+    elif status_filter == 'active':
+        feed_orders = [o for o in feed_orders if not o.kitchen_fully_served]
+    # 'all' → no extra narrowing
+
+    feed_orders.sort(key=lambda o: o.created_at, reverse=(status_filter == 'served'))
 
     kitchen_log, _ = DailyUsageLog.objects.get_or_create(department='kitchen', date=today)
+
+    # ---------- Item sales snapshot (today) + recipe-status badges ----------
+    kitchen_menu_items = MenuItem.objects.filter(
+        Q(item_type='food') | Q(item_type='drink', serving_point='kitchen')
+    ).select_related('recipe')
+    day_start, day_end = _local_day_bounds(today, today)
+    today_items_qs = OrderItem.objects.filter(
+        is_cancelled=False, order__status='confirmed',
+        order__created_at__gte=day_start, order__created_at__lt=day_end,
+    ).filter(
+        Q(menu_item__item_type='food') | Q(menu_item__item_type='drink', menu_item__serving_point='kitchen')
+    ).select_related('menu_item')
+
+    sold_today = {}
+    for oi in today_items_qs:
+        entry = sold_today.setdefault(oi.menu_item_id, {'qty': 0, 'amount': Decimal('0')})
+        entry['qty'] += oi.quantity
+        entry['amount'] += oi.line_total
+
+    item_rows = []
+    for mi in kitchen_menu_items:
+        entry = sold_today.get(mi.id, {'qty': 0, 'amount': Decimal('0')})
+        recipe = getattr(mi, 'recipe', None)
+        has_recipe = bool(recipe and recipe.pk and recipe.lines.exists())
+        item_rows.append({'item': mi, 'qty': entry['qty'], 'amount': entry['amount'], 'has_recipe': has_recipe})
+    item_rows.sort(key=lambda r: r['qty'], reverse=True)
+    missing_recipe_count = sum(1 for r in item_rows if not r['has_recipe'])
 
     return render(request, 'dashboard/restaurant_kitchen_display.html', {
         'stats': {
             'total': total_orders, 'served': served_count,
             'pending': pending_count, 'in_progress': in_progress_count,
+            'pending_warning': pending_warning_count, 'pending_danger': pending_danger_count,
         },
-        'active_orders': active_orders,
-        'closed_orders': closed_orders,
+        'period': period,
+        'status_filter': status_filter,
+        'day_filter': day_filter,
+        'active_orders': feed_orders,
         'kitchen_log': kitchen_log,
+        'item_rows': item_rows[:8],
+        'missing_recipe_count': missing_recipe_count,
     })
+
+@staff_module_required('restaurant_kitchen')
+def restaurant_mark_order_viewed(request, order_id):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Invalid method'}, status=405)
+    order = get_object_or_404(Order, id=order_id)
+    if not order.kitchen_viewed_at:
+        order.kitchen_viewed_at = timezone.now()
+        order.kitchen_viewed_by = request.user
+        order.save(update_fields=['kitchen_viewed_at', 'kitchen_viewed_by'])
+    return JsonResponse({'success': True})
 
 @staff_module_required('restaurant_kitchen')
 def kitchen_item_sales_pdf(request):
@@ -1010,33 +1086,57 @@ def kitchen_item_sales_pdf(request):
         items_qs = items_qs.filter(order__created_at__date__lte=date_to)
 
     sold = {}
-    for oi in items_qs.select_related('menu_item'):
+    for oi in items_qs.select_related('menu_item', 'menu_item__recipe'):
         m = oi.menu_item
-        sold.setdefault(m.id, {'item': m, 'qty': 0, 'amount': Decimal('0')})
-        sold[m.id]['qty'] += oi.quantity
-        sold[m.id]['amount'] += oi.line_total
+        entry = sold.setdefault(m.id, {'qty': 0, 'amount': Decimal('0'), 'cost': Decimal('0'), 'cost_is_estimated': False})
+        entry['qty'] += oi.quantity
+        entry['amount'] += oi.line_total
+        if oi.recipe_cost_snapshot is not None:
+            entry['cost'] += oi.recipe_cost_snapshot
+        elif m.cost_price is not None:
+            entry['cost'] += m.cost_price * oi.quantity
+            entry['cost_is_estimated'] = True
+        else:
+            entry['cost_is_estimated'] = True  # no snapshot, no manual cost — this row's cost is simply unknown
 
     all_kitchen_items = MenuItem.objects.filter(
         Q(item_type='food') | Q(item_type='drink', serving_point='kitchen')
-    ).order_by('name')
+    ).select_related('recipe').order_by('name')
 
     rows = []
     for m in all_kitchen_items:
         entry = sold.get(m.id)
         qty = entry['qty'] if entry else 0
         amount = entry['amount'] if entry else Decimal('0')
-        rows.append({'name': m.name, 'category': m.category, 'qty': qty, 'unit_price': m.regular_price, 'amount': amount})
-
+        total_cost = entry['cost'] if entry else Decimal('0')
+        cost_is_estimated = entry['cost_is_estimated'] if entry else False
+        recipe = getattr(m, 'recipe', None)
+        has_recipe = bool(recipe and recipe.pk and recipe.lines.exists())
+        rows.append({
+            'name': m.name, 'category': m.category, 'qty': qty,
+            'unit_price': m.regular_price, 'unit_cost': m.effective_cost_price or Decimal('0'),
+            'amount': amount, 'total_cost': total_cost, 'profit': amount - total_cost,
+            'has_recipe': has_recipe,
+            'cost_is_unreliable': qty > 0 and (not has_recipe or cost_is_estimated),
+        })
     rows.sort(key=lambda r: r['qty'], reverse=True)
 
     grand_total = sum((r['amount'] for r in rows), Decimal('0'))
+    grand_cost = sum((r['total_cost'] for r in rows), Decimal('0'))
+    grand_profit = grand_total - grand_cost
     subtotal_excl_vat = grand_total / (1 + VAT_RATE) if grand_total else Decimal('0')
     vat_amount = grand_total - subtotal_excl_vat
+    missing_recipe_count = sum(1 for r in rows if not r['has_recipe'] and r['qty'] > 0)
+    any_unreliable_cost = any(r['cost_is_unreliable'] for r in rows)
 
     html_string = render_to_string('dashboard/kitchen_sales_pdf.html', {
         'rows': rows, 'date_from': date_from, 'date_to': date_to,
         'generated_at': timezone.now(), 'generated_by': request.user.get_full_name() or request.user.username,
         'grand_total': grand_total, 'subtotal_excl_vat': subtotal_excl_vat, 'vat_amount': vat_amount,
+        'grand_cost': grand_cost, 'grand_profit': grand_profit,
+        'margin_pct': (grand_profit / grand_total * 100) if grand_total else Decimal('0'),
+        'missing_recipe_count': missing_recipe_count,
+        'any_unreliable_cost': any_unreliable_cost,
     })
     pdf_file = HTML(string=html_string, base_url=request.build_absolute_uri('/')).write_pdf()
     response = HttpResponse(pdf_file, content_type='application/pdf')
@@ -1223,8 +1323,6 @@ def restaurant_advance_item(request, item_id, new_status):
 
 VAT_RATE = Decimal('0.16')  # menu prices are treated as VAT-inclusive
 
-
-# NEW
 @staff_module_required('restaurant_kitchen')
 def restaurant_record_payment(request, order_id):
     order = get_object_or_404(Order, id=order_id)
