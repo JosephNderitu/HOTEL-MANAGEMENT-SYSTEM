@@ -62,9 +62,6 @@ urlpatterns = [
     path('restaurant-kitchen/order/<int:order_id>/cancel/', views.restaurant_cancel_order, name='restaurant_cancel_order'),
     path('restaurant-kitchen/table/<int:table_id>/status/<str:new_status>/', views.restaurant_set_table_status, name='restaurant_set_table_status'),
     path('restaurant-kitchen/order/<int:order_id>/split/', views.restaurant_split_order, name='restaurant_split_order'),
-    path('restaurant-kitchen/waitlist/', views.restaurant_waitlist_view, name='restaurant_waitlist'),
-    path('restaurant-kitchen/waitlist/<int:entry_id>/seat/', views.restaurant_waitlist_seat, name='restaurant_waitlist_seat'),
-    path('restaurant-kitchen/waitlist/<int:entry_id>/cancel/', views.restaurant_waitlist_cancel, name='restaurant_waitlist_cancel'),
     path('restaurant-kitchen/order/<int:order_id>/mark-viewed/', views.restaurant_mark_order_viewed, name='restaurant_mark_order_viewed'),
         
     

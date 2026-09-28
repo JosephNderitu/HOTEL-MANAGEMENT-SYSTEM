@@ -631,14 +631,6 @@ class TableAdmin(admin.ModelAdmin):
             t = Table.objects.create(number=str(num), capacity=capacity)
             created.append(t.number)
         return JsonResponse({'success': True, 'created': created, 'skipped': skipped})
-    
-@admin.register(WaitlistEntry)
-class WaitlistEntryAdmin(admin.ModelAdmin):
-    list_display = ('guest_name', 'party_size', 'status', 'wait_minutes', 'created_at')
-    list_filter = ('status',)
-    search_fields = ('guest_name', 'phone_number')
-    readonly_fields = ('created_at', 'seated_at')
-    
 
 @admin.register(BarTab)
 class BarTabAdmin(admin.ModelAdmin):

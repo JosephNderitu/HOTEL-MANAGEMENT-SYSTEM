@@ -859,14 +859,12 @@ def restaurant_tables_view(request):
         room_booking__isnull=True, table__isnull=True, bar_tab__isnull=True, status='confirmed'
     ).prefetch_related('items__menu_item').order_by('-created_at')
     offsite_open_orders = [o for o in offsite_qs if o.balance_due > 0]
-    waiting_count = WaitlistEntry.objects.filter(status='waiting').count()
 
     return render(request, 'dashboard/restaurant_tables.html', {
         'tables': tables,
         'today_revenue': today_revenue,
         'revenue_by_method': revenue_by_method,
         'offsite_open_orders': offsite_open_orders,
-        'waiting_count': waiting_count,
         'bank_total': (revenue_by_method.get('bank_equity', 0)
                        + revenue_by_method.get('bank_family', 0)
                        + revenue_by_method.get('bank_coop', 0)),
@@ -1520,41 +1518,6 @@ def restaurant_split_order(request, order_id):
 
     return render(request, 'dashboard/restaurant_split_order.html', {'order': order, 'active_items': active_items})
 
-@staff_module_required('restaurant_kitchen')
-def restaurant_waitlist_view(request):
-    if request.method == 'POST':
-        WaitlistEntry.objects.create(
-            guest_name=request.POST.get('guest_name', '').strip(),
-            phone_number=request.POST.get('phone_number', '').strip(),
-            party_size=int(request.POST.get('party_size') or 2),
-            notes=request.POST.get('notes', '').strip(),
-        )
-        messages.success(request, "Added to waitlist.")
-        return redirect('dashboard:restaurant_waitlist')
-
-    waiting = WaitlistEntry.objects.filter(status='waiting').order_by('created_at')
-    return render(request, 'dashboard/restaurant_waitlist.html', {'waiting': waiting})
-
-@staff_module_required('restaurant_kitchen')
-def restaurant_waitlist_seat(request, entry_id):
-    if request.method != 'POST':
-        return redirect('dashboard:restaurant_waitlist')
-    entry = get_object_or_404(WaitlistEntry, id=entry_id)
-    entry.status = 'seated'
-    entry.seated_at = timezone.now()
-    entry.save(update_fields=['status', 'seated_at'])
-    messages.success(request, f"{entry.guest_name} seated. Open their table to start the order.")
-    return redirect('dashboard:restaurant_waitlist')
-
-@staff_module_required('restaurant_kitchen')
-def restaurant_waitlist_cancel(request, entry_id):
-    if request.method != 'POST':
-        return redirect('dashboard:restaurant_waitlist')
-    entry = get_object_or_404(WaitlistEntry, id=entry_id)
-    entry.status = 'cancelled'
-    entry.save(update_fields=['status'])
-    return redirect('dashboard:restaurant_waitlist')
-
 def _group_payments_by_day(payments):
     """Cash basis: bucket payments by the local date the money was received."""
     days = {}
@@ -1624,6 +1587,35 @@ def restaurant_export_pdf(request):
         bucket['total'] += o.total_amount
     sales_days = [sales_days[d] for d in sorted(sales_days)]
     total_sales = sum((o.total_amount for o in sales_orders), Decimal('0'))
+    
+    # --- Profitability: cost/profit attached to what was actually SOLD ---
+    for o in sales_orders:
+        cost = Decimal('0')
+        unreliable = False
+        for item in o.items.all():
+            if item.is_cancelled:
+                continue
+            if item.recipe_cost_snapshot is not None:
+                cost += item.recipe_cost_snapshot
+            elif item.menu_item.cost_price is not None:
+                cost += item.menu_item.cost_price * item.quantity
+                unreliable = True
+            else:
+                unreliable = True
+        o.computed_cost = cost
+        o.computed_profit = o.total_amount - cost
+        o.cost_unreliable = unreliable
+
+    for bucket in sales_days:
+        bucket['cost'] = sum((o.computed_cost for o in bucket['orders']), Decimal('0'))
+        bucket['profit'] = bucket['total'] - bucket['cost']
+        bucket['has_unreliable'] = any(o.cost_unreliable for o in bucket['orders'])
+        bucket['margin_pct'] = (bucket['profit'] / bucket['total'] * 100) if bucket['total'] else None
+
+    total_cost = sum((o.computed_cost for o in sales_orders), Decimal('0'))
+    total_profit = total_sales - total_cost
+    margin_pct = (total_profit / total_sales * 100) if total_sales else Decimal('0')
+    any_unreliable_cost = any(o.cost_unreliable for o in sales_orders)
 
     # --- Reconciliation ---
     prior_orders = Order.objects.filter(
@@ -1648,6 +1640,10 @@ def restaurant_export_pdf(request):
         'total_outstanding': sum((o.balance_due for o in unpaid_orders), Decimal('0')),
         'total_sales': total_sales,
         'sales_days': sales_days,
+        'total_cost': total_cost,
+        'total_profit': total_profit,
+        'margin_pct': margin_pct,
+        'any_unreliable_cost': any_unreliable_cost,
         'opening_outstanding': opening_outstanding,
         'closing_outstanding': opening_outstanding + total_sales - grand_total,
         'collected_from_prior': sum(

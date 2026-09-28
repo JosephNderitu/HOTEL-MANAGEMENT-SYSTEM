@@ -17,6 +17,7 @@
     .meta { font-size: 10px; color: #555; margin-bottom: 12px; display: flex; justify-content: space-between; }
 
     .basis { background: #f3f7f4; border-left: 3px solid #0B6B3A; padding: 7px 10px; font-size: 10px; color: #334; margin-bottom: 14px; }
+    .warn-banner { background: #FEF2F2; border-left: 3px solid #dc2626; padding: 7px 10px; font-size: 10px; color: #7f1d1d; margin-bottom: 14px; line-height: 1.5; }
 
     .day { break-inside: avoid; margin-bottom: 14px; }
     .day-head { background: #0B6B3A; color: #fff; padding: 6px 10px; font-size: 12px; font-weight: bold;
@@ -31,6 +32,8 @@
     .late { color: #a15c00; font-size: 9.5px; }
     .items { color: #444; font-size: 9.5px; }
     .subtotal td { font-weight: bold; border-top: 1px solid #0B6B3A; background: #fff !important; }
+    .profit-neg { color: #dc2626; }
+    .est-mark { color: #C9A227; font-weight: bold; }
 
     h2.section { font-size: 12.5px; color: #0B6B3A; margin: 18px 0 6px; border-bottom: 1px solid #cfd8d2; padding-bottom: 3px; }
 
@@ -52,6 +55,7 @@
                    display:flex; justify-content:space-between; align-items:baseline; }
     .money-final .lbl { font-size:11.5px; font-weight:bold; color:#111; }
     .money-final .amt { font-size:19px; font-weight:bold; color:#0B6B3A; }
+    .money-final .amt.negative { color: #dc2626; }
     .money-note { font-size:9px; color:#888; margin-top:9px; line-height:1.45; }
 
     .foot { font-size: 9.5px; color: #888; border-top: 1px solid #ddd; padding-top: 7px; margin-top: 16px; }
@@ -77,6 +81,15 @@
     reconciles with the daily earnings shown on the dashboard.
 </div>
 
+{% if any_unreliable_cost %}
+<div class="warn-banner">
+    <strong>Cost and profit figures marked with *</strong> include one or more items sold before recipe-based costing
+    was declared for them, or with no cost price on file at all. Those rows use a fallback cost (or KSh 0 if none was
+    ever set) — treat their profit as approximate, not exact. Declaring a recipe for every kitchen item removes this
+    caveat for all future sales.
+</div>
+{% endif %}
+
 <h2 class="section">Reconciliation</h2>
 <table class="totals" style="width:480px; margin-bottom: 18px;">
     <tbody>
@@ -89,6 +102,41 @@
         </td></tr>
     </tbody>
 </table>
+
+<h2 class="section">Profitability — orders sold in this range (accrual basis, not cash-collection basis)</h2>
+<table style="margin-bottom: 18px;">
+    <thead><tr>
+        <th style="width:22%">Day</th>
+        <th style="width:19%" class="num">Revenue (KSh)</th>
+        <th style="width:19%" class="num">Ingredient Cost (KSh)</th>
+        <th style="width:19%" class="num">Profit (KSh)</th>
+        <th style="width:21%" class="num">Margin</th>
+    </tr></thead>
+    <tbody>
+        {% for bucket in sales_days %}
+        <tr>
+            <td>{{ bucket.date|date:"D, j M Y" }}{% if bucket.has_unreliable %} <span class="est-mark">*</span>{% endif %}</td>
+            <td class="num">{{ bucket.total|floatformat:0 }}</td>
+            <td class="num">{{ bucket.cost|floatformat:0 }}</td>
+            <td class="num {% if bucket.profit < 0 %}profit-neg{% endif %}">{{ bucket.profit|floatformat:0 }}</td>
+            <td class="num">{% if bucket.margin_pct is not None %}{{ bucket.margin_pct|floatformat:1 }}%{% else %}—{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" style="text-align:center;color:#888;padding:14px;">No orders were sold in this range.</td></tr>
+        {% endfor %}
+        <tr class="subtotal">
+            <td>Total sold in range</td>
+            <td class="num">{{ total_sales|floatformat:0 }}</td>
+            <td class="num">{{ total_cost|floatformat:0 }}</td>
+            <td class="num {% if total_profit < 0 %}profit-neg{% endif %}">{{ total_profit|floatformat:0 }}</td>
+            <td class="num">{{ margin_pct|floatformat:1 }}%</td>
+        </tr>
+    </tbody>
+</table>
+<p style="font-size:9.5px;color:#888;margin-top:-10px;margin-bottom:18px;">
+    This table is based on when dishes were <strong>sold</strong>, not when they were paid for — it will not match the
+    "Collected" totals below day-for-day if any orders here were settled late or remain unpaid.
+</p>
 
 {% for day in days %}
 <div class="day">
@@ -200,6 +248,26 @@
     </div>
 </td>
 
+</tr></table>
+
+<table class="money-grid"><tr>
+<td colspan="2" style="padding-top:14px;">
+    <div class="money-panel">
+        <h3>Profit summary — dishes sold in this range{% if any_unreliable_cost %} <span class="est-mark">*</span>{% endif %}</h3>
+        <div class="row"><span class="lbl">Revenue (what was sold)</span><span class="val">KSh {{ total_sales|floatformat:2 }}</span></div>
+        <div class="row"><span class="lbl">− Ingredient cost</span><span class="val">KSh {{ total_cost|floatformat:2 }}</span></div>
+        <div class="money-final">
+            <span class="lbl">= Profit</span>
+            <span class="amt {% if total_profit < 0 %}negative{% endif %}">KSh {{ total_profit|floatformat:2 }} ({{ margin_pct|floatformat:1 }}%)</span>
+        </div>
+        {% if any_unreliable_cost %}
+        <p class="money-note">* Includes items with no recipe declared, or sold before recipe costing was in place —
+        their cost is a fallback estimate (or KSh 0 if none was set), so this figure is approximate, not exact.</p>
+        {% else %}
+        <p class="money-note">Every item sold in this range has a declared recipe, so this figure reflects real ingredient cost.</p>
+        {% endif %}
+    </div>
+</td>
 </tr></table>
 
 <p class="foot">Confidential — for internal use by Queens Garden Hotel management only. Menu prices are VAT-inclusive at 16%.</p>
