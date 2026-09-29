@@ -1,0 +1,45 @@
+{% extends "dashboard/base_dashboard.html" %}
+{% block dashboard_content %}
+<style>
+    .kw-hero { background: linear-gradient(135deg, #0B6B3A, #095430); border-radius: 18px; padding: 20px 26px; color: #fff; margin-bottom: 22px; }
+    .kw-hero h1 { font-size: 20px; font-weight: 800; }
+    .kw-card { background: #fff; border: 1px solid #eef0ee; border-radius: 18px; padding: 20px; }
+</style>
+
+<a href="{% url 'dashboard:restaurant_kitchen_display' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline"><i class="fa-solid fa-arrow-left mr-1 text-xs"></i>Kitchen Display</a>
+
+<div class="kw-hero mt-3">
+    <h1><i class="fa-solid fa-trash-can mr-2"></i>Kitchen Wastage</h1>
+    <p class="text-white/70 text-xs mt-1">Log spoiled or discarded ingredients already withdrawn to the kitchen. This reduces today's carried-forward float, not the storeroom's stock count.</p>
+</div>
+
+{% if messages %}{% for message in messages %}
+<div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
+{% endfor %}{% endif %}
+
+<div class="grid lg:grid-cols-2 gap-6">
+    <div class="kw-card">
+        <h2 class="font-bold text-sm mb-4">Log Wastage</h2>
+        <form method="post" class="space-y-3">
+            {% csrf_token %}
+            <select name="stock_item" class="w-full border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
+                {% for s in stock_items %}<option value="{{ s.id }}">{{ s.name }} ({{ s.get_unit_display }})</option>{% endfor %}
+            </select>
+            <input type="number" step="0.01" name="quantity" placeholder="Quantity wasted" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            <input type="text" name="reason" placeholder="Reason (e.g. spoiled, dropped, burnt)" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            <button type="submit" class="w-full bg-[#0B6B3A] text-white font-bold py-2.5 rounded-full hover:bg-[#095430] transition">Log Wastage</button>
+        </form>
+    </div>
+    <div class="kw-card">
+        <h2 class="font-bold text-sm mb-4">Recent Entries</h2>
+        <div class="space-y-2 max-h-96 overflow-y-auto">
+            {% for w in recent %}
+            <div class="border border-gray-100 rounded-lg p-3 flex justify-between text-sm">
+                <span>{{ w.quantity }} {{ w.stock_item.unit }} {{ w.stock_item.name }} — {{ w.reason }}</span>
+                <span class="text-xs text-gray-400">{{ w.logged_at|date:"M d, H:i" }}</span>
+            </div>
+            {% empty %}<p class="text-gray-400 text-sm text-center py-8">No wastage logged yet.</p>{% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

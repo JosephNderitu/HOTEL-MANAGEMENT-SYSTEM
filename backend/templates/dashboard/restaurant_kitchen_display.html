@@ -118,6 +118,9 @@
         <a href="{% url 'dashboard:store_usage_logs' %}?department=kitchen&day={{ today|date:'Y-m-d' }}" class="bg-white/10 border border-white/25 text-white font-bold text-sm px-5 py-2.5 rounded-full hover:bg-white/20 transition flex items-center gap-2">
             <i class="fa-solid fa-scale-balanced"></i> Reconciliation
         </a>
+        <a href="{% url 'dashboard:kitchen_wastage' %}" class="bg-white/10 border border-white/25 text-white font-bold text-sm px-5 py-2.5 rounded-full hover:bg-white/20 transition flex items-center gap-2">
+            <i class="fa-solid fa-trash-can"></i> Wastage
+        </a>
         <a href="{% url 'dashboard:kitchen_usage_log' %}" class="bg-white text-[#0B6B3A] font-bold text-sm px-5 py-2.5 rounded-full hover:bg-[#C9A227] hover:text-black transition flex items-center gap-2">
             <i class="fa-solid fa-clipboard-list"></i> Today's Ingredient Usage
         </a>

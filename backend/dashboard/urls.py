@@ -63,6 +63,7 @@ urlpatterns = [
     path('restaurant-kitchen/table/<int:table_id>/status/<str:new_status>/', views.restaurant_set_table_status, name='restaurant_set_table_status'),
     path('restaurant-kitchen/order/<int:order_id>/split/', views.restaurant_split_order, name='restaurant_split_order'),
     path('restaurant-kitchen/order/<int:order_id>/mark-viewed/', views.restaurant_mark_order_viewed, name='restaurant_mark_order_viewed'),
+    path('restaurant-kitchen/wastage/', views.kitchen_wastage_log, name='kitchen_wastage'),
         
     
     path('bar/', views.bar_tabs_view, name='bar'),

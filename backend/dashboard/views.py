@@ -1142,6 +1142,29 @@ def kitchen_item_sales_pdf(request):
     response['Content-Disposition'] = f'attachment; filename="kitchen_item_sales_{timezone.now().date()}.pdf"'
     return response
 
+@staff_module_required('restaurant_kitchen')
+def kitchen_wastage_log(request):
+    if request.method == 'POST':
+        try:
+            stock_item = StockItem.objects.get(id=request.POST.get('stock_item'), department='kitchen')
+            quantity = Decimal(request.POST.get('quantity'))
+            reason = request.POST.get('reason', '').strip()
+        except (StockItem.DoesNotExist, ValueError, TypeError):
+            messages.error(request, "Invalid entry.")
+            return redirect('dashboard:kitchen_wastage')
+
+        if not reason:
+            messages.error(request, "A reason is required.")
+        elif quantity <= 0:
+            messages.error(request, "Enter a quantity greater than zero.")
+        else:
+            WastageLog.objects.create(stock_item=stock_item, quantity=quantity, reason=reason, logged_by=request.user)
+            messages.success(request, "Wastage logged — this reduces today's kitchen float, not the storeroom stock.")
+        return redirect('dashboard:kitchen_wastage')
+
+    stock_items = StockItem.objects.filter(department='kitchen', is_active=True)
+    recent = WastageLog.objects.filter(stock_item__department='kitchen').select_related('stock_item', 'logged_by').order_by('-logged_at')[:20]
+    return render(request, 'dashboard/kitchen_wastage.html', {'stock_items': stock_items, 'recent': recent})
 # ==============================================================================
 # DAILY USAGE LOGS (Generic Helpers & Views for Kitchen & Housekeeping)
 # ==============================================================================
@@ -2362,13 +2385,14 @@ def store_usage_logs_view(request):
     dept_total_rows = [{'code': c, 'label': dept_labels[c], 'value': round(dept_totals[c], 2)} for c in dept_codes]
     total_value_issued = sum(dept_totals.values())
 
-    # ---------- Reconciliation + profit, only for recipe-backed departments ----------
-    reconciliation_rows, reconciliation_total_variance_cost = [], Decimal('0')
-    day_profit = None
+    kitchen_float_rows, reconciliation_rows, reconciliation_total_variance_cost, day_profit = [], [], Decimal('0'), None
     recipe_capable = dept in ('kitchen', 'bar')
-    if recipe_capable:
-        reconciliation_rows, reconciliation_total_variance_cost = build_kitchen_reconciliation(dept, day)
-        day_profit = build_department_day_profit(dept, day)
+    if dept == 'kitchen':
+        kitchen_float_rows = build_kitchen_float_reconciliation(day)
+        day_profit = build_department_day_profit('kitchen', day)
+    elif dept == 'bar':
+        reconciliation_rows, reconciliation_total_variance_cost = build_kitchen_reconciliation('bar', day)
+        day_profit = build_department_day_profit('bar', day)
 
     today_log, _ = DailyUsageLog.objects.get_or_create(department=dept, date=today)
     today_items = today_log.items.select_related('stock_item', 'added_by').order_by('-added_at')
@@ -2388,6 +2412,7 @@ def store_usage_logs_view(request):
         'total_value_issued': round(total_value_issued, 2),
         'today_items': today_items, 'stock_items': stock_items,
         'unlocked_count': today_items.filter(is_locked=False).count(),
+        'kitchen_float_rows': kitchen_float_rows,
         'reconciliation_rows': reconciliation_rows,
         'reconciliation_total_variance_cost': reconciliation_total_variance_cost,
         'day_profit': day_profit,

@@ -1,6 +1,6 @@
 from django.db import transaction
-from django.db.models import F, Q
-from store.models import StockItem, DailyUsageLog
+from django.db.models import F, Sum, Q
+from store.models import StockItem, DailyUsageLog, DailyUsageItem, WastageLog, StockFloatDay
 from public_site.models import Order, OrderItem
 from .models import Payment
 
@@ -8,6 +8,7 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 import uuid
 from decimal import Decimal
+from datetime import timedelta
 from django.utils import timezone
 
 
@@ -47,10 +48,14 @@ def _aggregate_and_lock(needed_totals):
     return locked_stock, shortfalls
 
 def reserve_stock_and_create_items(order, selections):
-    """selections: list of (menu_item, tier, quantity, unit_price_override)."""
+    """selections: list of (menu_item, tier, quantity, unit_price_override).
+    Kitchen-department ingredients are NEVER deducted here — they're tracked via the
+    kitchen float ledger instead, since they already left the storeroom when logged as taken."""
     needed_totals = {}
     for menu_item, tier, qty, _ in selections:
         for stock, req_qty in compute_requirements_for_selection(menu_item, qty):
+            if stock.department == 'kitchen':
+                continue
             stock_obj, total = needed_totals.get(stock.id, (stock, Decimal('0')))
             needed_totals[stock.id] = (stock_obj, total + req_qty)
 
@@ -66,8 +71,9 @@ def reserve_stock_and_create_items(order, selections):
                 unit_price_override=price_override,
                 prep_status='ready' if menu_item.is_quick_serve else 'queued',
             )
-            reqs = compute_requirements_for_selection(menu_item, qty)
-            for stock, req_qty in reqs:
+            for stock, req_qty in compute_requirements_for_selection(menu_item, qty):
+                if stock.department == 'kitchen':
+                    continue
                 locked_stock[stock.id].quantity_on_hand -= req_qty
             order_item.recipe_cost_snapshot = _snapshot_cost_for(menu_item, qty)
             order_item.save(update_fields=['recipe_cost_snapshot'])
@@ -85,6 +91,8 @@ def reserve_stock_for_existing_items(order_items):
     needed_totals = {}
     for oi in order_items:
         for stock, req_qty in compute_requirements_for_selection(oi.menu_item, oi.quantity):
+            if stock.department == 'kitchen':
+                continue
             stock_obj, total = needed_totals.get(stock.id, (stock, Decimal('0')))
             needed_totals[stock.id] = (stock_obj, total + req_qty)
 
@@ -94,8 +102,9 @@ def reserve_stock_for_existing_items(order_items):
             return False, shortfalls
 
         for oi in order_items:
-            reqs = compute_requirements_for_selection(oi.menu_item, oi.quantity)
-            for stock, req_qty in reqs:
+            for stock, req_qty in compute_requirements_for_selection(oi.menu_item, oi.quantity):
+                if stock.department == 'kitchen':
+                    continue
                 locked_stock[stock.id].quantity_on_hand -= req_qty
             oi.recipe_cost_snapshot = _snapshot_cost_for(oi.menu_item, oi.quantity)
             oi.prep_status = 'ready' if oi.menu_item.is_quick_serve else 'queued'
@@ -109,14 +118,16 @@ def reserve_stock_for_existing_items(order_items):
     return True, []
 
 def restore_stock_for_order_item(order_item):
-    """Reverses the deduction for one OrderItem — recipe ingredients or a direct stock link."""
+    """Reverses the deduction for one OrderItem. Kitchen ingredients were never deducted
+    in real time, so there's nothing to give back for them — only bar/direct-link items."""
     reqs = compute_requirements_for_selection(order_item.menu_item, order_item.quantity)
     if not reqs:
         return
     with transaction.atomic():
         for stock, qty in reqs:
+            if stock.department == 'kitchen':
+                continue
             StockItem.objects.filter(id=stock.id).update(quantity_on_hand=F('quantity_on_hand') + qty)
-
 
 def confirm_order_and_deduct_stock(order):
     with transaction.atomic():
@@ -139,7 +150,6 @@ def confirm_order_and_deduct_stock(order):
             },
         })
     return True, []
-
 
 def build_kitchen_reconciliation(department, date):
     """
@@ -190,6 +200,120 @@ def build_kitchen_reconciliation(department, date):
 
     total_variance_cost = sum((r['variance_cost'] for r in rows), Decimal('0'))
     return rows, total_variance_cost
+
+def theoretical_consumption_by_stock(department, date):
+    """{stock_id: qty} of ingredients that confirmed sales on this day say should have been used."""
+    from .views import _local_day_bounds
+    day_start, day_end = _local_day_bounds(date, date)
+    orders = Order.objects.filter(
+        status='confirmed', created_at__gte=day_start, created_at__lt=day_end
+    ).prefetch_related('items__menu_item__recipe__lines__stock_item')
+
+    theoretical = {}
+    for order in orders:
+        if department == 'kitchen':
+            items = order.kitchen_items()
+        else:
+            items = [i for i in order.items.all() if not i.is_cancelled
+                     and i.menu_item.item_type == 'drink' and i.menu_item.serving_point == 'bar']
+        for oi in items:
+            for stock, qty in compute_requirements_for_selection(oi.menu_item, oi.quantity):
+                theoretical[stock.id] = theoretical.get(stock.id, Decimal('0')) + qty
+    return theoretical
+
+def _taken_amount_for_stock_day(stock_item, date):
+    return DailyUsageItem.objects.filter(
+        stock_item=stock_item, log__department='kitchen', log__date=date
+    ).aggregate(total=Sum('quantity'))['total'] or Decimal('0')
+
+def _wasted_amount_for_stock_day(stock_item, date):
+    return WastageLog.objects.filter(
+        stock_item=stock_item, logged_at__date=date
+    ).aggregate(total=Sum('quantity'))['total'] or Decimal('0')
+
+def _consumed_amount_for_stock_day(stock_item, date):
+    return theoretical_consumption_by_stock('kitchen', date).get(stock_item.id, Decimal('0'))
+
+def _earliest_kitchen_activity_date(stock_item):
+    dates = []
+    first_usage = DailyUsageItem.objects.filter(
+        stock_item=stock_item, log__department='kitchen'
+    ).order_by('log__date').values_list('log__date', flat=True).first()
+    if first_usage:
+        dates.append(first_usage)
+    first_sale = OrderItem.objects.filter(
+        menu_item__recipe__lines__stock_item=stock_item, order__status='confirmed'
+    ).order_by('order__created_at').values_list('order__created_at', flat=True).first()
+    if first_sale:
+        dates.append(first_sale.date())
+    return min(dates) if dates else None
+
+def _compute_kitchen_float_day(stock_item, date, opening):
+    taken = _taken_amount_for_stock_day(stock_item, date)
+    consumed = _consumed_amount_for_stock_day(stock_item, date)
+    wasted = _wasted_amount_for_stock_day(stock_item, date)
+    closing = opening + taken - consumed - wasted
+    return {'opening': opening, 'taken': taken, 'consumed': consumed, 'wasted': wasted, 'closing': closing}
+
+def get_kitchen_float_day(stock_item, date):
+    """Returns a dict with opening/taken/consumed/wasted/closing for this ingredient on this day.
+    Past days are cached in StockFloatDay (immutable once the day is over); today is always
+    computed live, since usage/wastage entries logged today can still change."""
+    today = timezone.localdate()
+
+    if date >= today:
+        prev = StockFloatDay.objects.filter(stock_item=stock_item, date__lt=date).order_by('-date').first()
+        if prev:
+            opening = prev.closing
+        else:
+            earliest = _earliest_kitchen_activity_date(stock_item)
+            opening = Decimal('0') if (earliest is None or earliest >= date) else _backfill_and_get_closing(stock_item, date - timedelta(days=1))
+        return _compute_kitchen_float_day(stock_item, date, opening)
+
+    existing = StockFloatDay.objects.filter(stock_item=stock_item, date=date).first()
+    if existing:
+        return {'opening': existing.opening, 'taken': existing.taken, 'consumed': existing.consumed,
+                'wasted': existing.wasted, 'closing': existing.closing}
+
+    closing = _backfill_and_get_closing(stock_item, date)
+    day = StockFloatDay.objects.get(stock_item=stock_item, date=date)
+    return {'opening': day.opening, 'taken': day.taken, 'consumed': day.consumed,
+            'wasted': day.wasted, 'closing': day.closing}
+
+def _backfill_and_get_closing(stock_item, up_to_date):
+    """Fills in and persists every missing past day up to and including up_to_date, forward
+    from the last cached day (or the ingredient's first-ever activity). Returns the closing
+    balance on up_to_date."""
+    prev = StockFloatDay.objects.filter(stock_item=stock_item, date__lte=up_to_date).order_by('-date').first()
+    if prev and prev.date == up_to_date:
+        return prev.closing
+
+    if prev:
+        opening, cursor = prev.closing, prev.date + timedelta(days=1)
+    else:
+        earliest = _earliest_kitchen_activity_date(stock_item)
+        if earliest is None or earliest > up_to_date:
+            return Decimal('0')
+        opening, cursor = Decimal('0'), earliest
+
+    closing = opening
+    while cursor <= up_to_date:
+        result = _compute_kitchen_float_day(stock_item, cursor, opening)
+        StockFloatDay.objects.update_or_create(stock_item=stock_item, date=cursor, defaults=result)
+        opening = closing = result['closing']
+        cursor += timedelta(days=1)
+    return closing
+
+def build_kitchen_float_reconciliation(date):
+    stock_items = StockItem.objects.filter(department='kitchen', is_active=True)
+    rows = []
+    for stock in stock_items:
+        day = get_kitchen_float_day(stock, date)
+        if not any(day[k] for k in ('opening', 'taken', 'consumed', 'wasted')):
+            continue
+        rows.append({'stock_item': stock, **day})
+    rows.sort(key=lambda r: abs(r['closing']), reverse=True)
+    return rows
 
 def build_department_day_profit(department, date):
     """Revenue/cost/profit for what a serving department (kitchen or bar) actually SOLD on one day.

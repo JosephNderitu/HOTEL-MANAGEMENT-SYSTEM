@@ -127,11 +127,9 @@
         {% endif %}
     </div>
 
-    {% if not recipe_capable %}
-    <div class="sul-no-recipe-note">
-        {{ department|title }} doesn't use recipes, so there's nothing to reconcile against sales here — just the usage log below.
-    </div>
-    {% else %}
+    {% if department == 'kitchen' %}
+    <a href="{% url 'dashboard:kitchen_wastage' %}" class="text-xs font-semibold text-[#0B6B3A] hover:underline mb-3 inline-block"><i class="fa-solid fa-trash-can mr-1"></i>Log kitchen wastage</a>
+
     <div class="sul-stat-grid two-col mb-5">
         <div class="sul-stat">
             <p class="lbl">Sales on {{ day|date:"D, j M" }}</p>
@@ -144,21 +142,65 @@
             </p>
         </div>
     </div>
+
+    <div class="overflow-x-auto">
+        <table class="sul-recon-table">
+            <thead><tr>
+                <th>Ingredient</th>
+                <th class="right">Opening (Carried In)</th>
+                <th class="right">Taken From Store</th>
+                <th class="right">Cooked Into Sales</th>
+                <th class="right">Wasted</th>
+                <th class="right">Closing (Carried Forward)</th>
+            </tr></thead>
+            <tbody>
+                {% for row in kitchen_float_rows %}
+                <tr>
+                    <td class="font-semibold">{{ row.stock_item.name }}</td>
+                    <td class="right">{{ row.opening|floatformat:"-2" }} {{ row.stock_item.unit }}</td>
+                    <td class="right">{{ row.taken|floatformat:"-2" }} {{ row.stock_item.unit }}</td>
+                    <td class="right">{{ row.consumed|floatformat:"-2" }} {{ row.stock_item.unit }}</td>
+                    <td class="right">{{ row.wasted|floatformat:"-2" }} {{ row.stock_item.unit }}</td>
+                    <td class="right">
+                        {% if row.closing > 0 %}<span class="variance-pill under">+{{ row.closing|floatformat:"-2" }} carries forward</span>
+                        {% elif row.closing < 0 %}<span class="variance-pill over">{{ row.closing|floatformat:"-2" }} under-logged</span>
+                        {% else %}<span class="variance-pill ok">Fully used</span>{% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center text-gray-400 py-10">No activity for {{ day|date:"D, j M Y" }}.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <p class="text-xs text-gray-400 mt-3">
+        A positive closing balance is genuinely leftover stock — it carries forward as tomorrow's opening balance automatically.
+        A negative closing balance means sales required more than was ever logged as taken from the store on or before this day —
+        it isn't an error, but it's worth reminding the chef to log tomorrow's withdrawal.
+    </p>
     {% if day_profit.any_unreliable %}
-    <div class="sul-unreliable-note">* Some items sold this day have no recipe declared, so their cost falls back to a manual estimate (or KSh 0) — this profit figure is approximate for this day.</div>
+    <div class="sul-unreliable-note">* Some items sold this day have no recipe declared, so their cost falls back to a manual estimate — this profit figure is approximate for this day.</div>
     {% endif %}
 
-    <div class="overflow-x-auto mt-4">
+    {% elif department == 'bar' %}
+    <div class="sul-stat-grid two-col mb-5">
+        <div class="sul-stat">
+            <p class="lbl">Sales on {{ day|date:"D, j M" }}</p>
+            <p class="val">KSh {{ day_profit.revenue|floatformat:0 }}</p>
+        </div>
+        <div class="sul-stat profit">
+            <p class="lbl">Profit on {{ day|date:"D, j M" }}</p>
+            <p class="val {% if day_profit.profit < 0 %}negative{% else %}positive{% endif %}">
+                KSh {{ day_profit.profit|floatformat:0 }}{% if day_profit.margin_pct is not None %} ({{ day_profit.margin_pct|floatformat:1 }}%){% endif %}
+            </p>
+        </div>
+    </div>
+    <div class="overflow-x-auto">
         <table class="sul-recon-table">
-            <thead>
-                <tr>
-                    <th>Ingredient</th>
-                    <th class="right">Taken From Store</th>
-                    <th class="right">Theoretically Required</th>
-                    <th class="right">Variance</th>
-                    <th class="right">Cost Impact</th>
-                </tr>
-            </thead>
+            <thead><tr>
+                <th>Ingredient</th><th class="right">Taken From Store</th><th class="right">Theoretically Required</th>
+                <th class="right">Variance</th><th class="right">Cost Impact</th>
+            </tr></thead>
             <tbody>
                 {% for row in reconciliation_rows %}
                 <tr>
@@ -166,13 +208,9 @@
                     <td class="right">{{ row.actual|floatformat:"-2" }} {{ row.stock_item.get_unit_display }}</td>
                     <td class="right">{{ row.theoretical|floatformat:"-2" }} {{ row.stock_item.get_unit_display }}</td>
                     <td class="right">
-                        {% if row.variance > 0 %}
-                        <span class="variance-pill over">+{{ row.variance|floatformat:"-2" }} {{ row.stock_item.unit }}{% if row.variance_pct %} ({{ row.variance_pct|floatformat:0 }}%){% endif %}</span>
-                        {% elif row.variance < 0 %}
-                        <span class="variance-pill under">{{ row.variance|floatformat:"-2" }} {{ row.stock_item.unit }}{% if row.variance_pct %} ({{ row.variance_pct|floatformat:0 }}%){% endif %}</span>
-                        {% else %}
-                        <span class="variance-pill ok">Exact match</span>
-                        {% endif %}
+                        {% if row.variance > 0 %}<span class="variance-pill over">+{{ row.variance|floatformat:"-2" }}</span>
+                        {% elif row.variance < 0 %}<span class="variance-pill under">{{ row.variance|floatformat:"-2" }}</span>
+                        {% else %}<span class="variance-pill ok">Exact match</span>{% endif %}
                     </td>
                     <td class="right">
                         {% if row.variance_cost > 0 %}<span class="cost-tag bad">+KSh {{ row.variance_cost|floatformat:0 }}</span>
@@ -180,17 +218,14 @@
                         {% else %}<span class="text-gray-400">KSh 0</span>{% endif %}
                     </td>
                 </tr>
-                {% empty %}
-                <tr><td colspan="5" class="text-center text-gray-400 py-10">No usage logged or sales recorded on {{ day|date:"D, j M Y" }}.</td></tr>
+                {% empty %}<tr><td colspan="5" class="text-center text-gray-400 py-10">No usage or sales on {{ day|date:"D, j M Y" }}.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
-    <p class="text-xs text-gray-400 mt-3">
-        Net variance value for {{ day|date:"D, j M" }}:
-        <strong>{% if reconciliation_total_variance_cost > 0 %}+{% endif %}KSh {{ reconciliation_total_variance_cost|floatformat:0 }}</strong>
-        — positive means more was taken than sales justify (waste/over-portioning/possible misuse); negative means less was taken than recipes require (under-portioning or an outdated recipe).
-    </p>
+
+    {% else %}
+    <div class="sul-no-recipe-note">{{ department|title }} doesn't use recipes, so there's nothing to reconcile against sales here — just the usage log below.</div>
     {% endif %}
 </div>
 

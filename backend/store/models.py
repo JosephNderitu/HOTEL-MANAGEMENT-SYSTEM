@@ -72,7 +72,10 @@ class WastageLog(models.Model):
     def save(self, *args, **kwargs):
         is_new = self.pk is None
         super().save(*args, **kwargs)
-        if is_new:
+        if is_new and self.stock_item.department != 'kitchen':
+            # Kitchen wastage is FLOOR stock (already withdrawn) spoiling — it reduces the
+            # kitchen float ledger, not the storeroom's real quantity_on_hand. Bar/housekeeping
+            # have no floor-staging step, so it's still a direct real loss for them.
             self.stock_item.quantity_on_hand -= self.quantity
             self.stock_item.save(update_fields=['quantity_on_hand'])
             from .services import notify_low_stock_if_needed
@@ -213,7 +216,28 @@ class StockTakeLine(models.Model):
 
     def __str__(self):
         return f"{self.stock_item.name}: system {self.system_quantity}, counted {self.counted_quantity}"
+
+class StockFloatDay(models.Model):
+    """Cached daily ledger for kitchen 'floor stock' — ingredients withdrawn from the store
+    (via DailyUsageItem) but not yet cooked into a sold dish. Lets genuine leftovers carry
+    forward to the next day instead of showing as unexplained daily variance.
+    Only ever persisted for CLOSED (past) days — today is always computed live since it can still change."""
+    stock_item = models.ForeignKey(StockItem, on_delete=models.CASCADE, related_name='float_days')
+    date = models.DateField()
+    opening = models.DecimalField(max_digits=12, decimal_places=3, default=0)
+    taken = models.DecimalField(max_digits=12, decimal_places=3, default=0)
+    consumed = models.DecimalField(max_digits=12, decimal_places=3, default=0)
+    wasted = models.DecimalField(max_digits=12, decimal_places=3, default=0)
+    closing = models.DecimalField(max_digits=12, decimal_places=3, default=0)
+
+    class Meta:
+        unique_together = ('stock_item', 'date')
+        ordering = ['date']
+
+    def __str__(self):
+        return f"{self.stock_item.name} float on {self.date}: closing {self.closing}"
     
+   
 @receiver(post_save, sender=StockItem)
 def auto_enable_linked_menu_item(sender, instance, **kwargs):
     if instance.linked_menu_item_id and not instance.linked_menu_item.is_available:
