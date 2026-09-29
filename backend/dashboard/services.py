@@ -1,5 +1,5 @@
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Q
 from store.models import StockItem, DailyUsageLog
 from public_site.models import Order, OrderItem
 from .models import Payment
@@ -190,6 +190,45 @@ def build_kitchen_reconciliation(department, date):
 
     total_variance_cost = sum((r['variance_cost'] for r in rows), Decimal('0'))
     return rows, total_variance_cost
+
+def build_department_day_profit(department, date):
+    """Revenue/cost/profit for what a serving department (kitchen or bar) actually SOLD on one day.
+    Mirrors the costing logic in the sales PDFs: uses each OrderItem's frozen recipe_cost_snapshot
+    where available, falls back to the menu item's manual cost_price, and flags anything neither covers."""
+    from .views import _local_day_bounds
+    day_start, day_end = _local_day_bounds(date, date)
+
+    if department == 'kitchen':
+        item_filter = Q(menu_item__item_type='food') | Q(menu_item__item_type='drink', menu_item__serving_point='kitchen')
+    else:
+        item_filter = Q(menu_item__item_type='drink', menu_item__serving_point='bar')
+
+    items_qs = OrderItem.objects.filter(
+        item_filter, is_cancelled=False, order__status='confirmed',
+        order__created_at__gte=day_start, order__created_at__lt=day_end,
+    ).select_related('menu_item')
+
+    revenue = Decimal('0')
+    cost = Decimal('0')
+    any_unreliable = False
+    units_sold = 0
+    for oi in items_qs:
+        revenue += oi.line_total
+        units_sold += oi.quantity
+        if oi.recipe_cost_snapshot is not None:
+            cost += oi.recipe_cost_snapshot
+        elif oi.menu_item.cost_price is not None:
+            cost += oi.menu_item.cost_price * oi.quantity
+            any_unreliable = True
+        else:
+            any_unreliable = True
+
+    profit = revenue - cost
+    return {
+        'revenue': revenue, 'cost': cost, 'profit': profit,
+        'margin_pct': (profit / revenue * 100) if revenue else None,
+        'any_unreliable': any_unreliable, 'units_sold': units_sold,
+    }
 
 def settle_booking_stay(booking, amount, amount_tendered, method, reference, user):
     debts = []

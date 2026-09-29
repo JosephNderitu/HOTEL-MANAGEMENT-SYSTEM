@@ -1045,6 +1045,7 @@ def restaurant_kitchen_display(request):
     missing_recipe_count = sum(1 for r in item_rows if not r['has_recipe'])
 
     return render(request, 'dashboard/restaurant_kitchen_display.html', {
+        'today': today,
         'stats': {
             'total': total_orders, 'served': served_count,
             'pending': pending_count, 'in_progress': in_progress_count,
@@ -2291,7 +2292,7 @@ def store_spend_trend(request):
             for c in dept_codes
         ],
     })
-# NEW
+
 @staff_module_required('store')
 def store_usage_logs_view(request):
     DEPARTMENTS = [('kitchen', 'Kitchen'), ('housekeeping', 'Housekeeping'), ('bar', 'Bar')]
@@ -2299,40 +2300,75 @@ def store_usage_logs_view(request):
 
     dept = request.GET.get('department', 'kitchen')
     if dept not in valid_depts:
-        dept = 'kitchen'  # guard: an unrecognized value would build a bad url name below
+        dept = 'kitchen'
 
-    preset = request.GET.get('preset', 'week')
     today = timezone.localdate()
-    days = {'today': 0, 'week': 7, 'month': 30, 'quarter': 90, 'year': 365}.get(preset, 7)
-    date_from = today - timezone.timedelta(days=days)
+    preset = request.GET.get('preset', '')
+    raw_date_from = request.GET.get('date_from', '').strip()
+    raw_date_to = request.GET.get('date_to', '').strip()
+
+    if raw_date_from and raw_date_to:
+        date_from = _parse_date_input(raw_date_from, today - timedelta(days=6))
+        date_to = _parse_date_input(raw_date_to, today)
+        if date_from > date_to:
+            date_from, date_to = date_to, date_from
+        if (date_to - date_from).days > 366:
+            date_from = date_to - timedelta(days=366)
+        preset = ''
+    else:
+        days = {'today': 0, 'week': 7, 'month': 30, 'quarter': 90, 'year': 365}.get(preset or 'week', 7)
+        date_from = today - timedelta(days=days)
+        date_to = today
+        preset = preset or 'week'
+
+    day = _parse_date_input(request.GET.get('day', ''), date_to)
+    if day > date_to or day < date_from:
+        day = date_to
 
     usage_items = DailyUsageItem.objects.filter(
-        log__department=dept, log__date__gte=date_from, log__date__lte=today
+        log__department=dept, log__date__gte=date_from, log__date__lte=date_to
     ).select_related('stock_item', 'added_by', 'log').order_by('-log__date', '-added_at')
 
     if dept == 'bar':
         wastage_items = WastageLog.objects.filter(
-            stock_item__department='bar', logged_at__date__gte=date_from, logged_at__date__lte=today
+            stock_item__department='bar', logged_at__date__gte=date_from, logged_at__date__lte=date_to
         ).select_related('stock_item', 'logged_by').order_by('-logged_at')
     else:
         wastage_items = WastageLog.objects.none()
 
-    # Value-based trend, not raw quantity, this is what makes units comparable.
-    chart_days = [(date_from + timezone.timedelta(days=i)) for i in range((today - date_from).days + 1)]
-    daily_values = []
-    for day in chart_days:
-        day_value = 0
-        for i in usage_items:
-            if i.log.date != day:
-                continue
-            unit_cost = float(i.stock_item.last_unit_cost) if i.stock_item else float(i.custom_unit_cost or 0)
-            day_value += float(i.quantity) * unit_cost
-        daily_values.append(round(day_value, 2))
+    # ---------- Cross-department comparison: every department, every day in range ----------
+    chart_days = [(date_from + timezone.timedelta(days=i)) for i in range((date_to - date_from).days + 1)]
+    dept_codes = [c for c, _ in DEPARTMENTS]
+    dept_labels = dict(DEPARTMENTS)
+    all_usage_items = DailyUsageItem.objects.filter(
+        log__date__gte=date_from, log__date__lte=date_to
+    ).select_related('stock_item', 'log')
 
-    total_value_issued = sum(
-        (float(i.quantity) * (float(i.stock_item.last_unit_cost) if i.stock_item else float(i.custom_unit_cost or 0)))
-        for i in usage_items
-    )
+    daily_by_dept = {d: {c: 0.0 for c in dept_codes} for d in chart_days}
+    dept_totals = {c: 0.0 for c in dept_codes}
+    for i in all_usage_items:
+        d, c = i.log.date, i.log.department
+        if d not in daily_by_dept or c not in daily_by_dept[d]:
+            continue
+        unit_cost = float(i.stock_item.last_unit_cost) if i.stock_item else float(i.custom_unit_cost or 0)
+        value = float(i.quantity) * unit_cost
+        daily_by_dept[d][c] += value
+        dept_totals[c] += value
+
+    chart_datasets = [
+        {'label': dept_labels[c], 'department': c, 'data': [round(daily_by_dept[d][c], 2) for d in chart_days]}
+        for c in dept_codes
+    ]
+    dept_total_rows = [{'code': c, 'label': dept_labels[c], 'value': round(dept_totals[c], 2)} for c in dept_codes]
+    total_value_issued = sum(dept_totals.values())
+
+    # ---------- Reconciliation + profit, only for recipe-backed departments ----------
+    reconciliation_rows, reconciliation_total_variance_cost = [], Decimal('0')
+    day_profit = None
+    recipe_capable = dept in ('kitchen', 'bar')
+    if recipe_capable:
+        reconciliation_rows, reconciliation_total_variance_cost = build_kitchen_reconciliation(dept, day)
+        day_profit = build_department_day_profit(dept, day)
 
     today_log, _ = DailyUsageLog.objects.get_or_create(department=dept, date=today)
     today_items = today_log.items.select_related('stock_item', 'added_by').order_by('-added_at')
@@ -2340,15 +2376,24 @@ def store_usage_logs_view(request):
 
     return render(request, 'dashboard/store_usage_logs.html', {
         'usage_items': usage_items, 'wastage_items': wastage_items,
-        'department': dept, 'preset': preset, 'date_from': date_from, 'date_to': today,
+        'department': dept, 'preset': preset, 'date_from': date_from, 'date_to': date_to, 'day': day,
         'departments': DEPARTMENTS,
         'add_url_name': f'dashboard:{dept}_usage_log_add',
         'confirm_url_name': f'dashboard:{dept}_usage_log_confirm',
-        'chart_labels': json.dumps([d.strftime('%b %d') for d in chart_days]),
-        'chart_data': json.dumps(daily_values),
+        'chart_labels_json': json.dumps([d.strftime('%b %d') for d in chart_days]),
+        'chart_datasets_json': json.dumps(chart_datasets),
+        'dept_total_rows': dept_total_rows,
+        'dept_bar_labels_json': json.dumps([r['label'] for r in dept_total_rows]),
+        'dept_bar_values_json': json.dumps([r['value'] for r in dept_total_rows]),
         'total_value_issued': round(total_value_issued, 2),
         'today_items': today_items, 'stock_items': stock_items,
         'unlocked_count': today_items.filter(is_locked=False).count(),
+        'reconciliation_rows': reconciliation_rows,
+        'reconciliation_total_variance_cost': reconciliation_total_variance_cost,
+        'day_profit': day_profit,
+        'recipe_capable': recipe_capable,
+        'dept_base_qs': _qs_without(request, 'department'),
+        'preset_base_qs': _qs_without(request, 'preset', 'date_from', 'date_to'),
     })
 
 @staff_module_required('store')
@@ -2686,13 +2731,11 @@ def kitchen_reconciliation_view(request):
     department = request.GET.get('department', 'kitchen')
     if department not in ('kitchen', 'bar'):
         department = 'kitchen'
-    date = _parse_date_input(request.GET.get('date', ''), timezone.localdate())
-    rows, total_variance_cost = build_kitchen_reconciliation(department, date)
-    return render(request, 'dashboard/kitchen_reconciliation.html', {
-        'rows': rows, 'department': department, 'date': date,
-        'total_variance_cost': total_variance_cost,
-    })
- 
+    date = request.GET.get('date', '')
+    url = reverse('dashboard:store_usage_logs') + f'?department={department}'
+    if date:
+        url += f'&day={date}'
+    return redirect(url)
 # ==============================================================================
 # Finance Views
 # ==============================================================================

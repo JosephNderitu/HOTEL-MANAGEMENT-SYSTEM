@@ -1,36 +1,199 @@
 {% extends "dashboard/base_dashboard.html" %}
 {% block dashboard_content %}
 {% include "dashboard/_store_styles.html" %}
+<style>
+    .sul-hero { background: linear-gradient(135deg, #0B6B3A, #095430); border-radius: 18px; padding: 20px 26px; color: #fff; margin-bottom: 20px; }
+    .sul-hero h1 { font-size: 20px; font-weight: 800; }
+
+    .sul-pill-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+    .sul-pill { font-size: 12px; font-weight: 700; padding: 7px 16px; border-radius: 9999px; border: 1px solid #e2e5e2; color: #6b7280; background: #fff; }
+    .sul-pill.active { background: #0B6B3A; color: #fff; border-color: #0B6B3A; }
+    .sul-pill.gold.active { background: #C9A227; color: #000; border-color: #C9A227; }
+    .sul-pill:hover:not(.active) { border-color: #0B6B3A; color: #0B6B3A; }
+
+    .sul-range-form { background: #fff; border: 1px solid #eef0ee; border-radius: 14px; padding: 12px 16px; display: flex; gap: 10px; align-items: end; flex-wrap: wrap; margin-bottom: 20px; }
+    .sul-range-form label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #8a8f8a; display: block; margin-bottom: 4px; }
+    .sul-input { border: 1px solid #e2e5e2; border-radius: 9px; padding: 8px 12px; font-size: 13px; }
+    .sul-apply-btn { background: #0B6B3A; color: #fff; font-size: 12.5px; font-weight: 700; padding: 9px 18px; border-radius: 9999px; }
+
+    .sul-stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-bottom: 22px; }
+    @media (min-width: 900px) { .sul-stat-grid { grid-template-columns: repeat(4, 1fr); } }
+    .sul-stat-grid.two-col { grid-template-columns: 1fr; }
+    @media (min-width: 640px) { .sul-stat-grid.two-col { grid-template-columns: repeat(2, 1fr); } }
+    .sul-stat { background: #fff; border: 1px solid #eef0ee; border-radius: 16px; padding: 16px 18px; }
+    .sul-stat .lbl { font-size: 10.5px; color: #8a8f8a; text-transform: uppercase; letter-spacing: 0.04em; }
+    .sul-stat .val { font-size: 22px; font-weight: 800; margin-top: 4px; }
+    .sul-stat.profit .val.positive { color: #0B6B3A; }
+    .sul-stat.profit .val.negative { color: #dc2626; }
+
+    .sul-chart-grid { display: grid; grid-template-columns: 1fr; gap: 20px; margin-bottom: 24px; }
+    @media (min-width: 1024px) { .sul-chart-grid { grid-template-columns: 2fr 1fr; } }
+    .sul-chart-card { background: #fff; border: 1px solid #eef0ee; border-radius: 18px; padding: 20px; }
+    .sul-chart-card h2 { font-size: 13px; font-weight: 700; color: #1a1a1a; margin-bottom: 12px; }
+    .sul-chart-box { position: relative; height: 260px; }
+
+    .sul-recon-panel { background: #fff; border: 1px solid #eef0ee; border-radius: 18px; padding: 20px; margin-bottom: 24px; }
+    .sul-recon-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+    .sul-recon-head h2 { font-size: 14px; font-weight: 700; color: #1a1a1a; }
+    .sul-day-form { display: flex; align-items: center; gap: 8px; }
+    .sul-day-form label { font-size: 11px; font-weight: 700; color: #6b7280; }
+
+    .sul-recon-table { width: 100%; border-collapse: collapse; }
+    .sul-recon-table th { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: #8a8f8a; text-align: left; padding: 9px 12px; border-bottom: 1px solid #f2f4f2; }
+    .sul-recon-table td { padding: 10px 12px; font-size: 13px; border-bottom: 1px solid #f7f8f7; }
+    .right { text-align: right; }
+    .variance-pill { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 9999px; display: inline-block; }
+    .variance-pill.over { background: #FEF2F2; color: #dc2626; }
+    .variance-pill.under { background: #FFFBEB; color: #92722a; }
+    .variance-pill.ok { background: #F3F4F6; color: #6b7280; }
+    .cost-tag.bad { color: #dc2626; font-weight: 700; }
+    .cost-tag.good { color: #0B6B3A; font-weight: 700; }
+    .sul-unreliable-note { background: #FEF9EC; border: 1px solid #f0e6c8; color: #92722a; font-size: 11.5px; padding: 9px 13px; border-radius: 10px; margin-top: 12px; }
+    .sul-no-recipe-note { text-align: center; color: #a8ada8; padding: 30px 10px; font-size: 13px; background: #fafbfa; border: 1px dashed #e2e5e2; border-radius: 14px; }
+</style>
 
 <a href="{% url 'dashboard:store' %}" class="text-[#0B6B3A] text-sm font-semibold hover:underline">&larr; Store</a>
-<h1 class="text-2xl font-bold text-black mt-1 mb-6">Usage &amp; Wastage Logs</h1>
+
+<div class="sul-hero mt-3">
+    <h1><i class="fa-solid fa-clipboard-list mr-2"></i>Usage, Wastage &amp; Reconciliation</h1>
+    <p class="text-white/70 text-xs mt-1">What each department took from the store, compared visually, and — for Kitchen and Bar — checked against what the day's sales actually required.</p>
+</div>
 
 {% if messages %}{% for message in messages %}
 <div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-5">{{ message }}</div>
 {% endfor %}{% endif %}
 
-<div class="flex gap-2 mb-3 flex-wrap">
+<div class="sul-pill-row">
     {% for dept_code, dept_label in departments %}
-    <a href="?department={{ dept_code }}&preset={{ preset }}" class="text-xs font-semibold px-4 py-2 rounded-full {% if department == dept_code %}bg-[#0B6B3A] text-white{% else %}border border-gray-300 text-gray-500{% endif %}">{{ dept_label }}</a>
+    <a href="?{{ dept_base_qs }}&department={{ dept_code }}" class="sul-pill {% if department == dept_code %}active{% endif %}">{{ dept_label }}</a>
     {% endfor %}
 </div>
-<div class="flex gap-2 mb-6 flex-wrap">
-    <a href="?department={{ department }}&preset=week" class="text-xs px-3 py-1.5 rounded-full {% if preset == 'week' %}bg-[#C9A227] text-black{% else %}border border-gray-300 text-gray-500{% endif %}">7 Days</a>
-    <a href="?department={{ department }}&preset=month" class="text-xs px-3 py-1.5 rounded-full {% if preset == 'month' %}bg-[#C9A227] text-black{% else %}border border-gray-300 text-gray-500{% endif %}">30 Days</a>
-    <a href="?department={{ department }}&preset=quarter" class="text-xs px-3 py-1.5 rounded-full {% if preset == 'quarter' %}bg-[#C9A227] text-black{% else %}border border-gray-300 text-gray-500{% endif %}">90 Days</a>
-    <a href="?department={{ department }}&preset=year" class="text-xs px-3 py-1.5 rounded-full {% if preset == 'year' %}bg-[#C9A227] text-black{% else %}border border-gray-300 text-gray-500{% endif %}">1 Year</a>
+<div class="sul-pill-row">
+    <a href="?{{ preset_base_qs }}&preset=today" class="sul-pill gold {% if preset == 'today' %}active{% endif %}">Today</a>
+    <a href="?{{ preset_base_qs }}&preset=week" class="sul-pill gold {% if preset == 'week' %}active{% endif %}">7 Days</a>
+    <a href="?{{ preset_base_qs }}&preset=month" class="sul-pill gold {% if preset == 'month' %}active{% endif %}">30 Days</a>
+    <a href="?{{ preset_base_qs }}&preset=quarter" class="sul-pill gold {% if preset == 'quarter' %}active{% endif %}">90 Days</a>
+    <a href="?{{ preset_base_qs }}&preset=year" class="sul-pill gold {% if preset == 'year' %}active{% endif %}">1 Year</a>
 </div>
 
-<div class="st-stat mb-4"><p class="num">KSh {{ total_value_issued|floatformat:0 }}</p><p class="lbl">Value of Stock Issued to {{ department|title }} This Range</p></div>
+<form method="get" class="sul-range-form">
+    <input type="hidden" name="department" value="{{ department }}">
+    <div>
+        <label>Custom From</label>
+        <input type="date" name="date_from" value="{{ date_from|date:'Y-m-d' }}" class="sul-input">
+    </div>
+    <div>
+        <label>Custom To</label>
+        <input type="date" name="date_to" value="{{ date_to|date:'Y-m-d' }}" class="sul-input">
+    </div>
+    <button type="submit" class="sul-apply-btn"><i class="fa-solid fa-magnifying-glass mr-1"></i>Apply Custom Range</button>
+</form>
 
-<div class="bg-white border border-[#eef0ee] rounded-2xl p-6 mb-8">
-    <h2 class="font-bold text-black text-sm mb-3">Usage Value Trend (KSh) — smooths out unit differences like grams vs kilograms</h2>
-    <div class="st-chart-box">
-        <canvas id="usageChart" height="90"></canvas>
+<div class="sul-stat-grid">
+    <div class="sul-stat">
+        <p class="lbl">Value Issued to {{ department|title }}</p>
+        <p class="val">KSh {{ total_value_issued|floatformat:0 }}</p>
+    </div>
+    {% for row in dept_total_rows %}
+    <div class="sul-stat">
+        <p class="lbl">{{ row.label }} Total (This Range)</p>
+        <p class="val">KSh {{ row.value|floatformat:0 }}</p>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="sul-chart-grid">
+    <div class="sul-chart-card">
+        <h2><i class="fa-solid fa-chart-line mr-1 text-[#C9A227]"></i>Usage Value Trend — All Departments (click a legend item to isolate it)</h2>
+        <div class="sul-chart-box"><canvas id="trendChart"></canvas></div>
+    </div>
+    <div class="sul-chart-card">
+        <h2><i class="fa-solid fa-chart-column mr-1 text-[#C9A227]"></i>Total Issued This Range</h2>
+        <div class="sul-chart-box"><canvas id="deptBarChart"></canvas></div>
     </div>
 </div>
 
-<!-- Store manager logs usage on the department's behalf -->
+<div class="sul-recon-panel">
+    <div class="sul-recon-head">
+        <h2><i class="fa-solid fa-scale-balanced mr-1 text-[#C9A227]"></i>Store vs Sales Reconciliation — {{ department|title }}</h2>
+        {% if recipe_capable %}
+        <form method="get" class="sul-day-form">
+            <input type="hidden" name="department" value="{{ department }}">
+            <input type="hidden" name="date_from" value="{{ date_from|date:'Y-m-d' }}">
+            <input type="hidden" name="date_to" value="{{ date_to|date:'Y-m-d' }}">
+            <label>Day:</label>
+            <input type="date" name="day" value="{{ day|date:'Y-m-d' }}" class="sul-input" onchange="this.form.submit()">
+        </form>
+        {% endif %}
+    </div>
+
+    {% if not recipe_capable %}
+    <div class="sul-no-recipe-note">
+        {{ department|title }} doesn't use recipes, so there's nothing to reconcile against sales here — just the usage log below.
+    </div>
+    {% else %}
+    <div class="sul-stat-grid two-col mb-5">
+        <div class="sul-stat">
+            <p class="lbl">Sales on {{ day|date:"D, j M" }}</p>
+            <p class="val">KSh {{ day_profit.revenue|floatformat:0 }}</p>
+        </div>
+        <div class="sul-stat profit">
+            <p class="lbl">Profit on {{ day|date:"D, j M" }}{% if day_profit.any_unreliable %} *{% endif %}</p>
+            <p class="val {% if day_profit.profit < 0 %}negative{% else %}positive{% endif %}">
+                KSh {{ day_profit.profit|floatformat:0 }}{% if day_profit.margin_pct is not None %} ({{ day_profit.margin_pct|floatformat:1 }}%){% endif %}
+            </p>
+        </div>
+    </div>
+    {% if day_profit.any_unreliable %}
+    <div class="sul-unreliable-note">* Some items sold this day have no recipe declared, so their cost falls back to a manual estimate (or KSh 0) — this profit figure is approximate for this day.</div>
+    {% endif %}
+
+    <div class="overflow-x-auto mt-4">
+        <table class="sul-recon-table">
+            <thead>
+                <tr>
+                    <th>Ingredient</th>
+                    <th class="right">Taken From Store</th>
+                    <th class="right">Theoretically Required</th>
+                    <th class="right">Variance</th>
+                    <th class="right">Cost Impact</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in reconciliation_rows %}
+                <tr>
+                    <td class="font-semibold">{{ row.stock_item.name }}</td>
+                    <td class="right">{{ row.actual|floatformat:"-2" }} {{ row.stock_item.get_unit_display }}</td>
+                    <td class="right">{{ row.theoretical|floatformat:"-2" }} {{ row.stock_item.get_unit_display }}</td>
+                    <td class="right">
+                        {% if row.variance > 0 %}
+                        <span class="variance-pill over">+{{ row.variance|floatformat:"-2" }} {{ row.stock_item.unit }}{% if row.variance_pct %} ({{ row.variance_pct|floatformat:0 }}%){% endif %}</span>
+                        {% elif row.variance < 0 %}
+                        <span class="variance-pill under">{{ row.variance|floatformat:"-2" }} {{ row.stock_item.unit }}{% if row.variance_pct %} ({{ row.variance_pct|floatformat:0 }}%){% endif %}</span>
+                        {% else %}
+                        <span class="variance-pill ok">Exact match</span>
+                        {% endif %}
+                    </td>
+                    <td class="right">
+                        {% if row.variance_cost > 0 %}<span class="cost-tag bad">+KSh {{ row.variance_cost|floatformat:0 }}</span>
+                        {% elif row.variance_cost < 0 %}<span class="cost-tag good">−KSh {{ row.variance_cost|floatformat:0|cut:"-" }}</span>
+                        {% else %}<span class="text-gray-400">KSh 0</span>{% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" class="text-center text-gray-400 py-10">No usage logged or sales recorded on {{ day|date:"D, j M Y" }}.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <p class="text-xs text-gray-400 mt-3">
+        Net variance value for {{ day|date:"D, j M" }}:
+        <strong>{% if reconciliation_total_variance_cost > 0 %}+{% endif %}KSh {{ reconciliation_total_variance_cost|floatformat:0 }}</strong>
+        — positive means more was taken than sales justify (waste/over-portioning/possible misuse); negative means less was taken than recipes require (under-portioning or an outdated recipe).
+    </p>
+    {% endif %}
+</div>
+
 <div class="grid lg:grid-cols-2 gap-6 mb-8">
     <div class="bg-white border border-[#0B6B3A] rounded-2xl p-6">
         <h2 class="font-bold text-black text-sm mb-4"><i class="fa-solid fa-hand-holding text-[#C9A227] mr-1"></i>Log Usage for {{ department|title }} Today</h2>
@@ -103,14 +266,42 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    new Chart(document.getElementById('usageChart'), {
+    const DEPT_COLORS = { kitchen: '#0B6B3A', housekeeping: '#3b82f6', bar: '#9d174d' };
+    const datasets = {{ chart_datasets_json|safe }};
+
+    new Chart(document.getElementById('trendChart'), {
         type: 'line',
-        data: { labels: {{ chart_labels|safe }}, datasets: [{
-            label: 'Value Used (KSh)', data: {{ chart_data|safe }},
-            borderColor: '#0B6B3A', backgroundColor: 'rgba(11,107,58,0.08)',
-            tension: 0.4, fill: true, pointRadius: 3, pointBackgroundColor: '#C9A227',
-        }] },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } },
+        data: {
+            labels: {{ chart_labels_json|safe }},
+            datasets: datasets.map(ds => ({
+                label: ds.label, data: ds.data,
+                borderColor: DEPT_COLORS[ds.department] || '#6b7280',
+                backgroundColor: (DEPT_COLORS[ds.department] || '#6b7280') + '14',
+                tension: 0.35, fill: false, pointRadius: 2.5, borderWidth: 2,
+            })),
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+            scales: { y: { beginAtZero: true } },
+        },
+    });
+
+    new Chart(document.getElementById('deptBarChart'), {
+        type: 'bar',
+        data: {
+            labels: {{ dept_bar_labels_json|safe }},
+            datasets: [{
+                data: {{ dept_bar_values_json|safe }},
+                backgroundColor: {{ dept_bar_labels_json|safe }}.map(() => '#C9A227'),
+                borderRadius: 6,
+            }],
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true } },
+        },
     });
 });
 </script>
