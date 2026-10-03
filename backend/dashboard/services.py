@@ -11,7 +11,6 @@ from decimal import Decimal
 from datetime import timedelta
 from django.utils import timezone
 
-
 def compute_requirements_for_selection(menu_item, quantity):
     recipe = getattr(menu_item, 'recipe', None)
     if recipe:
@@ -27,14 +26,12 @@ def compute_requirements_for_selection(menu_item, quantity):
         return [(stock, Decimal(quantity))]
     return []
 
-
 def _snapshot_cost_for(menu_item, quantity):
     """Full recipe cost for this quantity, tracked + untracked ingredients combined."""
     recipe = getattr(menu_item, 'recipe', None)
     if recipe and recipe.lines.exists():
         return (recipe.cost_per_yield * quantity).quantize(Decimal('0.01'))
     return None
-
 
 def _aggregate_and_lock(needed_totals):
     locked_stock, shortfalls = {}, []
