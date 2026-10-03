@@ -31,7 +31,7 @@ from store.services import *
 from .services import *
 
 from decimal import Decimal
-from django.urls import reverse
+from django.urls import reverse, NoReverseMatch
 from datetime import timedelta, datetime, time
 from .permissions import *
 
@@ -84,118 +84,328 @@ def dashboard_home(request):
     return render(request, 'dashboard/home.html', context)
 
 ###start of reception views
+
+def _order_department_badge(order):
+    if order.table_id:
+        return 'restaurant', f"Table {order.table.number}"
+    if order.bar_tab_id:
+        return 'bar', 'Bar'
+    if order.room_booking_id:
+        return ('restaurant', 'Room Service') if order.has_kitchen_items else ('bar', 'Room Service')
+    return ('restaurant', order.get_order_type_display())
+
+ 
+RECEPTION_PAGE_SIZE = 8
+RECEPTION_MAX_RANGE_DAYS = 31        # Owner / GM: a single earnings query never spans more than a month
+RECEPTION_MAX_SHIFT_SPAN_DAYS = 7    # staff shifts panel range
+ 
+# payment.method -> display bucket (all three bank codes collapse into "bank")
+METHOD_BUCKETS = {
+    'cash': 'cash',
+    'mpesa': 'mpesa',
+    'swipe': 'swipe',
+    'bank_equity': 'bank',
+    'bank_family': 'bank',
+    'bank_coop': 'bank',
+}
+ 
+SHIFT_STATUS_ORDER = {
+    'on_shift': 0, 'pending': 1, 'absent': 2, 'scheduled': 3,
+    'on_leave': 4, 'completed': 5, 'weekly_off': 6, 'not_scheduled': 7,
+}
+ 
+ 
+def _safe_reverse(name, *args):
+    """Returns None instead of crashing the whole page if a url name does not exist."""
+    try:
+        return reverse(name, args=args)
+    except NoReverseMatch:
+        return None
+ 
+def _empty_earnings():
+    return {
+        'total': Decimal('0'), 'mpesa': Decimal('0'), 'bank': Decimal('0'),
+        'swipe': Decimal('0'), 'cash': Decimal('0'),
+    }
+ 
+def _payment_department(p):
+    """rooms (incl. conference) | restaurant | bar"""
+    if p.booking_id:
+        return 'rooms'
+    if not p.order_id:
+        return 'rooms'
+    order = p.order
+    if order.bar_tab_id:
+        return 'bar'
+    if order.room_booking_id:
+        # room-service orders are split by department at creation, so each one is purely kitchen or bar
+        return 'restaurant' if order.has_kitchen_items else 'bar'
+    return 'restaurant'  # takeaway / conference catering / event orders
+  
+def _room_service_dept(order):
+    return 'restaurant' if order.has_kitchen_items else 'bar'
+ 
+def _reception_earnings_range(request, user):
+    """
+    Resolves the earnings date range and enforces the security limits:
+      - Owner / GM: any window, but never more than RECEPTION_MAX_RANGE_DAYS days long
+      - everyone else (receptionists): the window must sit inside the last 7 days
+    Returns (period, date_from, date_to, notice, earliest_allowed_date_or_None)
+    """
+    today = timezone.localdate()
+    limit = earnings_range_limit_days(user)  # None for Owner / GM
+ 
+    period = request.GET.get('period', 'today')
+    raw_from = request.GET.get('date_from', '').strip()
+    raw_to = request.GET.get('date_to', '').strip()
+ 
+    if raw_from and raw_to:
+        d_from = _parse_date_input(raw_from, today)
+        d_to = _parse_date_input(raw_to, today)
+        period = 'custom'
+    elif period == 'yesterday':
+        d_from = d_to = today - timedelta(days=1)
+    elif period == '7days':
+        d_from, d_to = today - timedelta(days=6), today
+    elif period == '30days':
+        d_from, d_to = today - timedelta(days=29), today
+    else:
+        period = 'today'
+        d_from = d_to = today
+ 
+    if d_from > d_to:
+        d_from, d_to = d_to, d_from
+    d_to = min(d_to, today)
+    d_from = min(d_from, d_to)
+ 
+    earliest = (today - timedelta(days=limit - 1)) if limit else None
+    notice = None
+    if limit and d_from < earliest:
+        notice = f"Your role can only view earnings for the last {limit} days. Showing today instead."
+    elif not limit and (d_to - d_from).days + 1 > RECEPTION_MAX_RANGE_DAYS:
+        notice = f"Earnings ranges are limited to {RECEPTION_MAX_RANGE_DAYS} days (one month). Showing today instead."
+    if notice:
+        period, d_from, d_to = 'today', today, today
+ 
+    return period, d_from, d_to, notice, earliest
+ 
+def _staff_shift_rows(date_from, date_to):
+    """One row per staff member per day in the range, with attendance-aware status."""
+    now, today = timezone.now(), timezone.localdate()
+ 
+    profiles = list(
+        StaffProfile.objects.filter(employment_status__in=['active', 'on_leave']).select_related('user')
+    )
+    ids = [p.user_id for p in profiles]
+ 
+    off_map = {o.staff_id: set(o.weekdays) for o in StaffWeeklyOff.objects.filter(staff_id__in=ids)}
+    leave_by_staff = {}
+    for lr in LeaveRequest.objects.filter(
+        staff_id__in=ids, status='approved', start_date__lte=date_to, end_date__gte=date_from
+    ).select_related('leave_type'):
+        leave_by_staff.setdefault(lr.staff_id, []).append(lr)
+    assignments = {
+        (a.staff_id, a.date): a for a in ShiftAssignment.objects.filter(
+            staff_id__in=ids, date__gte=date_from, date__lte=date_to
+        ).select_related('shift')
+    }
+    attendance = {
+        (r.staff_id, r.date): r for r in AttendanceRecord.objects.filter(
+            staff_id__in=ids, date__gte=date_from, date__lte=date_to
+        )
+    }
+ 
+    rows = []
+    day = date_from
+    while day <= date_to:
+        for p in profiles:
+            uid = p.user_id
+            row = {'profile': p, 'date': day, 'shift': None, 'detail': ''}
+            leave = next((l for l in leave_by_staff.get(uid, []) if l.start_date <= day <= l.end_date), None)
+            assignment = assignments.get((uid, day))
+            record = attendance.get((uid, day))
+ 
+            if leave:
+                row['status'], row['label'], row['detail'] = 'on_leave', 'On Leave', leave.leave_type.name
+            elif day.weekday() in off_map.get(uid, ()):
+                row['status'], row['label'] = 'weekly_off', 'Weekly Off'
+            elif not assignment:
+                row['status'], row['label'] = 'not_scheduled', 'Not Scheduled'
+            else:
+                row['shift'] = assignment.shift
+                if record and record.clock_in_time:
+                    if record.clock_out_time or day < today:
+                        row['status'], row['label'] = 'completed', 'Completed'
+                    else:
+                        row['status'], row['label'] = 'on_shift', 'On Shift'
+                    if record.is_late:
+                        row['detail'] = f"Late {record.late_minutes}m"
+                else:
+                    shift_start = timezone.make_aware(datetime.combine(day, assignment.shift.start_time))
+                    grace_end = shift_start + timedelta(minutes=assignment.shift.grace_minutes)
+                    if day > today:
+                        row['status'], row['label'] = 'scheduled', 'Scheduled'
+                    elif day < today or now > grace_end:
+                        row['status'], row['label'] = 'absent', 'Absent'
+                    else:
+                        row['status'], row['label'] = 'pending', 'Pending'
+            rows.append(row)
+        day += timedelta(days=1)
+ 
+    rows.sort(key=lambda r: (
+        r['date'], SHIFT_STATUS_ORDER.get(r['status'], 9),
+        (r['profile'].user.get_full_name() or r['profile'].user.username).lower(),
+    ))
+    return rows
+ 
+def _allocate_room_for_booking(booking, only_available=False):
+    """
+    Picks a physical room of the booking's type that is not already held by another
+    confirmed / checked-in booking overlapping the same dates.
+    only_available=True additionally requires the room to be 'available' right now (used at check-in).
+    """
+    held = Booking.objects.filter(
+        assigned_room__isnull=False, status__in=['confirmed', 'checked_in'],
+        check_in__lt=booking.check_out, check_out__gt=booking.check_in,
+    ).exclude(pk=booking.pk).values_list('assigned_room_id', flat=True)
+ 
+    rooms = Room.objects.filter(room_type=booking.room_type).exclude(id__in=held)
+    rooms = rooms.filter(status='available') if only_available else rooms.exclude(status='maintenance')
+    return rooms.order_by('number').first()
+ 
 @staff_module_required('reception')
 def reception_view(request):
     today = timezone.localdate()
-
-    # ---------- Hero stats: quick pills OR an explicit calendar date range ----------
-    period = request.GET.get('period', 'today')
-    raw_date_from = request.GET.get('date_from', '').strip()
-    raw_date_to = request.GET.get('date_to', '').strip()
-    
-    if raw_date_from and raw_date_to:
-        range_from = _parse_date_input(raw_date_from, today)
-        range_to = _parse_date_input(raw_date_to, today)
-        if range_from > range_to:
-            range_from, range_to = range_to, range_from
-        period = ''  # explicit range overrides the quick pills
-    elif period == 'week':
-        range_from, range_to = today - timedelta(days=today.weekday()), today
-    elif period == 'month':
-        range_from, range_to = today.replace(day=1), today
-    else:
-        period = 'today'
-        range_from, range_to = today, today
-
+    user = request.user
+    page_size = RECEPTION_PAGE_SIZE
+ 
+    # ------------------------------------------------------------------
+    # Earnings by department and payment method (date filtered + role limited)
+    # ------------------------------------------------------------------
+    period, range_from, range_to, range_notice, earliest = _reception_earnings_range(request, user)
+    if range_notice:
+        messages.warning(request, range_notice)
     range_start, range_end = _local_day_bounds(range_from, range_to)
-    
-    period_payments = list(Payment.objects.filter(
+ 
+    period_payments = Payment.objects.filter(
         created_at__gte=range_start, created_at__lt=range_end
-    ).select_related('booking', 'order', 'order__table', 'order__bar_tab', 'order__room_booking')
-     .prefetch_related('order__items__menu_item'))
-    
-    period_revenue = sum((p.amount for p in period_payments), Decimal('0'))
-
-    rooms_revenue = conference_revenue = restaurant_revenue = bar_revenue = Decimal('0')
+    ).select_related('order').prefetch_related('order__items__menu_item')
+ 
+    buckets = {k: _empty_earnings() for k in ('rooms', 'restaurant', 'bar', 'total')}
     for p in period_payments:
-        if p.booking_id:
-            if p.booking.booking_type == 'conference':
-                conference_revenue += p.amount
-            else:
-                rooms_revenue += p.amount
-        elif p.order_id:
-            order = p.order
-            if order.bar_tab_id:
-                bar_revenue += p.amount
-            elif order.table_id:
-                restaurant_revenue += p.amount
-            elif order.room_booking_id:
-                # Orders are split by department at creation, so each room-service
-                # order is purely kitchen or purely bar — has_kitchen_items tells us which.
-                if order.has_kitchen_items:
-                    restaurant_revenue += p.amount
-                else:
-                    bar_revenue += p.amount
-            else:
-                restaurant_revenue += p.amount  # takeaway / conference-catering / event orders
-
-    department_stats = [
-        {'label': 'Rooms', 'value': rooms_revenue, 'icon': 'fa-bed', 'url': reverse('dashboard:rooms')},
-        {'label': 'Restaurant', 'value': restaurant_revenue, 'icon': 'fa-utensils', 'url': reverse('dashboard:restaurant_kitchen')},
-        {'label': 'Bar', 'value': bar_revenue, 'icon': 'fa-martini-glass-citrus', 'url': reverse('dashboard:bar')},
-        {'label': 'Conference', 'value': conference_revenue, 'icon': 'fa-users', 'url': '#'},
+        dept = _payment_department(p)
+        method = METHOD_BUCKETS.get(p.method)
+        for key in (dept, 'total'):
+            buckets[key]['total'] += p.amount
+            if method:
+                buckets[key][method] += p.amount
+ 
+    dept_cards = [
+        {'label': 'Rooms / Housekeeping', 'sub': 'includes conference', 'icon': 'fa-bed', **buckets['rooms']},
+        {'label': 'Kitchen / Restaurant', 'sub': '', 'icon': 'fa-utensils', **buckets['restaurant']},
+        {'label': 'Bar', 'sub': '', 'icon': 'fa-martini-glass-citrus', **buckets['bar']},
     ]
-
+    total_card = {'label': 'Total earnings', 'sub': 'all departments', 'icon': 'fa-coins', **buckets['total']}
+ 
+    # ------------------------------------------------------------------
+    # Quick stats
+    # ------------------------------------------------------------------
+    pending_rs_count = Order.objects.filter(room_booking__isnull=False, status='pending').count()
+    quick_stats = [
+        {'label': 'Arrivals today', 'value': Booking.objects.filter(check_in=today, status__in=['pending', 'confirmed']).count(), 'icon': 'fa-right-to-bracket'},
+        {'label': 'Departures today', 'value': Booking.objects.filter(check_out=today, status='checked_in').count(), 'icon': 'fa-right-from-bracket'},
+        {'label': 'Guests in house', 'value': Booking.objects.filter(status='checked_in').count(), 'icon': 'fa-bed'},
+        {'label': 'Room service to confirm', 'value': pending_rs_count, 'icon': 'fa-bell-concierge'},
+    ]
+ 
+    # ------------------------------------------------------------------
+    # Staff shifts (default today, optional range)
+    # ------------------------------------------------------------------
+    shift_from = _parse_date_input(request.GET.get('shift_from', ''), today)
+    shift_to = _parse_date_input(request.GET.get('shift_to', ''), shift_from)
+    if shift_from > shift_to:
+        shift_from, shift_to = shift_to, shift_from
+    if (shift_to - shift_from).days + 1 > RECEPTION_MAX_SHIFT_SPAN_DAYS:
+        shift_to = shift_from + timedelta(days=RECEPTION_MAX_SHIFT_SPAN_DAYS - 1)
+    staff_shift_rows = _staff_shift_rows(shift_from, shift_to)
+ 
+    # ------------------------------------------------------------------
+    # Room bookings (search by name / phone / ID / room / room type)
+    # ------------------------------------------------------------------
     booking_status = request.GET.get('booking_status', '')
-    booking_query = request.GET.get('booking_q', '').strip()
-    
-    bookings_qs = Booking.objects.select_related('room_type', 'conference_room', 'assigned_room').prefetch_related(
-        'room_service_orders__items__menu_item'
-    ).order_by('-created_at')
-    
+    booking_q = request.GET.get('booking_q', '').strip()
+    bookings_qs = Booking.objects.filter(booking_type='room').select_related(
+        'room_type', 'assigned_room'
+    ).prefetch_related('room_service_orders').order_by('-created_at')
     if booking_status:
         bookings_qs = bookings_qs.filter(status=booking_status)
-    if booking_query:
-        bookings_qs = bookings_qs.filter(Q(guest_name__icontains=booking_query) | Q(guest_phone__icontains=booking_query))
-    
-    booking_page_obj = Paginator(bookings_qs, 5).get_page(request.GET.get('booking_page'))
-
-    order_status = request.GET.get('order_status', '')
-    orders_qs = Order.objects.filter(room_booking__isnull=True).prefetch_related('items__menu_item').order_by('-created_at')
-    
-    if order_status:
-        orders_qs = orders_qs.filter(status=order_status)
-    
-    order_page_obj = Paginator(orders_qs, 5).get_page(request.GET.get('order_page'))
-
-    arrivals_today = Booking.objects.filter(check_in=today, status__in=['pending', 'confirmed']).count()
-    departures_today = Booking.objects.filter(check_out=today, status='checked_in').count()
-    pending_orders_count = Order.objects.filter(status='pending').count()
-    
-    revenue_by_method = {
-        method_code: sum((p.amount for p in period_payments if p.method == method_code), Decimal('0'))
-        for method_code, _ in Payment.METHOD_CHOICES
-    }
-    
-    stats = [
-        {'label': 'Arrivals Today', 'value': arrivals_today, 'money': False},
-        {'label': 'Departures Today', 'value': departures_today, 'money': False},
-        {'label': 'Pending Orders', 'value': pending_orders_count, 'money': False},
-        {'label': f"Revenue ({period.title() if period else 'Custom Range'})", 'value': period_revenue, 'money': True},
-    ]
-    
-    payment_stats = [
-        {'label': 'Cash', 'value': revenue_by_method.get('cash', 0)},
-        {'label': 'M-Pesa', 'value': revenue_by_method.get('mpesa', 0)},
-        {'label': 'Swipe', 'value': revenue_by_method.get('swipe', 0)},
-        {'label': 'Equity', 'value': revenue_by_method.get('bank_equity', 0)},
-        {'label': 'Family', 'value': revenue_by_method.get('bank_family', 0)},
-        {'label': 'Co-op', 'value': revenue_by_method.get('bank_coop', 0)},
-    ]
-    
+    if booking_q:
+        bookings_qs = bookings_qs.filter(
+            Q(guest_name__icontains=booking_q) | Q(guest_phone__icontains=booking_q) |
+            Q(guest_id_no__icontains=booking_q) | Q(assigned_room__number__icontains=booking_q) |
+            Q(room_type__name__icontains=booking_q)
+        )
+    booking_page_obj = Paginator(bookings_qs, page_size).get_page(request.GET.get('booking_page'))
+ 
+    # ------------------------------------------------------------------
+    # Conference bookings (same layout as rooms)
+    # ------------------------------------------------------------------
+    conf_status = request.GET.get('conf_status', '')
+    conf_q = request.GET.get('conf_q', '').strip()
+    conf_qs = Booking.objects.filter(booking_type='conference').select_related(
+        'conference_room'
+    ).prefetch_related('room_service_orders').order_by('-created_at')
+    if conf_status:
+        conf_qs = conf_qs.filter(status=conf_status)
+    if conf_q:
+        conf_qs = conf_qs.filter(
+            Q(guest_name__icontains=conf_q) | Q(guest_phone__icontains=conf_q) |
+            Q(guest_id_no__icontains=conf_q) | Q(conference_room__name__icontains=conf_q)
+        )
+    conference_page_obj = Paginator(conf_qs, page_size).get_page(request.GET.get('conf_page'))
+ 
+    # ------------------------------------------------------------------
+    # Website room-service orders (restaurant / bar), filter by status, department, dates
+    # ------------------------------------------------------------------
+    rs_status = request.GET.get('rs_status', '')
+    rs_dept = request.GET.get('rs_dept', '')
+    rs_q = request.GET.get('rs_q', '').strip()
+    rs_from = request.GET.get('rs_from', '').strip()
+    rs_to = request.GET.get('rs_to', '').strip()
+ 
+    rs_qs = Order.objects.filter(room_booking__isnull=False).select_related(
+        'room_booking', 'room_booking__assigned_room'
+    ).prefetch_related('items__menu_item', 'payments').order_by('-created_at')
+    if rs_status:
+        rs_qs = rs_qs.filter(status=rs_status)
+    if rs_q:
+        cond = (Q(customer_name__icontains=rs_q) | Q(customer_phone__icontains=rs_q) |
+                Q(room_booking__assigned_room__number__icontains=rs_q) |
+                Q(room_booking__guest_name__icontains=rs_q))
+        if rs_q.isdigit():
+            cond |= Q(id=int(rs_q))
+        rs_qs = rs_qs.filter(cond)
+    if rs_from:
+        d = _parse_date_input(rs_from, None)
+        if d:
+            rs_qs = rs_qs.filter(created_at__date__gte=d)
+    if rs_to:
+        d = _parse_date_input(rs_to, None)
+        if d:
+            rs_qs = rs_qs.filter(created_at__date__lte=d)
+ 
+    rs_source = rs_qs
+    if rs_dept in ('restaurant', 'bar'):
+        rs_source = [o for o in rs_qs if _room_service_dept(o) == rs_dept]
+    rs_page_obj = Paginator(rs_source, page_size).get_page(request.GET.get('rs_page'))
+    for o in rs_page_obj:
+        o.dept_code = _room_service_dept(o)
+        o.dept_label = 'Restaurant' if o.dept_code == 'restaurant' else 'Bar'
+        o.receipt_url = _safe_reverse('dashboard:order_receipt', o.id)
+ 
+    # guests with room-service orders waiting for reception to confirm (Confirm All chips)
     room_service_groups = []
-    active_bookings = Booking.objects.filter(status='checked_in').select_related('assigned_room')
-    for b in active_bookings:
+    for b in Booking.objects.filter(status='checked_in').select_related('assigned_room'):
         pending = b.room_service_orders.filter(status='pending').prefetch_related('items__menu_item')
         if pending.exists():
             room_service_groups.append({
@@ -203,71 +413,93 @@ def reception_view(request):
                 'pending_orders': pending,
                 'pending_item_count': sum(o.items.count() for o in pending),
             })
-
+ 
+    # ------------------------------------------------------------------
+    # Walk-in / dine-in / takeaway orders (everything that is not room service)
+    # ------------------------------------------------------------------
+    order_status = request.GET.get('order_status', '')
+    order_q = request.GET.get('order_q', '').strip()
+    orders_qs = Order.objects.filter(room_booking__isnull=True).select_related(
+        'table', 'bar_tab'
+    ).prefetch_related('items__menu_item', 'payments').order_by('-created_at')
+    if order_status:
+        orders_qs = orders_qs.filter(status=order_status)
+    if order_q:
+        cond = Q(customer_name__icontains=order_q) | Q(customer_phone__icontains=order_q)
+        if order_q.isdigit():
+            cond |= Q(id=int(order_q))
+        orders_qs = orders_qs.filter(cond)
+    order_page_obj = Paginator(orders_qs, page_size).get_page(request.GET.get('order_page'))
+    for order in order_page_obj:
+        order.dept_code, order.dept_label = _order_department_badge(order)
+        order.receipt_url = _safe_reverse('dashboard:order_receipt', order.id)
+ 
+    # ------------------------------------------------------------------
+    # Lost and found (search by item / room / place, filter by status and date found)
+    # ------------------------------------------------------------------
+    lf_q = request.GET.get('lf_q', '').strip()
+    lf_status = request.GET.get('lf_status', 'unclaimed')
+    lf_from = request.GET.get('lf_from', '').strip()
+    lf_to = request.GET.get('lf_to', '').strip()
+ 
+    lf_qs = LostFoundItem.objects.select_related('room', 'found_by').order_by('-found_at')
+    if lf_status in ('unclaimed', 'claimed', 'disposed'):
+        lf_qs = lf_qs.filter(status=lf_status)
+    if lf_q:
+        lf_qs = lf_qs.filter(
+            Q(description__icontains=lf_q) | Q(room__number__icontains=lf_q) |
+            Q(found_location__icontains=lf_q) | Q(notes__icontains=lf_q) |
+            Q(claimed_by_name__icontains=lf_q)
+        )
+    if lf_from:
+        d = _parse_date_input(lf_from, None)
+        if d:
+            lf_qs = lf_qs.filter(found_at__date__gte=d)
+    if lf_to:
+        d = _parse_date_input(lf_to, None)
+        if d:
+            lf_qs = lf_qs.filter(found_at__date__lte=d)
+    lf_page_obj = Paginator(lf_qs, page_size).get_page(request.GET.get('lf_page'))
+ 
+    # help reception verify who is collecting: guests who held that room around the day it was found
+    for item in lf_page_obj:
+        item.likely_guests = []
+        if item.room_id:
+            found_day = timezone.localtime(item.found_at).date()
+            item.likely_guests = list(Booking.objects.filter(
+                assigned_room_id=item.room_id, status__in=['checked_in', 'checked_out'],
+                check_in__lte=found_day, check_out__gte=found_day - timedelta(days=1),
+            ).order_by('-check_out')[:2])
+ 
     return render(request, 'dashboard/reception.html', {
-        'period': period,
-        'range_from': range_from,
-        'range_to': range_to,
-        'department_stats': department_stats,
-        'booking_page_obj': booking_page_obj,
-        'order_page_obj': order_page_obj,
-        'booking_status': booking_status,
-        'booking_query': booking_query,
-        'order_status': order_status,
-        'stats': stats,
-        'payment_stats': payment_stats,
+        'today': today,
+        # earnings
+        'period': period, 'range_from': range_from, 'range_to': range_to, 'earliest': earliest,
+        'range_limit_days': earnings_range_limit_days(user), 'max_span_days': RECEPTION_MAX_RANGE_DAYS,
+        'dept_cards': dept_cards, 'total_card': total_card,
+        'quick_stats': quick_stats,
+        # shifts
+        'staff_shift_rows': staff_shift_rows,
+        'shift_from': shift_from, 'shift_to': shift_to, 'shift_is_range': shift_from != shift_to,
+        # rooms
+        'booking_page_obj': booking_page_obj, 'booking_status': booking_status, 'booking_q': booking_q,
+        'booking_status_choices': Booking.STATUS_CHOICES,
+        'room_types': RoomType.objects.filter(is_active=True).order_by('name'),
+        # conference
+        'conference_page_obj': conference_page_obj, 'conf_status': conf_status, 'conf_q': conf_q,
+        'conference_rooms': ConferenceRoom.objects.filter(is_active=True).order_by('name'),
+        # room service
+        'rs_page_obj': rs_page_obj, 'rs_status': rs_status, 'rs_dept': rs_dept, 'rs_q': rs_q,
+        'rs_from': rs_from, 'rs_to': rs_to, 'pending_rs_count': pending_rs_count,
         'room_service_groups': room_service_groups,
+        'order_status_choices': Order.STATUS_CHOICES,
+        # walk-in orders
+        'order_page_obj': order_page_obj, 'order_status': order_status, 'order_q': order_q,
+        # lost and found
+        'lf_page_obj': lf_page_obj, 'lf_q': lf_q, 'lf_status': lf_status, 'lf_from': lf_from, 'lf_to': lf_to,
+        'all_rooms': Room.objects.all().order_by('number'),
     })
-
-@staff_module_required('reception')
-def reception_booking_action(request, booking_id, action):
-    if request.method != 'POST':
-        return redirect('dashboard:reception')
-    booking = get_object_or_404(Booking, id=booking_id)
-
-    transitions = {
-        'confirm': ('pending', 'confirmed'),
-        'check-in': ('confirmed', 'checked_in'),
-        'check-out': ('checked_in', 'checked_out'),
-        'cancel': (None, 'cancelled'),
-    }
-    if action not in transitions:
-        messages.error(request, "Unknown action.")
-        return redirect('dashboard:reception')
-
-    required_status, new_status = transitions[action]
-    if action == 'cancel' and booking.status in ('checked_out', 'cancelled'):
-        messages.error(request, "This booking can no longer be cancelled.")
-        return redirect('dashboard:reception')
-    if required_status and booking.status != required_status:
-        messages.error(request, f"Cannot {action.replace('-', ' ')} a booking that is currently '{booking.get_status_display()}'.")
-        return redirect('dashboard:reception')
-
-    if action == 'check-in':
-        if booking.booking_type != 'room':
-            messages.error(request, "Only room bookings need a room assignment.")
-            return redirect('dashboard:reception')
-        available_room = Room.objects.filter(room_type=booking.room_type, status='available').first()
-        if not available_room:
-            messages.error(request, f"No physical rooms of type '{booking.room_type.name}' are currently marked available. Check the Rooms records in admin.")
-            return redirect('dashboard:reception')
-        available_room.status = 'occupied'
-        available_room.save(update_fields=['status'])
-        booking.assigned_room = available_room
-
-    if action == 'check-out':
-        if booking.total_balance_due > 0:
-            messages.error(request, f"Cannot check out {booking.guest_name}, outstanding balance of KSh {booking.total_balance_due:,.0f} (including room service) must be paid first.")
-            return redirect('dashboard:reception')
-        if booking.assigned_room:
-            booking.assigned_room.status = 'cleaning'
-            booking.assigned_room.save(update_fields=['status'])
-
-    booking.status = new_status
-    booking.save()
-    messages.success(request, f"Booking for {booking.guest_name} marked as {booking.get_status_display()}.")
-    return redirect('dashboard:reception')
-
+ 
 @staff_module_required('reception')
 def reception_order_action(request, order_id, action):
     if request.method != 'POST':
@@ -294,6 +526,25 @@ def reception_order_action(request, order_id, action):
     messages.success(request, f"Order #{order.id} marked as {order.get_status_display()}.")
     return redirect('dashboard:reception')
 
+def _booking_form_sections(form):
+    """
+    Groups ManualBookingForm fields into sections by name. Works with whatever fields the
+    form actually has: missing names are skipped, unknown extra fields land in the last section.
+    """
+    layout = [
+        ('Booking', 'fa-bed', ['booking_type', 'room_type', 'conference_room']),
+        ('Guest', 'fa-user', ['guest_name', 'guest_phone', 'guest_id_no']),
+        ('Dates', 'fa-calendar-days', ['check_in', 'check_out']),
+        ('Rate and status', 'fa-tags', ['amount', 'status', 'source']),
+    ]
+    placed, sections = set(), []
+    for title, icon, names in layout:
+        present = [n for n in names if n in form.fields]
+        placed.update(present)
+        sections.append({'title': title, 'icon': icon, 'fields': [form[n] for n in present]})
+    sections[-1]['fields'] += [form[n] for n in form.fields if n not in placed]
+    return [s for s in sections if s['fields']]
+
 @staff_module_required('reception')
 def reception_new_booking(request):
     if request.method == 'POST':
@@ -304,13 +555,41 @@ def reception_new_booking(request):
                 available = get_available_rooms(booking.room_type, booking.check_in, booking.check_out)
                 if available < 1:
                     messages.error(request, "No rooms of that type are available for those dates.")
-                    return render(request, 'dashboard/reception_new_booking.html', {'form': form})
+                    form.add_error(None, "No rooms of that type are available for those dates. Pick other dates or another room type.")
+                    return _render_new_booking(request, form)
             booking.save()
             messages.success(request, f"Booking created for {booking.guest_name}.")
             return redirect('dashboard:reception')
     else:
-        form = ManualBookingForm(initial={'status': 'confirmed'})
-    return render(request, 'dashboard/reception_new_booking.html', {'form': form})
+        # Lets the "Book" link in the availability dropdown arrive with everything pre-filled
+        initial = {'status': 'confirmed'}
+        room_type_id = request.GET.get('room_type_id', '')
+        if room_type_id.isdigit():
+            initial['room_type'] = int(room_type_id)
+            initial['booking_type'] = 'room'
+        for key in ('check_in', 'check_out'):
+            d = _parse_date_input(request.GET.get(key, ''), None)
+            if d:
+                initial[key] = d
+        form = ManualBookingForm(initial=initial)
+    return _render_new_booking(request, form)
+
+def _render_new_booking(request, form):
+    rate_data = {
+        'rooms': {
+            str(rt.id): {'name': rt.name, 'min': rt.price_min, 'max': rt.price_max}
+            for rt in RoomType.objects.filter(is_active=True)
+        },
+        'halls': {
+            str(cr.id): {'name': cr.name, 'min': cr.price_min, 'max': cr.price_max}
+            for cr in ConferenceRoom.objects.filter(is_active=True)
+        },
+    }
+    return render(request, 'dashboard/reception_new_booking.html', {
+        'form': form,
+        'sections': _booking_form_sections(form),
+        'rate_data': rate_data,
+    })
 
 @staff_module_required('reception')
 def reception_settle_stay(request, booking_id):
@@ -401,6 +680,224 @@ def reception_record_payment(request, target_type, target_id):
         'form': form, 'target': target, 'target_type': target_type,
     })
 
+@staff_module_required('reception')
+def reception_booking_action(request, booking_id, action):
+    if request.method != 'POST':
+        return redirect('dashboard:reception')
+    booking = get_object_or_404(Booking, id=booking_id)
+ 
+    transitions = {
+        'confirm': ('pending', 'confirmed'),
+        'check-in': ('confirmed', 'checked_in'),
+        'check-out': ('checked_in', 'checked_out'),
+        'cancel': (None, 'cancelled'),
+    }
+    if action not in transitions:
+        messages.error(request, "Unknown action.")
+        return redirect('dashboard:reception')
+ 
+    required_status, new_status = transitions[action]
+    if action == 'cancel' and booking.status in ('checked_out', 'cancelled'):
+        messages.error(request, "This booking can no longer be cancelled.")
+        return redirect('dashboard:reception')
+    if required_status and booking.status != required_status:
+        messages.error(request, f"Cannot {action.replace('-', ' ')} a booking that is currently '{booking.get_status_display()}'.")
+        return redirect('dashboard:reception')
+ 
+    extra = ''
+ 
+    # Confirm: reserve a physical room for those dates (the room stays 'available' until check-in)
+    if action == 'confirm' and booking.booking_type == 'room':
+        room = _allocate_room_for_booking(booking)
+        if not room:
+            messages.error(request, f"No '{booking.room_type.name}' room is free for {booking.check_in} to {booking.check_out}. Booking left pending.")
+            return redirect('dashboard:reception')
+        booking.assigned_room = room
+        extra = f" Room {room.number} allocated."
+ 
+    if action == 'check-in' and booking.booking_type == 'room':
+        room = booking.assigned_room if (booking.assigned_room_id and booking.assigned_room.status == 'available') else None
+        if room is None:
+            room = _allocate_room_for_booking(booking, only_available=True)
+        if not room:
+            messages.error(request, f"No physical rooms of type '{booking.room_type.name}' are available right now. Check the Rooms page.")
+            return redirect('dashboard:reception')
+        room.status = 'occupied'
+        room.save(update_fields=['status'])
+        booking.assigned_room = room
+        extra = f" Room {room.number}."
+ 
+    if action == 'check-out':
+        if booking.total_balance_due > 0:
+            messages.error(request, f"Cannot check out {booking.guest_name}, outstanding balance of KSh {booking.total_balance_due:,.0f} (including room service) must be paid first.")
+            return redirect('dashboard:reception')
+        if booking.assigned_room:
+            booking.assigned_room.status = 'cleaning'
+            booking.assigned_room.save(update_fields=['status'])
+ 
+    if action == 'cancel' and booking.status != 'checked_in':
+        booking.assigned_room = None  # release the reservation
+ 
+    booking.status = new_status
+    booking.save()
+    messages.success(request, f"Booking for {booking.guest_name} marked as {booking.get_status_display()}.{extra}")
+    return redirect('dashboard:reception')
+ 
+# ------------------------------------------------------------------------------
+# Live customer messages: now JSON, rendered inside reception.html
+# ------------------------------------------------------------------------------
+ 
+@staff_module_required('reception')
+def reception_messages_list(request):
+    conversations = Conversation.objects.order_by('-last_message_at')[:30]
+    data = []
+    for c in conversations:
+        last = c.messages.last()
+        data.append({
+            'id': c.id,
+            'name': c.name or c.email,
+            'email': c.email,
+            'preview': (last.body[:90] if last else ''),
+            'time': timezone.localtime(c.last_message_at).strftime('%b %d, %H:%M'),
+            'unread': c.staff_unread,
+        })
+    return JsonResponse({
+        'conversations': data,
+        'unread_count': Conversation.objects.filter(staff_unread=True).count(),
+    })
+ 
+@staff_module_required('reception')
+def reception_message_thread(request, conversation_id):
+    conversation = get_object_or_404(Conversation, id=conversation_id)
+    if conversation.staff_unread:
+        conversation.staff_unread = False
+        conversation.save(update_fields=['staff_unread'])
+    return JsonResponse({
+        'id': conversation.id,
+        'name': conversation.name or conversation.email,
+        'email': conversation.email,
+        'messages': [
+            {
+                'sender': m.sender,
+                'body': m.body,
+                'time': timezone.localtime(m.created_at).strftime('%b %d, %H:%M'),
+            }
+            for m in conversation.messages.order_by('created_at')
+        ],
+    })
+ 
+# ------------------------------------------------------------------------------
+# Lost and found, handled from reception
+# ------------------------------------------------------------------------------
+ 
+def _lostfound_back():
+    return reverse('dashboard:reception') + '#lostfound'
+ 
+ 
+@staff_module_required('reception')
+def reception_lostfound_add(request):
+    if request.method != 'POST':
+        return redirect(_lostfound_back())
+    description = request.POST.get('description', '').strip()
+    if not description:
+        messages.error(request, "Describe the item before saving it.")
+        return redirect(_lostfound_back())
+ 
+    LostFoundItem.objects.create(
+        description=description,
+        room_id=request.POST.get('room') or None,
+        found_location=request.POST.get('found_location', '').strip(),
+        notes=request.POST.get('notes', '').strip(),
+        found_by=request.user,
+    )
+    messages.success(request, "Item logged in lost and found.")
+    return redirect(_lostfound_back())
+ 
+
+@staff_module_required('reception')
+def reception_lostfound_claim(request, item_id):
+    if request.method != 'POST':
+        return redirect(_lostfound_back())
+    item = get_object_or_404(LostFoundItem, id=item_id, status='unclaimed')
+ 
+    name = request.POST.get('claimed_by_name', '').strip()
+    id_no = request.POST.get('claimant_id', '').strip()
+    phone = request.POST.get('claimant_phone', '').strip()
+    if not name or not id_no:
+        messages.error(request, "Enter the collector's name and ID or passport number to release the item.")
+        return redirect(_lostfound_back())
+ 
+    now = timezone.now()
+    released_by = request.user.get_full_name() or request.user.username
+    audit = (
+        f"Collected by {name}, ID/Passport {id_no}"
+        + (f", phone {phone}" if phone else "")
+        + f". Released by {released_by} on {timezone.localtime(now):%Y-%m-%d %H:%M}."
+    )
+    item.status = 'claimed'
+    item.claimed_by_name = f"{name} (ID {id_no})"[:150]
+    item.claimed_at = now
+    item.notes = (item.notes + "\n" if item.notes else "") + audit
+    item.save(update_fields=['status', 'claimed_by_name', 'claimed_at', 'notes'])
+    messages.success(request, f"'{item.description}' marked as collected by {name}.")
+    return redirect(_lostfound_back())
+ 
+@staff_module_required('reception')
+def reception_message_reply(request, conversation_id):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    conversation = get_object_or_404(Conversation, id=conversation_id)
+    body = request.POST.get('body', '').strip()
+    if not body:
+        return JsonResponse({'error': 'Message cannot be empty.'}, status=400)
+    ChatMessage.objects.create(conversation=conversation, sender='staff', body=body)
+    return JsonResponse({'success': True})
+
+@staff_module_required('reception')
+def reception_check_availability(request):
+    check_in_str = request.GET.get('check_in', '')
+    check_out_str = request.GET.get('check_out', '')
+    try:
+        check_in = datetime.strptime(check_in_str, '%Y-%m-%d').date()
+        check_out = datetime.strptime(check_out_str, '%Y-%m-%d').date()
+    except ValueError:
+        return JsonResponse({'error': 'Pick valid check-in and check-out dates.'}, status=400)
+    if check_out <= check_in:
+        return JsonResponse({'error': 'Check-out must be after check-in.'}, status=400)
+
+    results = []
+    for rt in RoomType.objects.filter(is_active=True):
+        results.append({
+            'id': rt.id, 'name': rt.name,
+            'price_min': str(rt.price_min), 'price_max': str(rt.price_max),
+            'available': get_available_rooms(rt, check_in, check_out),
+        })
+    return JsonResponse({'room_types': results, 'check_in': check_in_str, 'check_out': check_out_str})
+
+@staff_module_required('reception')
+def reception_check_conference_availability(request):
+    check_in_str = request.GET.get('check_in', '')
+    check_out_str = request.GET.get('check_out', '')
+    try:
+        check_in = datetime.strptime(check_in_str, '%Y-%m-%d').date()
+        check_out = datetime.strptime(check_out_str, '%Y-%m-%d').date()
+    except ValueError:
+        return JsonResponse({'error': 'Pick valid dates.'}, status=400)
+    if check_out < check_in:
+        return JsonResponse({'error': "End date can't be before start date."}, status=400)
+
+    results = []
+    for cr in ConferenceRoom.objects.filter(is_active=True):
+        overlapping = Booking.objects.filter(
+            conference_room=cr, status__in=['pending', 'confirmed', 'checked_in'],
+            check_in__lt=check_out, check_out__gt=check_in,
+        ).exists()
+        results.append({
+            'id': cr.id, 'name': cr.name, 'tier': cr.get_tier_display(),
+            'price_min': str(cr.price_min), 'price_max': str(cr.price_max),
+            'capacity': cr.capacity, 'available': not overlapping,
+        })
+    return JsonResponse({'conference_rooms': results, 'check_in': check_in_str, 'check_out': check_out_str})
 ##end of reception views
 
 # ==============================================================================

@@ -35,6 +35,12 @@ ROLE_RANK = {
 }
 DEFAULT_ROLE_RANK = 5
 
+MAX_DAYS_FOR_RESTRICTED_RANGE = 7
+
+def earnings_range_limit_days(user):
+    """None = unlimited (Owner/GM). A number = the max span, in days, everyone else may query."""
+    return None if has_full_access(user) else MAX_DAYS_FOR_RESTRICTED_RANGE
+
 def has_full_access(user):
     if user.is_superuser:
         return True

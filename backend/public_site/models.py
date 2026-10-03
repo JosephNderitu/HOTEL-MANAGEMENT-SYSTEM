@@ -771,6 +771,7 @@ class Conversation(models.Model):
     name = models.CharField(max_length=150, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     last_message_at = models.DateTimeField(auto_now_add=True)
+    staff_unread = models.BooleanField(default=False)
 
     def __str__(self):
         return f"Conversation with {self.email}"
@@ -845,7 +846,23 @@ def notify_guest_on_staff_reply(sender, instance, created, **kwargs):
         )
         instance.notified = True
         instance.save(update_fields=['notified'])
-        
+
+@receiver(post_save, sender=ChatMessage)
+def notify_reception_new_message(sender, instance, created, **kwargs):
+    if not created or instance.sender != 'guest':
+        return
+    conversation = instance.conversation
+    conversation.staff_unread = True
+    conversation.save(update_fields=['staff_unread'])
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)('reception_updates', {
+        'type': 'reception_notification',
+        'payload': {
+            'kind': 'message',
+            'message': f"New message from {conversation.name or conversation.email}",
+        },
+    })
+      
 @receiver(post_save, sender=Booking)
 def notify_reception_new_booking(sender, instance, created, **kwargs):
     if not created or instance.source != 'online':
@@ -858,7 +875,6 @@ def notify_reception_new_booking(sender, instance, created, **kwargs):
             'message': f"New online booking from {instance.guest_name}",
         },
     })
-
 
 @receiver(post_save, sender=Order)
 def notify_reception_new_order(sender, instance, created, **kwargs):

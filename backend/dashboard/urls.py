@@ -19,6 +19,13 @@ urlpatterns = [
     path('reception/payment/<str:target_type>/<int:target_id>/', views.reception_record_payment, name='reception_record_payment'),
     path('reception/settle-stay/<int:booking_id>/', views.reception_settle_stay, name='reception_settle_stay'),
     path('reception/confirm-all-orders/<int:booking_id>/', views.reception_confirm_all_orders, name='reception_confirm_all_orders'),
+    path('reception/messages/', views.reception_messages_list, name='reception_messages_list'),
+    path('reception/messages/<int:conversation_id>/', views.reception_message_thread, name='reception_message_thread'),
+    path('reception/messages/<int:conversation_id>/reply/', views.reception_message_reply, name='reception_message_reply'),
+    path('reception/check-availability/', views.reception_check_availability, name='reception_check_availability'),
+    path('reception/check-conference-availability/', views.reception_check_conference_availability, name='reception_check_conference_availability'),
+    path('reception/lost-found/add/', views.reception_lostfound_add, name='reception_lostfound_add'),
+    path('reception/lost-found/<int:item_id>/claim/', views.reception_lostfound_claim, name='reception_lostfound_claim'),
 
     path('rooms/', views.rooms_view, name='rooms'),
     path('rooms/room/<int:room_id>/', views.room_detail, name='room_detail'),

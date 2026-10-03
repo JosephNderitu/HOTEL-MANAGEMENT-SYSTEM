@@ -1,67 +1,169 @@
 {% extends "dashboard/base_dashboard.html" %}
 {% block dashboard_content %}
 <style>
-    .rcp-stat { border: 1px solid #0B6B3A; border-radius: 14px; padding: 16px 18px; background: #fff; transition: box-shadow 0.2s ease; }
-    .rcp-stat:hover { box-shadow: 0 4px 14px rgba(11,107,58,0.08); }
-    .rcp-table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #6b7280; text-align: left; padding: 10px 14px; border-bottom: 1px solid #e5e7eb; }
-    .rcp-table td { padding: 12px 14px; font-size: 13px; border-bottom: 1px solid #f3f4f6; color: #111827; vertical-align: top; }
-    .rcp-table tbody tr { transition: background 0.15s ease; }
-    .rcp-table tbody tr:hover { background: #FAFAF8; }
-    .rcp-badge { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 9999px; display: inline-block; }
-    .rcp-badge-pending { background: #C9A227; color: #000; }
-    .rcp-badge-confirmed, .rcp-badge-checked_in { background: #0B6B3A; color: #fff; }
-    .rcp-badge-checked_out { background: #6b7280; color: #fff; }
-    .rcp-badge-cancelled { background: #dc2626; color: #fff; }
-    .rcp-action-btn { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 9999px; display: inline-block; margin: 2px 2px 0 0; }
-    .rcp-section-title { display: flex; align-items: center; gap: 8px; }
-    .rcp-section-title i { color: #C9A227; }
+    :root { --rcp-green: #0B6B3A; --rcp-green-dark: #095430; --rcp-gold: #C9A227; }
 
-    .rs-toggle { font-size: 11px; font-weight: 600; color: #0B6B3A; cursor: pointer; }
-    .rs-toggle:hover { text-decoration: underline; }
-    .rs-detail-row { display: none; }
-    .rs-detail-row.open { display: table-row; }
-    .rs-detail-row td { background: #FAFAF8; padding: 14px 18px; }
+    /* ---------- shared ---------- */
+    .rcp-sub { font-size: 11.5px; color: #8a8f8a; font-weight: 400; }
+    .rcp-section-title { display: flex; align-items: center; gap: 8px; font-weight: 700; color: #000; }
+    .rcp-section-title i { color: var(--rcp-gold); }
+    .rcp-sec-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+    .rcp-section { margin-bottom: 44px; scroll-margin-top: 80px; }
+    .rcp-panel { background: #fff; border: 1px solid #eef0ee; border-radius: 16px; padding: 18px; }
+    .rcp-panel h2 { font-size: 13px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+    .rcp-panel h2 i { color: var(--rcp-gold); }
+    .rcp-empty { text-align: center; color: #9ca3af; font-size: 13px; padding: 28px 0; }
+    .rcp-note { font-size: 12px; color: #6b7280; margin-bottom: 10px; }
 
     .rcp-hero { background: linear-gradient(135deg, #0B6B3A, #095430); border-radius: 18px; padding: 22px 26px; color: #fff; margin-bottom: 18px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
     .rcp-hero h1 { font-size: 22px; font-weight: 800; }
     .rcp-live-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 
-    .rcp-period-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
-    .rcp-period-pill { font-size: 12px; font-weight: 700; padding: 6px 14px; border-radius: 9999px; border: 1px solid #e2e5e2; color: #6b7280; background: #fff; }
-    .rcp-period-pill.active { background: #0B6B3A; color: #fff; border-color: #0B6B3A; }
-    .rcp-period-pill:hover:not(.active) { border-color: #0B6B3A; color: #0B6B3A; }
+    .rcp-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px; }
+    .rcp-filter input, .rcp-filter select { border: 1px solid #0B6B3A; border-radius: 8px; padding: 7px 11px; font-size: 13px; background: #fff; }
+    .rcp-filter input[type="date"] { border-color: #d1d5db; font-size: 12px; padding: 6px 9px; }
+    .rcp-btn { font-size: 12.5px; font-weight: 700; background: var(--rcp-green); color: #fff; padding: 7px 18px; border-radius: 9999px; transition: background .15s; }
+    .rcp-btn:hover { background: var(--rcp-green-dark); }
+    .rcp-btn-gold { background: var(--rcp-gold); color: #000; }
+    .rcp-btn-gold:hover { background: #b8931f; }
 
-    .rcp-dept-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-bottom: 14px; }
-    @media (min-width: 768px) { .rcp-dept-grid { grid-template-columns: repeat(4, 1fr); } }
-    .rcp-dept-card { background: #fff; border: 1px solid #eef0ee; border-radius: 16px; padding: 18px; transition: box-shadow 0.15s, transform 0.15s; display: block; }
-    .rcp-dept-card:hover { box-shadow: 0 4px 14px rgba(11,107,58,0.08); transform: translateY(-1px); }
-    .rcp-dept-card .icon-badge { width: 34px; height: 34px; border-radius: 10px; background: #EEF2FF; color: #4338ca; display: flex; align-items: center; justify-content: center; font-size: 14px; margin-bottom: 10px; }
-    .rcp-dept-card .amt { font-size: 22px; font-weight: 800; color: #0B6B3A; }
-    .rcp-dept-card .lbl { font-size: 11px; color: #8a8f8a; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
+    .rcp-pill { font-size: 12px; font-weight: 700; padding: 6px 14px; border-radius: 9999px; border: 1px solid #e2e5e2; color: #6b7280; background: #fff; display: inline-block; }
+    .rcp-pill.active { background: var(--rcp-green); color: #fff; border-color: var(--rcp-green); }
+    .rcp-pill:hover:not(.active) { border-color: var(--rcp-green); color: var(--rcp-green); }
+    .rcp-chip { font-size: 11px; font-weight: 700; padding: 3px 11px; border-radius: 9999px; border: 1px solid #e2e5e2; color: #6b7280; background: #fff; cursor: pointer; }
+    .rcp-chip.active { background: #111827; color: #fff; border-color: #111827; }
+    .rcp-range-chip { font-size: 11px; font-weight: 600; background: #F3F8F5; color: var(--rcp-green); padding: 3px 10px; border-radius: 9999px; }
+    .rcp-count { background: #dc2626; color: #fff; font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 9999px; margin-left: 4px; }
 
-    /* Responsive: tables collapse into stacked cards below 860px, no duplicate markup needed */
+    /* ---------- tables ---------- */
+    .rcp-table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #6b7280; text-align: left; padding: 10px 14px; border-bottom: 1px solid #e5e7eb; background: #FAFAF8; }
+    .rcp-table td { padding: 12px 14px; font-size: 13px; border-bottom: 1px solid #f3f4f6; color: #111827; vertical-align: top; }
+    .rcp-table tbody tr:hover { background: #FAFAF8; }
+    .rcp-badge { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 9999px; display: inline-block; white-space: nowrap; }
+    .rcp-badge-pending, .rcp-badge-unclaimed { background: #C9A227; color: #000; }
+    .rcp-badge-confirmed, .rcp-badge-checked_in, .rcp-badge-claimed { background: #0B6B3A; color: #fff; }
+    .rcp-badge-checked_out, .rcp-badge-disposed { background: #6b7280; color: #fff; }
+    .rcp-badge-cancelled { background: #dc2626; color: #fff; }
+    .rcp-badge-restaurant { background: #FEF3C7; color: #92400E; }
+    .rcp-badge-bar { background: #EDE9FE; color: #5B21B6; }
+    .rcp-action-btn { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 9999px; display: inline-block; margin: 2px 2px 0 0; cursor: pointer; }
+    .rcp-outline { border: 1px solid var(--rcp-green); color: var(--rcp-green); background: #fff; }
+    .rcp-outline:hover { background: var(--rcp-green); color: #fff; }
+    .rcp-danger { border: 1px solid #f87171; color: #dc2626; background: #fff; }
+    .rcp-danger:hover { background: #dc2626; color: #fff; }
+
+    .rcp-pager { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; font-size: 13px; color: #6b7280; }
+    .rcp-pager a, .rcp-pager span.btn-off { padding: 6px 14px; border: 1px solid var(--rcp-green); border-radius: 8px; color: var(--rcp-green); margin-left: 8px; display: inline-block; }
+    .rcp-pager a:hover { background: var(--rcp-green); color: #fff; }
+    .rcp-pager span.btn-off { opacity: .35; }
+
+    /* ---------- earnings ---------- */
+    .earn-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+    @media (min-width: 1100px) { .earn-grid { grid-template-columns: repeat(4, 1fr); } }
+    .earn-card { background: #fff; border: 1px solid var(--rcp-green); border-radius: 16px; padding: 16px 18px; }
+    .earn-card.total { background: var(--rcp-green); color: #fff; }
+    .earn-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .earn-head .icon-badge { width: 34px; height: 34px; border-radius: 10px; background: #F3F8F5; color: var(--rcp-green); display: flex; align-items: center; justify-content: center; font-size: 14px; }
+    .earn-card.total .icon-badge { background: rgba(255,255,255,.15); color: #fff; }
+    .earn-lbl { font-size: 12.5px; font-weight: 700; line-height: 1.2; }
+    .earn-total { font-size: 22px; font-weight: 800; color: var(--rcp-green); margin-bottom: 8px; }
+    .earn-card.total .earn-total { color: #fff; }
+    .earn-methods li { display: flex; justify-content: space-between; font-size: 12.5px; padding: 5px 0; border-top: 1px solid #f1f3f1; }
+    .earn-card.total .earn-methods li { border-color: rgba(255,255,255,.18); }
+    .earn-methods li span { color: #6b7280; }
+    .earn-card.total .earn-methods li span { color: rgba(255,255,255,.75); }
+    .earn-methods li b { font-weight: 700; }
+
+    .rcp-stat { border: 1px solid #eef0ee; border-radius: 14px; padding: 14px 16px; background: #fff; display: flex; align-items: center; gap: 12px; }
+    .rcp-stat i { color: var(--rcp-gold); font-size: 18px; }
+    .rcp-stat .num { font-size: 20px; font-weight: 800; color: var(--rcp-green); line-height: 1; }
+    .rcp-stat .lbl { font-size: 11px; color: #8a8f8a; margin-top: 3px; }
+
+    /* ---------- staff shifts + messages ---------- */
+    .rcp-split-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin: 20px 0 44px; scroll-margin-top: 80px; }
+    @media (min-width: 1024px) { .rcp-split-grid { grid-template-columns: 1.15fr 1fr; } }
+    .shift-scroll, .msg-list { max-height: 300px; overflow-y: auto; }
+    .shift-grid { display: grid; grid-template-columns: 1.5fr 1fr 1fr .9fr .9fr; gap: 8px; align-items: center; }
+    .shift-head { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: #9ca3af; padding: 0 4px 6px 22px; border-bottom: 1px solid #eef0ee; }
+    .shift-row { padding: 8px 4px; border-bottom: 1px solid #f7f8f7; font-size: 12.5px; position: relative; padding-left: 22px; }
+    .shift-dot { width: 9px; height: 9px; border-radius: 9999px; position: absolute; left: 5px; top: 14px; }
+    .shift-dot.on_shift { background: #0B6B3A; } .shift-dot.pending { background: #C9A227; }
+    .shift-dot.scheduled { background: #93c5fd; } .shift-dot.completed { background: #9ca3af; }
+    .shift-dot.absent { background: #dc2626; } .shift-dot.on_leave { background: #3b82f6; }
+    .shift-dot.weekly_off, .shift-dot.not_scheduled { background: #e5e7eb; }
+    .shift-status { font-size: 11px; font-weight: 700; }
+    .shift-status.on_shift { color: #0B6B3A; } .shift-status.pending { color: #a37f12; }
+    .shift-status.absent { color: #dc2626; } .shift-status.on_leave { color: #2563eb; }
+    @media (max-width: 640px) { .shift-grid { grid-template-columns: 1fr 1fr; } .shift-head { display: none; } }
+
+    .msg-grid { display: grid; grid-template-columns: 1.1fr 1.7fr .8fr auto 22px; gap: 10px; align-items: center; }
+    .msg-head { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: #9ca3af; padding: 0 4px 6px; border-bottom: 1px solid #eef0ee; }
+    .msg-row { padding: 9px 4px; border-bottom: 1px solid #f7f8f7; font-size: 12.5px; }
+    .msg-row:hover { background: #fafbfa; }
+    .msg-row.unread .msg-name { font-weight: 800; }
+    .msg-row.unread .msg-preview { color: #111827; }
+    .msg-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .msg-preview { color: #8a8f8a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .msg-time { font-size: 10.5px; color: #9ca3af; white-space: nowrap; }
+    .msg-view { font-size: 11px; font-weight: 700; border: 1px solid var(--rcp-green); color: var(--rcp-green); padding: 3px 12px; border-radius: 9999px; }
+    .msg-view:hover { background: var(--rcp-green); color: #fff; }
+    @media (max-width: 640px) { .msg-grid { grid-template-columns: 1fr auto 22px; } .msg-grid .msg-preview, .msg-grid .msg-time, .msg-head { display: none; } }
+
+    .thread-body { max-height: 340px; overflow-y: auto; padding: 10px 0; }
+    .thread-msg { max-width: 80%; padding: 8px 12px; border-radius: 12px; margin-bottom: 8px; font-size: 13px; white-space: pre-wrap; word-break: break-word; }
+    .thread-msg.guest { background: #f3f4f6; }
+    .thread-msg.staff { background: var(--rcp-green); color: #fff; margin-left: auto; }
+    .thread-time { display: block; font-size: 9.5px; opacity: .6; margin-top: 3px; }
+    .thread-reply-form { display: flex; gap: 8px; margin-top: 10px; }
+    .thread-reply-form input { flex: 1; border: 1px solid #e2e5e2; border-radius: 9999px; padding: 8px 14px; font-size: 13px; }
+    .thread-reply-form button { background: var(--rcp-green); color: #fff; width: 36px; height: 36px; border-radius: 9999px; }
+
+    /* ---------- availability dropdown ---------- */
+    .avail-dropdown { position: relative; display: inline-block; }
+    .avail-panel { display: none; position: absolute; top: 112%; right: 0; z-index: 30; background: #fff; border: 1px solid #eef0ee; border-radius: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.12); padding: 16px; width: 340px; max-width: 88vw; }
+    .avail-panel.open { display: block; }
+    .avail-panel label { font-size: 11px; font-weight: 600; color: #6b7280; display: block; margin-bottom: 3px; }
+    .avail-panel input, .avail-panel select { border: 1px solid #d1d5db; border-radius: 8px; padding: 6px 9px; font-size: 12.5px; width: 100%; }
+    .avail-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid #f7f8f7; font-size: 12.5px; }
+    .avail-ok { color: #0B6B3A; font-weight: 700; } .avail-full { color: #dc2626; font-weight: 700; }
+    .avail-book { color: #fff; background: var(--rcp-green); font-weight: 700; font-size: 11px; padding: 3px 12px; border-radius: 9999px; }
+    .avail-err { color: #dc2626; font-size: 12px; }
+
+    /* ---------- modals ---------- */
+    .rcp-modal { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 60; display: none; align-items: center; justify-content: center; padding: 16px; }
+    .rcp-modal.open { display: flex; }
+    .rcp-modal-box { background: #fff; border-radius: 18px; max-width: 460px; width: 100%; padding: 22px; position: relative; max-height: 90vh; overflow-y: auto; }
+    .rcp-modal-close { position: absolute; top: 12px; right: 14px; color: #9ca3af; }
+    .rcp-field { margin-bottom: 10px; }
+    .rcp-field label { font-size: 11.5px; font-weight: 600; color: #6b7280; display: block; margin-bottom: 3px; }
+    .rcp-field input, .rcp-field select, .rcp-field textarea { border: 1px solid #d1d5db; border-radius: 8px; padding: 8px 11px; font-size: 13px; width: 100%; }
+
+    .lf-owner { font-size: 12px; padding: 4px 0; border-bottom: 1px dashed #e5e7eb; }
+    .lf-owner:last-child { border-bottom: none; }
+
+    /* ---------- responsive tables: collapse into stacked cards ---------- */
     @media (max-width: 860px) {
         .rcp-table thead { display: none; }
         .rcp-table, .rcp-table tbody, .rcp-table tr, .rcp-table td { display: block; width: 100%; }
-        .rcp-table tr:not(.rs-detail-row) { border: 1px solid #e5e7eb; border-radius: 12px; margin-bottom: 12px; padding: 4px 0; }
+        .rcp-table tr { border: 1px solid #e5e7eb; border-radius: 12px; margin-bottom: 12px; padding: 4px 0; }
         .rcp-table td { border-bottom: none; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; text-align: right; }
         .rcp-table td::before { content: attr(data-label); font-weight: 600; color: #6b7280; font-size: 11px; text-transform: uppercase; text-align: left; flex-shrink: 0; }
         .rcp-table td[data-label="Actions"] { flex-wrap: wrap; justify-content: flex-end; }
-        .rs-detail-row td { display: block; text-align: left; }
-        .rs-detail-row td::before { display: none; }
+        .avail-panel { right: auto; left: 0; }
     }
 </style>
 
+<!-- ============================== HERO ============================== -->
 <div class="rcp-hero">
     <div>
         <h1><i class="fa-solid fa-bell-concierge mr-2"></i>Reception</h1>
         <p class="rcp-live-row text-white/70 text-xs">
-            Bookings, orders, and payments
+            Earnings, bookings, orders and guest messages
             <span id="live-dot" class="w-2 h-2 rounded-full bg-white/40"></span>
             <span id="live-label">connecting live updates...</span>
         </p>
     </div>
-    <div class="flex items-center gap-3">
+    <div class="flex items-center gap-3 flex-wrap">
         <button id="refresh-btn" class="hidden bg-white/10 border border-white/25 text-white font-semibold px-5 py-2.5 rounded-full hover:bg-white/20 transition items-center gap-2">
             <i class="fa-solid fa-arrows-rotate"></i>
             <span id="refresh-count">0</span> new, refresh
@@ -73,253 +175,752 @@
 </div>
 
 {% if messages %}{% for message in messages %}
-<div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-5">
+<div class="bg-[#0B6B3A]/10 border border-[#0B6B3A] text-[#0B6B3A] text-sm rounded-lg px-4 py-2.5 mb-4">
     <i class="fa-solid fa-circle-check mr-1"></i>{{ message }}
 </div>
 {% endfor %}{% endif %}
 
 <div id="notif-toast-container" class="fixed top-20 right-6 z-50 flex flex-col gap-2 items-end"></div>
 
-<div class="rcp-period-bar">
-    <span class="text-xs font-semibold text-gray-500 uppercase mr-1">Revenue period:</span>
-    <a href="?period=today" class="rcp-period-pill {% if period == 'today' %}active{% endif %}">Today</a>
-    <a href="?period=week" class="rcp-period-pill {% if period == 'week' %}active{% endif %}">This Week</a>
-    <a href="?period=month" class="rcp-period-pill {% if period == 'month' %}active{% endif %}">This Month</a>
-    <form method="get" class="flex items-center gap-2 ml-2">
-        <input type="date" name="date_from" value="{{ range_from|date:'Y-m-d' }}" class="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs">
-        <span class="text-xs text-gray-400">to</span>
-        <input type="date" name="date_to" value="{{ range_to|date:'Y-m-d' }}" class="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs">
-        <button type="submit" class="text-xs font-bold bg-[#0B6B3A] text-white px-4 py-1.5 rounded-full hover:bg-[#095430] transition">Apply</button>
-    </form>
-</div>
+<!-- ============================== EARNINGS ============================== -->
+<section id="earnings" class="rcp-section" style="margin-bottom: 20px;">
+    <div class="rcp-sec-head">
+        <h2 class="rcp-section-title text-base"><i class="fa-solid fa-coins"></i>Earnings
+            <span class="rcp-range-chip">{% if range_from == range_to %}{{ range_from|date:"D, M d Y" }}{% else %}{{ range_from|date:"M d" }} to {{ range_to|date:"M d, Y" }}{% endif %}</span>
+        </h2>
+    </div>
 
-<div class="rcp-dept-grid">
-    {% for dept in department_stats %}
-    <a href="{{ dept.url }}" class="rcp-dept-card">
-        <div class="icon-badge"><i class="fa-solid {{ dept.icon }}"></i></div>
-        <p class="amt">KSh {{ dept.value|floatformat:0 }}</p>
-        <p class="lbl">{{ dept.label }}</p>
-    </a>
+    <div class="rcp-filter">
+        <a href="?period=today" class="qs-link rcp-pill {% if period == 'today' %}active{% endif %}" data-set="period=today" data-drop="date_from,date_to" data-anchor="earnings">Today</a>
+        <a href="?period=yesterday" class="qs-link rcp-pill {% if period == 'yesterday' %}active{% endif %}" data-set="period=yesterday" data-drop="date_from,date_to" data-anchor="earnings">Yesterday</a>
+        <a href="?period=7days" class="qs-link rcp-pill {% if period == '7days' %}active{% endif %}" data-set="period=7days" data-drop="date_from,date_to" data-anchor="earnings">Last 7 days</a>
+        {% if not range_limit_days %}
+        <a href="?period=30days" class="qs-link rcp-pill {% if period == '30days' %}active{% endif %}" data-set="period=30days" data-drop="date_from,date_to" data-anchor="earnings">Last 30 days</a>
+        {% endif %}
+        <form method="get" class="keep-params flex items-center gap-2 ml-1" data-reset="period" data-anchor="earnings">
+            <input type="date" name="date_from" value="{{ range_from|date:'Y-m-d' }}" max="{{ today|date:'Y-m-d' }}" {% if earliest %}min="{{ earliest|date:'Y-m-d' }}"{% endif %}>
+            <span class="text-xs text-gray-400">to</span>
+            <input type="date" name="date_to" value="{{ range_to|date:'Y-m-d' }}" max="{{ today|date:'Y-m-d' }}" {% if earliest %}min="{{ earliest|date:'Y-m-d' }}"{% endif %}>
+            <button type="submit" class="rcp-btn">Apply</button>
+        </form>
+    </div>
+    <p class="rcp-note">
+        {% if range_limit_days %}Your role can view earnings for the last {{ range_limit_days }} days only.
+        {% else %}Date ranges are limited to {{ max_span_days }} days (one month).{% endif %}
+    </p>
+
+    <div class="earn-grid">
+        {% for card in dept_cards %}
+        <div class="earn-card">
+            <div class="earn-head">
+                <div class="icon-badge"><i class="fa-solid {{ card.icon }}"></i></div>
+                <div><p class="earn-lbl">{{ card.label }}</p>{% if card.sub %}<p class="rcp-sub">{{ card.sub }}</p>{% endif %}</div>
+            </div>
+            <p class="earn-total">KSh {{ card.total|floatformat:"0g" }}</p>
+            <ul class="earn-methods">
+                <li><span>M-Pesa</span><b>KSh {{ card.mpesa|floatformat:"0g" }}</b></li>
+                <li><span>Bank</span><b>KSh {{ card.bank|floatformat:"0g" }}</b></li>
+                <li><span>Swipe</span><b>KSh {{ card.swipe|floatformat:"0g" }}</b></li>
+                <li><span>Cash</span><b>KSh {{ card.cash|floatformat:"0g" }}</b></li>
+            </ul>
+        </div>
+        {% endfor %}
+        <div class="earn-card total">
+            <div class="earn-head">
+                <div class="icon-badge"><i class="fa-solid {{ total_card.icon }}"></i></div>
+                <div><p class="earn-lbl">{{ total_card.label }}</p><p class="rcp-sub" style="color: rgba(255,255,255,.7);">{{ total_card.sub }}</p></div>
+            </div>
+            <p class="earn-total">KSh {{ total_card.total|floatformat:"0g" }}</p>
+            <ul class="earn-methods">
+                <li><span>M-Pesa</span><b>KSh {{ total_card.mpesa|floatformat:"0g" }}</b></li>
+                <li><span>Bank</span><b>KSh {{ total_card.bank|floatformat:"0g" }}</b></li>
+                <li><span>Swipe</span><b>KSh {{ total_card.swipe|floatformat:"0g" }}</b></li>
+                <li><span>Cash</span><b>KSh {{ total_card.cash|floatformat:"0g" }}</b></li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<!-- ============================== QUICK STATS ============================== -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+    {% for s in quick_stats %}
+    <div class="rcp-stat"><i class="fa-solid {{ s.icon }}"></i><div><p class="num">{{ s.value }}</p><p class="lbl">{{ s.label }}</p></div></div>
     {% endfor %}
 </div>
 
-<div class="grid sm:grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-    {% for stat in stats %}
-    <div class="rcp-stat">
-        <p class="text-xs text-gray-500 uppercase mb-1">{{ stat.label }}</p>
-        <p class="text-2xl font-bold text-[#0B6B3A]">{% if stat.money %}KSh {{ stat.value|floatformat:0 }}{% else %}{{ stat.value }}{% endif %}</p>
+<!-- ============================== STAFF SHIFTS + LIVE MESSAGES ============================== -->
+<div class="rcp-split-grid" id="shifts">
+    <div class="rcp-panel">
+        <h2><i class="fa-solid fa-users"></i>Staff Shifts {% if shift_is_range %}<span class="rcp-range-chip">{{ shift_from|date:"M d" }} to {{ shift_to|date:"M d" }}</span>{% else %}<span class="rcp-range-chip">Today</span>{% endif %}</h2>
+        <form method="get" class="keep-params rcp-filter" data-anchor="shifts" style="margin-bottom: 8px;">
+            <input type="date" name="shift_from" value="{{ shift_from|date:'Y-m-d' }}">
+            <span class="text-xs text-gray-400">to</span>
+            <input type="date" name="shift_to" value="{{ shift_to|date:'Y-m-d' }}">
+            <button type="submit" class="rcp-btn" style="padding: 5px 14px;">Show</button>
+            {% if shift_is_range or shift_from != today %}
+            <a href="?" class="qs-link text-xs text-[#0B6B3A] font-semibold" data-drop="shift_from,shift_to" data-anchor="shifts">Back to today</a>
+            {% endif %}
+        </form>
+        <div class="flex gap-1.5 flex-wrap mb-3" id="shift-chips">
+            <button type="button" class="rcp-chip active" data-filter="all">All</button>
+            <button type="button" class="rcp-chip" data-filter="on_shift">On shift</button>
+            <button type="button" class="rcp-chip" data-filter="pending">Pending</button>
+            <button type="button" class="rcp-chip" data-filter="absent">Absent</button>
+            <button type="button" class="rcp-chip" data-filter="on_leave">On leave</button>
+            <button type="button" class="rcp-chip" data-filter="completed">Completed</button>
+        </div>
+        <div class="shift-grid shift-head"><span>Name</span><span>Dept</span><span>Role</span><span>Status</span><span>Shift</span></div>
+        <div class="shift-scroll">
+            {% for row in staff_shift_rows %}
+            <div class="shift-row shift-grid" data-status="{{ row.status }}">
+                <span class="shift-dot {{ row.status }}"></span>
+                <span class="font-semibold truncate">{{ row.profile.user.get_full_name|default:row.profile.user.username }}{% if shift_is_range %}<br><span class="rcp-sub">{{ row.date|date:"D, M d" }}</span>{% endif %}</span>
+                <span>{{ row.profile.get_department_display|default:"-" }}</span>
+                <span>{{ row.profile.position|default:"-" }}</span>
+                <span><span class="shift-status {{ row.status }}">{{ row.label }}</span>{% if row.detail %}<br><span class="rcp-sub">{{ row.detail }}</span>{% endif %}</span>
+                <span class="text-gray-500">{% if row.shift %}{{ row.shift.start_time|time:"H:i" }} to {{ row.shift.end_time|time:"H:i" }}{% else %}-{% endif %}</span>
+            </div>
+            {% empty %}<p class="rcp-empty">No active staff.</p>{% endfor %}
+            <p class="rcp-empty hidden" id="shift-none">No staff match this filter.</p>
+        </div>
     </div>
-    {% endfor %}
-</div>
-<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 mb-8">
-    {% for stat in payment_stats %}
-    <div class="rcp-stat">
-        <p class="text-[11px] text-gray-500 uppercase mb-1">{{ stat.label }}</p>
-        <p class="text-lg font-bold text-black">KSh {{ stat.value|floatformat:0 }}</p>
+
+    <div class="rcp-panel">
+        <h2><i class="fa-solid fa-comments"></i>Live Customer Messages <span id="msg-unread-badge" class="rcp-count hidden">0</span></h2>
+        <p class="rcp-note">Messages from the website contact page. Open one to read the whole thread and reply.</p>
+        <div class="msg-grid msg-head"><span>Customer</span><span>Message</span><span>Time</span><span>View</span><span></span></div>
+        <div class="msg-list" id="msg-list"><p class="rcp-empty">Loading...</p></div>
     </div>
-    {% endfor %}
 </div>
 
-<!-- Bookings -->
-<div class="mb-12">
-    <div class="flex items-center justify-between mb-3 flex-wrap gap-3">
-        <h2 class="font-bold text-black rcp-section-title"><i class="fa-solid fa-bed"></i>Bookings</h2>
+<!-- ============================== ROOMS / BOOKINGS ============================== -->
+<section id="rooms" class="rcp-section">
+    <div class="rcp-sec-head">
+        <h2 class="rcp-section-title text-base"><i class="fa-solid fa-bed"></i>Rooms</h2>
+        <div class="avail-dropdown">
+            <button type="button" onclick="toggleAvail('room')" class="rcp-btn"><i class="fa-solid fa-calendar-check mr-1"></i>Check Availability</button>
+            <div class="avail-panel" id="avail-panel-room">
+                <div class="mb-2"><label>Room type</label>
+                    <select id="avail-type-room">
+                        <option value="">All room types</option>
+                        {% for rt in room_types %}<option value="{{ rt.id }}">{{ rt.name }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="flex gap-2 mb-3">
+                    <div class="flex-1"><label>From</label><input type="date" id="avail-in-room"></div>
+                    <div class="flex-1"><label>To</label><input type="date" id="avail-out-room"></div>
+                </div>
+                <button type="button" onclick="runAvail('room')" class="rcp-btn rcp-btn-gold w-full mb-2">Check</button>
+                <div id="avail-results-room"></div>
+            </div>
+        </div>
     </div>
-    <form method="get" class="flex flex-wrap gap-2 mb-4">
-        <input type="text" name="booking_q" value="{{ booking_query }}" placeholder="Search guest or phone..."
-                class="border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
-        <select name="booking_status" class="border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
-            <option value="">All Statuses</option>
-            {% for val, label in booking_page_obj.paginator.object_list.model.STATUS_CHOICES %}
-            <option value="{{ val }}" {% if booking_status == val %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
+    <p class="rcp-note">Website and phone bookings land here. Confirm a booking to reserve a room for its dates, call the guest from the phone button, and settle all of a guest's bills together under Settle Bills.</p>
+
+    <form method="get" class="keep-params rcp-filter" data-reset="booking_page" data-anchor="rooms">
+        <input type="text" name="booking_q" value="{{ booking_q }}" placeholder="Search name, phone, ID, room..." style="min-width: 240px;">
+        <select name="booking_status">
+            <option value="">All statuses</option>
+            {% for val, label in booking_status_choices %}<option value="{{ val }}" {% if booking_status == val %}selected{% endif %}>{{ label }}</option>{% endfor %}
         </select>
-        <button type="submit" class="text-sm bg-[#0B6B3A] text-white px-5 py-2 rounded-lg hover:bg-[#095430] transition">Filter</button>
+        <button type="submit" class="rcp-btn">Filter</button>
+        {% if booking_q or booking_status %}<a href="?" class="qs-link text-xs text-gray-500 font-semibold" data-drop="booking_q,booking_status,booking_page" data-anchor="rooms">Clear</a>{% endif %}
     </form>
+
     <div class="border border-gray-200 rounded-xl overflow-x-auto">
         <table class="rcp-table w-full">
             <thead><tr>
-                <th>Guest</th><th>Type</th><th>Dates</th><th>Total</th><th>Balance</th><th>Room Service</th><th>Status</th><th>Source</th><th>Actions</th>
+                <th>Customer</th><th>Room type</th><th>Dates</th><th>Phone</th><th>Call</th><th>Balance</th><th>Status</th><th>Actions</th>
             </tr></thead>
             <tbody>
-                {% for booking in booking_page_obj %}
+            {% for booking in booking_page_obj %}
+            {% with due=booking.total_balance_due %}
                 <tr>
-                    <td data-label="Guest" class="font-semibold">{{ booking.guest_name }}<br><span class="text-xs text-gray-400 font-normal">{{ booking.guest_phone }}</span></td>
-                    <td data-label="Type">
-                        {{ booking.room_type|default:booking.conference_room }}
-                        {% if booking.assigned_room %}<br><span class="text-xs text-gray-400">Room {{ booking.assigned_room.number }}</span>{% endif %}
+                    <td data-label="Customer" class="font-semibold">{{ booking.guest_name }}<br><span class="rcp-sub">ID: {{ booking.guest_id_no|default:"-" }}</span></td>
+                    <td data-label="Room type">{{ booking.room_type|default:"-" }}{% if booking.assigned_room %}<br><span class="rcp-sub">Room {{ booking.assigned_room.number }}</span>{% endif %}</td>
+                    <td data-label="Dates">{{ booking.check_in|date:"M d, Y" }} to {{ booking.check_out|date:"M d, Y" }}<br><span class="rcp-sub">{{ booking.nights }} night{{ booking.nights|pluralize }}</span></td>
+                    <td data-label="Phone">{{ booking.guest_phone }}</td>
+                    <td data-label="Call"><a href="tel:{{ booking.guest_phone }}" class="rcp-action-btn bg-[#0B6B3A] text-white"><i class="fa-solid fa-phone mr-1"></i>Call</a></td>
+                    <td data-label="Balance" class="{% if booking.status != 'cancelled' and due > 0 %}text-red-600 font-semibold{% else %}text-[#0B6B3A]{% endif %}">
+                        {% if booking.status == 'cancelled' %}-{% else %}KSh {{ due|floatformat:"0g" }}{% endif %}
+                        {% with rs_count=booking.room_service_orders.all|length %}{% if rs_count %}
+                        <br><a href="?" class="qs-link rcp-sub underline" data-set="rs_q={{ booking.guest_name|urlencode }}" data-drop="rs_page,rs_status,rs_dept,rs_from,rs_to" data-anchor="roomservice">{{ rs_count }} room service order{{ rs_count|pluralize }}</a>
+                        {% endif %}{% endwith %}
                     </td>
-                    <td data-label="Dates">{{ booking.check_in|date:"M d" }} – {{ booking.check_out|date:"M d" }}</td>
-                    <td data-label="Total">KSh {{ booking.total_amount|floatformat:0 }}</td>
-                    <td data-label="Balance" class="{% if booking.total_balance_due > 0 %}text-red-600 font-semibold{% else %}text-[#0B6B3A]{% endif %}">
-                        KSh {{ booking.total_balance_due|floatformat:0 }}
-                    </td>
-                    <td data-label="Room Service">
-                        {% with rs_orders=booking.room_service_orders.all %}
-                        {% if rs_orders %}
-                        <span class="rs-toggle" onclick="toggleRS({{ booking.id }})">{{ rs_orders|length }} order{{ rs_orders|length|pluralize }} <i class="fa-solid fa-chevron-down text-[10px]"></i></span>
-                        {% else %}
-                        <span class="text-gray-300">—</span>
-                        {% endif %}
-                        {% endwith %}
-                    </td>
-                    <td data-label="Status"><span class="rcp-badge rcp-badge-{{ booking.status }}">{{ booking.get_status_display }}</span></td>
-                    <td data-label="Source" class="text-xs text-gray-500">{{ booking.get_source_display }}</td>
+                    <td data-label="Status"><span class="rcp-badge rcp-badge-{{ booking.status }}">{{ booking.get_status_display }}</span><br><span class="rcp-sub">{{ booking.get_source_display }}</span></td>
                     <td data-label="Actions">
                         {% if booking.status == 'pending' %}
-                        <form method="post" action="{% url 'dashboard:reception_booking_action' booking.id 'confirm' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn bg-[#0B6B3A] text-white">Confirm</button></form>
-                        {% endif %}
-                        {% if booking.status == 'confirmed' %}
+                        <form method="post" action="{% url 'dashboard:reception_booking_action' booking.id 'confirm' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn bg-[#0B6B3A] text-white">Confirm Booking</button></form>
+                        {% elif booking.status == 'confirmed' %}
                         <form method="post" action="{% url 'dashboard:reception_booking_action' booking.id 'check-in' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn bg-[#0B6B3A] text-white">Check In</button></form>
-                        {% endif %}
-                        {% if booking.status == 'checked_in' %}
-                            {% if booking.total_balance_due > 0 %}
-                            <span class="rcp-action-btn bg-gray-200 text-gray-400 cursor-not-allowed" title="Balance must be paid before checkout">Check Out</span>
-                            <a href="{% url 'dashboard:reception_settle_stay' booking.id %}" class="rcp-action-btn bg-[#C9A227] text-black">Settle Stay</a>
+                        {% elif booking.status == 'checked_in' %}
+                            {% if due > 0 %}
+                            <span class="rcp-action-btn bg-gray-200 text-gray-400 cursor-not-allowed" title="Settle the balance before checkout">Check Out</span>
                             {% else %}
                             <form method="post" action="{% url 'dashboard:reception_booking_action' booking.id 'check-out' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn bg-[#0B6B3A] text-white">Check Out</button></form>
                             {% endif %}
-                        {% elif booking.balance_due > 0 %}
-                        <a href="{% url 'dashboard:reception_record_payment' 'booking' booking.id %}" class="rcp-action-btn bg-[#C9A227] text-black">Record Payment</a>
                         {% endif %}
 
-                        <a href="{% url 'dashboard:booking_bill' booking.id %}" target="_blank" class="rcp-action-btn border border-[#0B6B3A] text-[#0B6B3A] hover:bg-[#0B6B3A] hover:text-white transition">
-                            <i class="fa-solid fa-print mr-0.5"></i>Print Bill
-                        </a>
+                        {% if booking.status != 'cancelled' and due > 0 %}
+                        <a href="{% url 'dashboard:reception_settle_stay' booking.id %}" class="rcp-action-btn bg-[#C9A227] text-black">Settle Bills</a>
+                        {% endif %}
+                        <a href="{% url 'dashboard:booking_bill' booking.id %}" target="_blank" class="rcp-action-btn rcp-outline"><i class="fa-solid fa-print mr-0.5"></i>Print Bill</a>
 
-                        {% if booking.status in 'pending,confirmed' %}
-                        <form method="post" action="{% url 'dashboard:reception_booking_action' booking.id 'cancel' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn border border-red-400 text-red-500">Cancel</button></form>
+                        {% if booking.status == 'pending' or booking.status == 'confirmed' %}
+                        <form method="post" action="{% url 'dashboard:reception_booking_action' booking.id 'cancel' %}" class="inline" data-confirm="Cancel the booking for {{ booking.guest_name|escapejs }}?">{% csrf_token %}<button class="rcp-action-btn rcp-danger">Cancel</button></form>
                         {% endif %}
                     </td>
                 </tr>
-                {% with rs_orders=booking.room_service_orders.all %}
-                {% if rs_orders %}
-                <tr class="rs-detail-row" id="rs-detail-{{ booking.id }}">
-                    <td colspan="9">
-                        <p class="text-xs font-semibold text-gray-500 uppercase mb-2">Room service history</p>
-                        <ul class="text-sm text-gray-700 space-y-1">
-                            {% for order in rs_orders %}
-                            {% for item in order.items.all %}
-                            <li class="flex justify-between border-b border-gray-100 pb-1">
-                                <span>{{ item.quantity }}x {{ item.menu_item.name }}{% if item.tier == 'vip' %} <span class="text-[10px] text-[#C9A227] font-semibold">VIP</span>{% endif %}</span>
-                                <span class="text-gray-400 text-xs">{{ order.created_at|date:"M d, H:i" }} · <span class="rcp-badge rcp-badge-{{ order.status }}">{{ order.get_status_display }}</span></span>
-                            </li>
-                            {% endfor %}
-                            {% endfor %}
-                        </ul>
-                    </td>
-                </tr>
-                {% endif %}
-                {% endwith %}
-                {% empty %}<tr><td colspan="9" class="text-center text-gray-400 py-6">No bookings found.</td></tr>{% endfor %}
+            {% endwith %}
+            {% empty %}<tr><td colspan="8" class="text-center text-gray-400 py-6">No room bookings found.</td></tr>{% endfor %}
             </tbody>
         </table>
     </div>
-    {% if booking_page_obj.paginator.num_pages > 1 %}
-    <div class="flex justify-between mt-3 text-sm">
-        <span class="text-gray-500">Page {{ booking_page_obj.number }} of {{ booking_page_obj.paginator.num_pages }}</span>
-        <div class="flex gap-2">
-            {% if booking_page_obj.has_previous %}<a href="?booking_page={{ booking_page_obj.previous_page_number }}" class="px-3 py-1.5 border border-[#0B6B3A] rounded-lg text-[#0B6B3A]">Previous</a>{% endif %}
-            {% if booking_page_obj.has_next %}<a href="?booking_page={{ booking_page_obj.next_page_number }}" class="px-3 py-1.5 border border-[#0B6B3A] rounded-lg text-[#0B6B3A]">Next</a>{% endif %}
-        </div>
+    <div class="rcp-pager" data-param="booking_page" data-page="{{ booking_page_obj.number }}" data-pages="{{ booking_page_obj.paginator.num_pages }}" data-anchor="rooms"></div>
+</section>
+
+<!-- ============================== ROOM SERVICE ORDERS (WEBSITE) ============================== -->
+<section id="roomservice" class="rcp-section">
+    <div class="rcp-sec-head">
+        <h2 class="rcp-section-title text-base"><i class="fa-solid fa-bell-concierge"></i>Customer Orders (Room Service)
+            {% if pending_rs_count %}<span class="rcp-count">{{ pending_rs_count }} pending</span>{% endif %}
+        </h2>
+    </div>
+    <p class="rcp-note">Orders guests place from the website. Confirm sends the order straight to the Restaurant or the Bar. Room service is billed to the guest's stay, so clear it with Settle Bills on the booking.</p>
+
+    {% if room_service_groups %}
+    <div class="flex flex-wrap gap-2 mb-4">
+        {% for group in room_service_groups %}
+        <form method="post" action="{% url 'dashboard:reception_confirm_all_orders' group.booking.id %}" class="flex items-center gap-2 border border-[#C9A227] bg-[#FEF9EC] rounded-full pl-4 pr-1.5 py-1">
+            {% csrf_token %}
+            <span class="text-xs"><b>{{ group.booking.guest_name }}</b>, Room {{ group.booking.assigned_room.number }}: {{ group.pending_item_count }} item{{ group.pending_item_count|pluralize }}</span>
+            <button type="submit" class="rcp-action-btn bg-[#0B6B3A] text-white" style="margin: 0;"><i class="fa-solid fa-check-double mr-1"></i>Confirm all</button>
+        </form>
+        {% endfor %}
     </div>
     {% endif %}
-</div>
 
-<!-- Room Service — Pending Confirmation -->
-{% if room_service_groups %}
-<div class="mb-12">
-    <h2 class="font-bold text-black mb-3 rcp-section-title"><i class="fa-solid fa-bell-concierge"></i>Room Service — Needs Confirmation</h2>
-    {% for group in room_service_groups %}
-    <div class="border border-[#C9A227] rounded-xl p-5 mb-4 bg-[#FEF9EC]">
-        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
-            <div>
-                <p class="font-bold text-black">{{ group.booking.guest_name }} — Room {{ group.booking.assigned_room.number }}</p>
-                <p class="text-xs text-gray-500">{{ group.pending_item_count }} item(s) across {{ group.pending_orders|length }} order(s)</p>
-            </div>
-            <form method="post" action="{% url 'dashboard:reception_confirm_all_orders' group.booking.id %}">
-                {% csrf_token %}
-                <button type="submit" class="text-sm font-semibold bg-[#0B6B3A] text-white px-5 py-2 rounded-full hover:bg-[#095430] transition">
-                    <i class="fa-solid fa-check-double mr-1"></i>Confirm All
-                </button>
-            </form>
-        </div>
-        <ul class="text-sm text-gray-700 space-y-1">
-            {% for order in group.pending_orders %}
-                {% for item in order.items.all %}
-                <li class="flex justify-between border-b border-[#C9A227]/20 pb-1">
-                    <span>{{ item.quantity }}x {{ item.menu_item.name }}{% if item.tier == 'vip' %} <span class="text-[10px] text-[#C9A227] font-semibold">VIP</span>{% endif %}</span>
-                    <span class="text-gray-400 text-xs">{{ order.created_at|date:"H:i" }}</span>
-                </li>
-                {% endfor %}
-                {% if order.notes %}<li class="text-xs text-gray-500 italic"><i class="fa-solid fa-note-sticky mr-1"></i>{{ order.notes }}</li>{% endif %}
-            {% endfor %}
-        </ul>
+    <div class="rcp-filter">
+        <a href="?" class="qs-link rcp-pill {% if not rs_status %}active{% endif %}" data-drop="rs_status,rs_page" data-anchor="roomservice">All</a>
+        {% for val, label in order_status_choices %}
+        <a href="?rs_status={{ val }}" class="qs-link rcp-pill {% if rs_status == val %}active{% endif %}" data-set="rs_status={{ val }}" data-drop="rs_page" data-anchor="roomservice">{{ label }}</a>
+        {% endfor %}
     </div>
-    {% endfor %}
-</div>
-{% endif %}
-
-<!-- Orders (walk-in / dine-in only, room service lives under Bookings above) -->
-<div>
-    <h2 class="font-bold text-black mb-3 rcp-section-title"><i class="fa-solid fa-utensils"></i>Walk-in &amp; Dine-in Orders</h2>
-    <form method="get" class="flex flex-wrap gap-2 mb-4">
-        <select name="order_status" class="border border-[#0B6B3A] rounded-lg px-3 py-2 text-sm">
-            <option value="">All Statuses</option>
-            {% for val, label in order_page_obj.paginator.object_list.model.STATUS_CHOICES %}
-            <option value="{{ val }}" {% if order_status == val %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
+    <form method="get" class="keep-params rcp-filter" data-reset="rs_page" data-anchor="roomservice">
+        <input type="text" name="rs_q" value="{{ rs_q }}" placeholder="Search order no, guest, room, phone..." style="min-width: 240px;">
+        <select name="rs_dept">
+            <option value="">Restaurant and Bar</option>
+            <option value="restaurant" {% if rs_dept == 'restaurant' %}selected{% endif %}>Restaurant only</option>
+            <option value="bar" {% if rs_dept == 'bar' %}selected{% endif %}>Bar only</option>
         </select>
-        <button type="submit" class="text-sm bg-[#0B6B3A] text-white px-5 py-2 rounded-lg hover:bg-[#095430] transition">Filter</button>
+        <input type="date" name="rs_from" value="{{ rs_from }}">
+        <span class="text-xs text-gray-400">to</span>
+        <input type="date" name="rs_to" value="{{ rs_to }}">
+        <button type="submit" class="rcp-btn">Filter</button>
+        {% if rs_q or rs_dept or rs_from or rs_to or rs_status %}<a href="?" class="qs-link text-xs text-gray-500 font-semibold" data-drop="rs_q,rs_dept,rs_from,rs_to,rs_status,rs_page" data-anchor="roomservice">Clear</a>{% endif %}
+    </form>
+
+    <div class="border border-gray-200 rounded-xl overflow-x-auto">
+        <table class="rcp-table w-full">
+            <thead><tr><th>Order</th><th>Customer / Room</th><th>Department</th><th>Date / time</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody>
+            {% for order in rs_page_obj %}
+                <tr>
+                    <td data-label="Order" class="font-semibold">#{{ order.id }}<br><span class="rcp-sub">{{ order.items.all|length }} item{{ order.items.all|length|pluralize }} | KSh {{ order.total_amount|floatformat:"0g" }}</span></td>
+                    <td data-label="Customer / Room" class="font-semibold">
+                        {% if order.room_booking.assigned_room %}Room {{ order.room_booking.assigned_room.number }}{% else %}Room not assigned{% endif %}
+                        <br><span class="rcp-sub">{{ order.customer_name }}{% if order.customer_phone %} | {{ order.customer_phone }}{% endif %}</span>
+                    </td>
+                    <td data-label="Department"><span class="rcp-badge rcp-badge-{{ order.dept_code }}">{{ order.dept_label }}</span></td>
+                    <td data-label="Date / time">{{ order.created_at|date:"M d, H:i" }}</td>
+                    <td data-label="Status"><span class="rcp-badge rcp-badge-{{ order.status }}">{{ order.get_status_display }}</span></td>
+                    <td data-label="Actions">
+                        <button type="button" class="rcp-action-btn rcp-outline" onclick="openOrderView({{ order.id }})"><i class="fa-solid fa-eye mr-0.5"></i>View order</button>
+                        {% if order.status == 'pending' %}
+                        <form method="post" action="{% url 'dashboard:reception_order_action' order.id 'confirm' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn bg-[#0B6B3A] text-white">Confirm</button></form>
+                        {% endif %}
+                        {% if order.status == 'pending' or order.status == 'confirmed' %}
+                        <form method="post" action="{% url 'dashboard:reception_order_action' order.id 'cancel' %}" class="inline" data-confirm="Delete order #{{ order.id }}? Stock for confirmed items is restored.">{% csrf_token %}<button class="rcp-action-btn rcp-danger">Delete</button></form>
+                        {% endif %}
+                        {% if order.status == 'confirmed' and order.receipt_url %}
+                        <a href="{{ order.receipt_url }}" target="_blank" class="rcp-action-btn rcp-outline"><i class="fa-solid fa-receipt mr-0.5"></i>Receipt</a>
+                        {% endif %}
+
+                        <div id="order-detail-{{ order.id }}" class="hidden">
+                            <h3 class="font-bold text-base mb-1">Order #{{ order.id }}</h3>
+                            <p class="rcp-sub mb-3">
+                                {{ order.customer_name }}{% if order.room_booking.assigned_room %} | Room {{ order.room_booking.assigned_room.number }}{% endif %}
+                                | {{ order.dept_label }} | {{ order.created_at|date:"M d, H:i" }}
+                            </p>
+                            <table class="w-full text-sm mb-3" style="text-align: left;">
+                                <thead><tr class="text-xs text-gray-400"><th style="padding: 4px 0;">Item</th><th>Prep</th><th style="text-align: right;">Amount</th></tr></thead>
+                                <tbody>
+                                {% for item in order.items.all %}
+                                <tr class="{% if item.is_cancelled %}line-through text-gray-400{% endif %}" style="border-top: 1px solid #f3f4f6;">
+                                    <td style="padding: 6px 0;">{{ item.quantity }}x {{ item.menu_item.name }}{% if item.tier == 'vip' %} (VIP){% endif %}</td>
+                                    <td>{% if item.is_cancelled %}Cancelled{% else %}{{ item.get_prep_status_display }}{% endif %}</td>
+                                    <td style="text-align: right;">KSh {{ item.line_total|floatformat:"0g" }}</td>
+                                </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                            <div class="flex justify-between text-sm font-bold"><span>Total</span><span>KSh {{ order.total_amount|floatformat:"0g" }}</span></div>
+                            <div class="flex justify-between text-xs text-gray-500"><span>Paid</span><span>KSh {{ order.amount_paid|floatformat:"0g" }}</span></div>
+                            <div class="flex justify-between text-xs text-gray-500"><span>Balance</span><span>KSh {{ order.balance_due|floatformat:"0g" }}</span></div>
+                            {% if order.notes %}<p class="text-xs text-gray-500 italic mt-3"><i class="fa-solid fa-note-sticky mr-1"></i>{{ order.notes }}</p>{% endif %}
+                        </div>
+                    </td>
+                </tr>
+            {% empty %}<tr><td colspan="6" class="text-center text-gray-400 py-6">No room service orders found.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="rcp-pager" data-param="rs_page" data-page="{{ rs_page_obj.number }}" data-pages="{{ rs_page_obj.paginator.num_pages }}" data-anchor="roomservice"></div>
+</section>
+
+<!-- ============================== CONFERENCE BOOKINGS ============================== -->
+<section id="conference" class="rcp-section">
+    <div class="rcp-sec-head">
+        <h2 class="rcp-section-title text-base"><i class="fa-solid fa-users"></i>Conference Bookings</h2>
+        <div class="avail-dropdown">
+            <button type="button" onclick="toggleAvail('conf')" class="rcp-btn"><i class="fa-solid fa-calendar-check mr-1"></i>Check Availability</button>
+            <div class="avail-panel" id="avail-panel-conf">
+                <div class="mb-2"><label>Conference room</label>
+                    <select id="avail-type-conf">
+                        <option value="">All conference rooms</option>
+                        {% for cr in conference_rooms %}<option value="{{ cr.id }}">{{ cr.name }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="flex gap-2 mb-3">
+                    <div class="flex-1"><label>From</label><input type="date" id="avail-in-conf"></div>
+                    <div class="flex-1"><label>To</label><input type="date" id="avail-out-conf"></div>
+                </div>
+                <button type="button" onclick="runAvail('conf')" class="rcp-btn rcp-btn-gold w-full mb-2">Check</button>
+                <div id="avail-results-conf"></div>
+            </div>
+        </div>
+    </div>
+
+    <form method="get" class="keep-params rcp-filter" data-reset="conf_page" data-anchor="conference">
+        <input type="text" name="conf_q" value="{{ conf_q }}" placeholder="Search name, phone, ID, hall..." style="min-width: 240px;">
+        <select name="conf_status">
+            <option value="">All statuses</option>
+            {% for val, label in booking_status_choices %}<option value="{{ val }}" {% if conf_status == val %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+        <button type="submit" class="rcp-btn">Filter</button>
+        {% if conf_q or conf_status %}<a href="?" class="qs-link text-xs text-gray-500 font-semibold" data-drop="conf_q,conf_status,conf_page" data-anchor="conference">Clear</a>{% endif %}
+    </form>
+
+    <div class="border border-gray-200 rounded-xl overflow-x-auto">
+        <table class="rcp-table w-full">
+            <thead><tr>
+                <th>Customer</th><th>Conference room</th><th>Dates</th><th>Phone</th><th>Call</th><th>Balance</th><th>Status</th><th>Actions</th>
+            </tr></thead>
+            <tbody>
+            {% for booking in conference_page_obj %}
+            {% with due=booking.total_balance_due %}
+                <tr>
+                    <td data-label="Customer" class="font-semibold">{{ booking.guest_name }}<br><span class="rcp-sub">ID: {{ booking.guest_id_no|default:"-" }}</span></td>
+                    <td data-label="Conference room">{{ booking.conference_room|default:"-" }}</td>
+                    <td data-label="Dates">{{ booking.check_in|date:"M d, Y" }} to {{ booking.check_out|date:"M d, Y" }}</td>
+                    <td data-label="Phone">{{ booking.guest_phone }}</td>
+                    <td data-label="Call"><a href="tel:{{ booking.guest_phone }}" class="rcp-action-btn bg-[#0B6B3A] text-white"><i class="fa-solid fa-phone mr-1"></i>Call</a></td>
+                    <td data-label="Balance" class="{% if booking.status != 'cancelled' and due > 0 %}text-red-600 font-semibold{% else %}text-[#0B6B3A]{% endif %}">
+                        {% if booking.status == 'cancelled' %}-{% else %}KSh {{ due|floatformat:"0g" }}{% endif %}
+                    </td>
+                    <td data-label="Status"><span class="rcp-badge rcp-badge-{{ booking.status }}">{{ booking.get_status_display }}</span><br><span class="rcp-sub">{{ booking.get_source_display }}</span></td>
+                    <td data-label="Actions">
+                        {% if booking.status == 'pending' %}
+                        <form method="post" action="{% url 'dashboard:reception_booking_action' booking.id 'confirm' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn bg-[#0B6B3A] text-white">Confirm Booking</button></form>
+                        {% elif booking.status == 'confirmed' %}
+                        <form method="post" action="{% url 'dashboard:reception_booking_action' booking.id 'check-in' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn bg-[#0B6B3A] text-white">Check In</button></form>
+                        {% elif booking.status == 'checked_in' %}
+                            {% if due > 0 %}
+                            <span class="rcp-action-btn bg-gray-200 text-gray-400 cursor-not-allowed" title="Settle the balance before checkout">Check Out</span>
+                            {% else %}
+                            <form method="post" action="{% url 'dashboard:reception_booking_action' booking.id 'check-out' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn bg-[#0B6B3A] text-white">Check Out</button></form>
+                            {% endif %}
+                        {% endif %}
+
+                        {% if booking.status != 'cancelled' and due > 0 %}
+                        <a href="{% url 'dashboard:reception_settle_stay' booking.id %}" class="rcp-action-btn bg-[#C9A227] text-black">Settle Bills</a>
+                        {% endif %}
+                        <a href="{% url 'dashboard:booking_bill' booking.id %}" target="_blank" class="rcp-action-btn rcp-outline"><i class="fa-solid fa-print mr-0.5"></i>Print Bill</a>
+
+                        {% if booking.status == 'pending' or booking.status == 'confirmed' %}
+                        <form method="post" action="{% url 'dashboard:reception_booking_action' booking.id 'cancel' %}" class="inline" data-confirm="Cancel the booking for {{ booking.guest_name|escapejs }}?">{% csrf_token %}<button class="rcp-action-btn rcp-danger">Cancel</button></form>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endwith %}
+            {% empty %}<tr><td colspan="8" class="text-center text-gray-400 py-6">No conference bookings found.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="rcp-pager" data-param="conf_page" data-page="{{ conference_page_obj.number }}" data-pages="{{ conference_page_obj.paginator.num_pages }}" data-anchor="conference"></div>
+</section>
+
+<!-- ============================== WALK-IN / DINE-IN ORDERS ============================== -->
+<section id="walkin" class="rcp-section">
+    <div class="rcp-sec-head">
+        <h2 class="rcp-section-title text-base"><i class="fa-solid fa-utensils"></i>Walk-in and Dine-in Orders</h2>
+    </div>
+    <form method="get" class="keep-params rcp-filter" data-reset="order_page" data-anchor="walkin">
+        <input type="text" name="order_q" value="{{ order_q }}" placeholder="Search order no, name, phone..." style="min-width: 240px;">
+        <select name="order_status">
+            <option value="">All statuses</option>
+            {% for val, label in order_status_choices %}<option value="{{ val }}" {% if order_status == val %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+        <button type="submit" class="rcp-btn">Filter</button>
+        {% if order_q or order_status %}<a href="?" class="qs-link text-xs text-gray-500 font-semibold" data-drop="order_q,order_status,order_page" data-anchor="walkin">Clear</a>{% endif %}
     </form>
     <div class="border border-gray-200 rounded-xl overflow-x-auto">
         <table class="rcp-table w-full">
-            <thead><tr><th>Customer</th><th>Items</th><th>Total</th><th>Balance</th><th>Status</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Customer</th><th>Where</th><th>Items</th><th>Total</th><th>Balance</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
-                {% for order in order_page_obj %}
+            {% for order in order_page_obj %}
                 <tr>
                     <td data-label="Customer" class="font-semibold">
-                        {{ order.customer_name }}<br>
-                        <span class="text-xs text-gray-400 font-normal">{{ order.customer_phone }}</span>
-                        {% if order.notes %}
-                        <br><span class="text-[11px] text-gray-500 italic font-normal" title="{{ order.notes }}"><i class="fa-solid fa-note-sticky mr-1"></i>{{ order.notes|truncatechars:40 }}</span>
-                        {% endif %}
+                        #{{ order.id }} {{ order.customer_name }}<br><span class="rcp-sub">{{ order.customer_phone }}</span>
+                        {% if order.notes %}<br><span class="text-[11px] text-gray-500 italic font-normal" title="{{ order.notes }}"><i class="fa-solid fa-note-sticky mr-1"></i>{{ order.notes|truncatechars:40 }}</span>{% endif %}
                     </td>
+                    <td data-label="Where"><span class="rcp-badge rcp-badge-{{ order.dept_code }}">{{ order.dept_label }}</span></td>
                     <td data-label="Items">{% for item in order.items.all %}{{ item.quantity }}x {{ item.menu_item.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
-                    <td data-label="Total">KSh {{ order.total_amount|floatformat:0 }}</td>
-                    <td data-label="Balance" class="{% if order.balance_due > 0 %}text-red-600 font-semibold{% else %}text-[#0B6B3A]{% endif %}">KSh {{ order.balance_due|floatformat:0 }}</td>
+                    <td data-label="Total">KSh {{ order.total_amount|floatformat:"0g" }}</td>
+                    <td data-label="Balance" class="{% if order.balance_due > 0 %}text-red-600 font-semibold{% else %}text-[#0B6B3A]{% endif %}">KSh {{ order.balance_due|floatformat:"0g" }}</td>
                     <td data-label="Status"><span class="rcp-badge rcp-badge-{{ order.status }}">{{ order.get_status_display }}</span></td>
                     <td data-label="Actions">
                         {% if order.status == 'pending' %}
                         <form method="post" action="{% url 'dashboard:reception_order_action' order.id 'confirm' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn bg-[#0B6B3A] text-white">Confirm</button></form>
-                        <form method="post" action="{% url 'dashboard:reception_order_action' order.id 'cancel' %}" class="inline">{% csrf_token %}<button class="rcp-action-btn border border-red-400 text-red-500">Cancel</button></form>
+                        <form method="post" action="{% url 'dashboard:reception_order_action' order.id 'cancel' %}" class="inline" data-confirm="Cancel order #{{ order.id }}?">{% csrf_token %}<button class="rcp-action-btn rcp-danger">Cancel</button></form>
                         {% endif %}
-                        {% if order.balance_due > 0 %}
-                        <a href="{% url 'dashboard:reception_record_payment' 'order' order.id %}" class="rcp-action-btn bg-[#C9A227] text-black">Record Payment</a>
+                        {% if order.balance_due > 0 and order.status != 'cancelled' %}
+                        <a href="{% url 'dashboard:reception_record_payment' 'order' order.id %}" class="rcp-action-btn bg-[#C9A227] text-black">Settle Bill</a>
+                        {% endif %}
+                        {% if order.status == 'confirmed' and order.receipt_url %}
+                        <a href="{{ order.receipt_url }}" target="_blank" class="rcp-action-btn rcp-outline"><i class="fa-solid fa-receipt mr-0.5"></i>Receipt</a>
                         {% endif %}
                     </td>
                 </tr>
-                {% empty %}<tr><td colspan="6" class="text-center text-gray-400 py-6">No walk-in orders yet today.</td></tr>{% endfor %}
+            {% empty %}<tr><td colspan="7" class="text-center text-gray-400 py-6">No walk-in orders found.</td></tr>{% endfor %}
             </tbody>
         </table>
     </div>
-    {% if order_page_obj.paginator.num_pages > 1 %}
-    <div class="flex justify-between mt-3 text-sm">
-        <span class="text-gray-500">Page {{ order_page_obj.number }} of {{ order_page_obj.paginator.num_pages }}</span>
-        <div class="flex gap-2">
-            {% if order_page_obj.has_previous %}<a href="?order_page={{ order_page_obj.previous_page_number }}" class="px-3 py-1.5 border border-[#0B6B3A] rounded-lg text-[#0B6B3A]">Previous</a>{% endif %}
-            {% if order_page_obj.has_next %}<a href="?order_page={{ order_page_obj.next_page_number }}" class="px-3 py-1.5 border border-[#0B6B3A] rounded-lg text-[#0B6B3A]">Next</a>{% endif %}
-        </div>
+    <div class="rcp-pager" data-param="order_page" data-page="{{ order_page_obj.number }}" data-pages="{{ order_page_obj.paginator.num_pages }}" data-anchor="walkin"></div>
+</section>
+
+<!-- ============================== LOST AND FOUND ============================== -->
+<section id="lostfound" class="rcp-section">
+    <div class="rcp-sec-head">
+        <h2 class="rcp-section-title text-base"><i class="fa-solid fa-suitcase"></i>Lost and Found</h2>
+        <button type="button" class="rcp-btn rcp-btn-gold" onclick="openModal('lf-add-modal')"><i class="fa-solid fa-plus mr-1"></i>Log found item</button>
     </div>
-    {% endif %}
+    <p class="rcp-note">Belongings guests left behind. Check the likely owner details before handing an item over, then mark it collected with the collector's ID.</p>
+
+    <form method="get" class="keep-params rcp-filter" data-reset="lf_page" data-anchor="lostfound">
+        <input type="text" name="lf_q" value="{{ lf_q }}" placeholder="Search item, room, place..." style="min-width: 220px;">
+        <select name="lf_status">
+            <option value="unclaimed" {% if lf_status == 'unclaimed' %}selected{% endif %}>Unclaimed</option>
+            <option value="claimed" {% if lf_status == 'claimed' %}selected{% endif %}>Collected</option>
+            <option value="disposed" {% if lf_status == 'disposed' %}selected{% endif %}>Disposed</option>
+            <option value="all" {% if lf_status == 'all' %}selected{% endif %}>All</option>
+        </select>
+        <input type="date" name="lf_from" value="{{ lf_from }}">
+        <span class="text-xs text-gray-400">to</span>
+        <input type="date" name="lf_to" value="{{ lf_to }}">
+        <button type="submit" class="rcp-btn">Filter</button>
+        {% if lf_q or lf_from or lf_to or lf_status != 'unclaimed' %}<a href="?" class="qs-link text-xs text-gray-500 font-semibold" data-drop="lf_q,lf_status,lf_from,lf_to,lf_page" data-anchor="lostfound">Clear</a>{% endif %}
+    </form>
+
+    <div class="border border-gray-200 rounded-xl overflow-x-auto">
+        <table class="rcp-table w-full">
+            <thead><tr><th>Item</th><th>Found in</th><th>Date found</th><th>Likely owner (verify)</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody>
+            {% for item in lf_page_obj %}
+                <tr>
+                    <td data-label="Item" class="font-semibold">{{ item.description }}{% if item.notes and item.status == 'unclaimed' %}<br><span class="rcp-sub">{{ item.notes|truncatechars:80 }}</span>{% endif %}</td>
+                    <td data-label="Found in">
+                        {% if item.room %}Room {{ item.room.number }}{% else %}{{ item.found_location|default:"-" }}{% endif %}
+                        {% if item.room and item.found_location %}<br><span class="rcp-sub">{{ item.found_location }}</span>{% endif %}
+                    </td>
+                    <td data-label="Date found">{{ item.found_at|date:"M d, Y H:i" }}<br><span class="rcp-sub">by {{ item.found_by.get_full_name|default:item.found_by.username }}</span></td>
+                    <td data-label="Likely owner (verify)" style="text-align: left;">
+                        {% for g in item.likely_guests %}
+                        <div class="lf-owner"><b>{{ g.guest_name }}</b><br><span class="rcp-sub">{{ g.guest_phone }} | ID {{ g.guest_id_no|default:"-" }} | stayed {{ g.check_in|date:"M d" }} to {{ g.check_out|date:"M d" }}</span></div>
+                        {% empty %}<span class="rcp-sub">{% if item.room %}No stay on record for this room around that date{% else %}No room recorded{% endif %}</span>{% endfor %}
+                    </td>
+                    <td data-label="Status">
+                        <span class="rcp-badge rcp-badge-{{ item.status }}">{{ item.get_status_display }}</span>
+                        {% if item.status == 'claimed' %}<br><span class="rcp-sub">{{ item.claimed_by_name }}<br>{{ item.claimed_at|date:"M d, H:i" }}</span>{% endif %}
+                    </td>
+                    <td data-label="Actions">
+                        {% if item.status == 'unclaimed' %}
+                        <button type="button" class="rcp-action-btn bg-[#0B6B3A] text-white"
+                                data-id="{{ item.id }}" data-item="{{ item.description }}"
+                                data-owners="{% for g in item.likely_guests %}{{ g.guest_name }} ({{ g.guest_phone }}, ID {{ g.guest_id_no|default:'-' }}){% if not forloop.last %}; {% endif %}{% endfor %}"
+                                onclick="openClaim(this)"><i class="fa-solid fa-hand-holding mr-0.5"></i>Collected</button>
+                        {% else %}<span class="rcp-sub">-</span>{% endif %}
+                    </td>
+                </tr>
+            {% empty %}<tr><td colspan="6" class="text-center text-gray-400 py-6">No items match.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="rcp-pager" data-param="lf_page" data-page="{{ lf_page_obj.number }}" data-pages="{{ lf_page_obj.paginator.num_pages }}" data-anchor="lostfound"></div>
+</section>
+
+<!-- ============================== MODALS ============================== -->
+<div id="thread-modal" class="rcp-modal">
+    <div class="rcp-modal-box">
+        <button type="button" class="rcp-modal-close" onclick="closeThread()"><i class="fa-solid fa-xmark"></i></button>
+        <div class="thread-head mb-2">
+            <p class="font-bold" id="thread-name"></p>
+            <p class="text-xs text-gray-400" id="thread-email"></p>
+        </div>
+        <div class="thread-body" id="thread-body"></div>
+        <form id="reply-form" class="thread-reply-form">
+            <input type="text" name="body" placeholder="Type a reply..." required autocomplete="off">
+            <button type="submit" title="Send reply"><i class="fa-solid fa-paper-plane"></i></button>
+        </form>
+    </div>
+</div>
+
+<div id="order-modal" class="rcp-modal">
+    <div class="rcp-modal-box">
+        <button type="button" class="rcp-modal-close" onclick="closeModal('order-modal')"><i class="fa-solid fa-xmark"></i></button>
+        <div id="order-modal-body"></div>
+    </div>
+</div>
+
+<div id="lf-add-modal" class="rcp-modal">
+    <div class="rcp-modal-box">
+        <button type="button" class="rcp-modal-close" onclick="closeModal('lf-add-modal')"><i class="fa-solid fa-xmark"></i></button>
+        <h3 class="font-bold text-base mb-3">Log found item</h3>
+        <form method="post" action="{% url 'dashboard:reception_lostfound_add' %}">
+            {% csrf_token %}
+            <div class="rcp-field"><label>Item description</label><input type="text" name="description" required placeholder="e.g. Black Samsung phone with blue cover"></div>
+            <div class="rcp-field"><label>Room it was found in</label>
+                <select name="room"><option value="">Not in a room</option>{% for r in all_rooms %}<option value="{{ r.id }}">Room {{ r.number }}</option>{% endfor %}</select>
+            </div>
+            <div class="rcp-field"><label>Place found (if not a room)</label><input type="text" name="found_location" placeholder="e.g. Restaurant, garden, reception"></div>
+            <div class="rcp-field"><label>Details to help identify the owner</label><textarea name="notes" rows="2" placeholder="Colour, brand, marks, contents"></textarea></div>
+            <button type="submit" class="rcp-btn w-full">Save item</button>
+        </form>
+    </div>
+</div>
+
+<div id="lf-claim-modal" class="rcp-modal">
+    <div class="rcp-modal-box">
+        <button type="button" class="rcp-modal-close" onclick="closeModal('lf-claim-modal')"><i class="fa-solid fa-xmark"></i></button>
+        <h3 class="font-bold text-base mb-1">Release item</h3>
+        <p class="text-sm font-semibold" id="claim-item"></p>
+        <p class="rcp-sub mb-3" id="claim-owners"></p>
+        <form method="post" id="claim-form">
+            {% csrf_token %}
+            <div class="rcp-field"><label>Collector's full name</label><input type="text" name="claimed_by_name" required></div>
+            <div class="rcp-field"><label>ID or passport number</label><input type="text" name="claimant_id" required></div>
+            <div class="rcp-field"><label>Phone number</label><input type="text" name="claimant_phone"></div>
+            <button type="submit" class="rcp-btn w-full">Mark as collected</button>
+        </form>
+    </div>
 </div>
 
 <script>
-function toggleRS(bookingId) {
-    document.getElementById('rs-detail-' + bookingId).classList.toggle('open');
-}
+(function () {
+    const CSRF = '{{ csrf_token }}';
+    const TODAY = '{{ today|date:"Y-m-d" }}';
+    const LF_CLAIM_URL = "{% url 'dashboard:reception_lostfound_claim' 0 %}";
+    const AVAIL = {
+        room: { url: "{% url 'dashboard:reception_check_availability' %}", key: 'room_types', book: "{% url 'dashboard:reception_new_booking' %}" },
+        conf: { url: "{% url 'dashboard:reception_check_conference_availability' %}", key: 'conference_rooms' },
+    };
 
-document.addEventListener('DOMContentLoaded', function () {
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    /* ---------- url helpers: keep every other filter when one section changes ---------- */
+    function buildUrl(setStr, dropStr, anchor) {
+        const p = new URLSearchParams(location.search);
+        (dropStr || '').split(',').filter(Boolean).forEach(k => p.delete(k));
+        new URLSearchParams(setStr || '').forEach((v, k) => p.set(k, v));
+        const qs = p.toString();
+        return location.pathname + (qs ? '?' + qs : '') + (anchor ? '#' + anchor : '');
+    }
+
+    document.querySelectorAll('a.qs-link').forEach(a => {
+        a.href = buildUrl(a.dataset.set, a.dataset.drop, a.dataset.anchor);
+    });
+
+    document.querySelectorAll('form.keep-params').forEach(f => {
+        f.addEventListener('submit', () => {
+            const have = new Set(Array.from(new FormData(f).keys()));
+            const reset = (f.dataset.reset || '').split(',');
+            new URLSearchParams(location.search).forEach((v, k) => {
+                if (have.has(k) || reset.includes(k)) return;
+                const i = document.createElement('input');
+                i.type = 'hidden'; i.name = k; i.value = v;
+                f.appendChild(i);
+            });
+            if (f.dataset.anchor) f.action = location.pathname + '#' + f.dataset.anchor;
+        });
+    });
+
+    document.querySelectorAll('.rcp-pager').forEach(el => {
+        const page = parseInt(el.dataset.page, 10), pages = parseInt(el.dataset.pages, 10);
+        if (!pages || pages < 2) { el.remove(); return; }
+        const link = (label, target) => {
+            const href = buildUrl(el.dataset.param + '=' + target, '', el.dataset.anchor);
+            return `<a href="${href}">${label}</a>`;
+        };
+        el.innerHTML = `<span>Page ${page} of ${pages}</span><div>` +
+            (page > 1 ? link('Previous', page - 1) : '<span class="btn-off">Previous</span>') +
+            (page < pages ? link('Next', page + 1) : '<span class="btn-off">Next</span>') + '</div>';
+    });
+
+    document.addEventListener('submit', e => {
+        const msg = e.target.dataset && e.target.dataset.confirm;
+        if (msg && !window.confirm(msg)) e.preventDefault();
+    });
+
+    /* ---------- modals ---------- */
+    window.openModal = id => document.getElementById(id).classList.add('open');
+    window.closeModal = id => document.getElementById(id).classList.remove('open');
+    document.querySelectorAll('.rcp-modal').forEach(m => m.addEventListener('click', e => {
+        if (e.target === m) { m.classList.remove('open'); if (m.id === 'thread-modal') currentThread = null; }
+    }));
+
+    window.openOrderView = id => {
+        document.getElementById('order-modal-body').innerHTML = document.getElementById('order-detail-' + id).innerHTML;
+        openModal('order-modal');
+    };
+
+    window.openClaim = btn => {
+        document.getElementById('claim-item').textContent = btn.dataset.item;
+        document.getElementById('claim-owners').textContent = btn.dataset.owners
+            ? 'Likely owner on record: ' + btn.dataset.owners
+            : 'No guest on record for this item. Check the collector carefully.';
+        document.getElementById('claim-form').action = LF_CLAIM_URL.replace('/0/claim/', '/' + btn.dataset.id + '/claim/');
+        openModal('lf-claim-modal');
+    };
+
+    /* ---------- staff shift status chips ---------- */
+    const shiftChips = document.querySelectorAll('#shift-chips .rcp-chip');
+    shiftChips.forEach(chip => chip.addEventListener('click', () => {
+        shiftChips.forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        const f = chip.dataset.filter;
+        let shown = 0;
+        document.querySelectorAll('.shift-row').forEach(r => {
+            const show = f === 'all' || r.dataset.status === f;
+            r.style.display = show ? '' : 'none';
+            if (show) shown++;
+        });
+        document.getElementById('shift-none').classList.toggle('hidden', shown > 0);
+    }));
+
+    /* ---------- availability dropdowns (rooms + conference) ---------- */
+    function addDays(iso, n) { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
+    ['room', 'conf'].forEach(k => {
+        document.getElementById('avail-in-' + k).value = TODAY;
+        document.getElementById('avail-out-' + k).value = addDays(TODAY, 1);
+    });
+
+    window.toggleAvail = kind => document.getElementById('avail-panel-' + kind).classList.toggle('open');
+    document.addEventListener('click', e => {
+        if (!e.target.closest('.avail-dropdown')) document.querySelectorAll('.avail-panel').forEach(p => p.classList.remove('open'));
+    });
+
+    window.runAvail = kind => {
+        const ci = document.getElementById('avail-in-' + kind).value;
+        const co = document.getElementById('avail-out-' + kind).value;
+        const sel = document.getElementById('avail-type-' + kind).value;
+        const box = document.getElementById('avail-results-' + kind);
+        if (!ci || !co) { box.innerHTML = '<p class="avail-err">Pick both dates first.</p>'; return; }
+        box.innerHTML = '<p class="rcp-sub">Checking...</p>';
+        fetch(`${AVAIL[kind].url}?check_in=${ci}&check_out=${co}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) { box.innerHTML = `<p class="avail-err">${esc(data.error)}</p>`; return; }
+                const list = (data[AVAIL[kind].key] || []).filter(x => !sel || String(x.id) === sel);
+                if (!list.length) { box.innerHTML = '<p class="rcp-sub">Nothing to show for this selection.</p>'; return; }
+                box.innerHTML = list.map(x => {
+                    const free = kind === 'room' ? x.available : (x.available ? 1 : 0);
+                    const status = kind === 'room'
+                        ? (free > 0 ? `<span class="avail-ok">${free} free</span>` : '<span class="avail-full">Fully booked</span>')
+                        : (free ? '<span class="avail-ok">Available</span>' : '<span class="avail-full">Booked</span>');
+                    const price = `KSh ${Number(x.price_min).toLocaleString()} to ${Number(x.price_max).toLocaleString()}`;
+                    const book = (kind === 'room' && free > 0)
+                        ? `<a class="avail-book" href="${AVAIL.room.book}?room_type_id=${x.id}&check_in=${data.check_in}&check_out=${data.check_out}">Book</a>` : '';
+                    return `<div class="avail-row"><div><b>${esc(x.name)}</b><br><span class="rcp-sub">${price}</span></div><div class="text-right">${status}<br>${book}</div></div>`;
+                }).join('');
+            })
+            .catch(() => { box.innerHTML = '<p class="avail-err">Could not check availability. Try again.</p>'; });
+    };
+
+    /* ---------- live customer messages (list + thread + reply, all inline) ---------- */
+    let currentThread = null;
+
+    function renderConversations(data) {
+        const box = document.getElementById('msg-list');
+        const badge = document.getElementById('msg-unread-badge');
+        badge.textContent = data.unread_count;
+        badge.classList.toggle('hidden', !data.unread_count);
+        if (!data.conversations.length) { box.innerHTML = '<p class="rcp-empty">No conversations yet.</p>'; return; }
+        box.innerHTML = data.conversations.map(c => `
+            <div class="msg-row msg-grid ${c.unread ? 'unread' : ''}">
+                <span class="msg-name" title="${esc(c.email)}">${esc(c.name)}</span>
+                <span class="msg-preview">${esc(c.preview)}</span>
+                <span class="msg-time">${esc(c.time)}</span>
+                <button type="button" class="msg-view" onclick="openThread(${c.id})">View</button>
+                <i class="fa-solid ${c.unread ? 'fa-envelope text-red-500' : 'fa-envelope-open text-gray-300'}" title="${c.unread ? 'Unread' : 'Read'}"></i>
+            </div>`).join('');
+    }
+
+    function loadMessagesPanel() {
+        fetch('{% url "dashboard:reception_messages_list" %}')
+            .then(r => r.json()).then(renderConversations).catch(() => {});
+    }
+
+    function renderThread(data, keepOpen) {
+        document.getElementById('thread-name').textContent = data.name;
+        document.getElementById('thread-email').textContent = data.email;
+        const body = document.getElementById('thread-body');
+        body.innerHTML = data.messages.map(m =>
+            `<div class="thread-msg ${m.sender === 'staff' ? 'staff' : 'guest'}">${esc(m.body)}<span class="thread-time">${esc(m.time)}</span></div>`
+        ).join('') || '<p class="rcp-empty">No messages yet.</p>';
+        body.scrollTop = body.scrollHeight;
+        if (!keepOpen) openModal('thread-modal');
+    }
+
+    window.openThread = id => {
+        currentThread = id;
+        fetch(`/staff/reception/messages/${id}/`).then(r => r.json()).then(d => { renderThread(d); loadMessagesPanel(); });
+    };
+    window.closeThread = () => { currentThread = null; closeModal('thread-modal'); };
+
+    document.getElementById('reply-form').addEventListener('submit', e => {
+        e.preventDefault();
+        const form = e.target, text = form.body.value.trim();
+        if (!text || !currentThread) return;
+        const id = currentThread;
+        fetch(`/staff/reception/messages/${id}/reply/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: `body=${encodeURIComponent(text)}`,
+        }).then(r => r.json()).then(res => {
+            if (res.success) {
+                form.body.value = '';
+                fetch(`/staff/reception/messages/${id}/`).then(r => r.json()).then(d => renderThread(d, true));
+                loadMessagesPanel();
+            }
+        });
+    });
+
+    loadMessagesPanel();
+    setInterval(loadMessagesPanel, 60000);
+
+    /* ---------- live updates over websocket ---------- */
     const toastContainer = document.getElementById('notif-toast-container');
     const refreshBtn = document.getElementById('refresh-btn');
     const refreshCount = document.getElementById('refresh-count');
@@ -328,32 +929,37 @@ document.addEventListener('DOMContentLoaded', function () {
     let pendingCount = 0;
 
     function showToast(message, kind) {
+        const icon = kind === 'booking' ? 'fa-bed' : kind === 'message' ? 'fa-comment' : 'fa-utensils';
         const toast = document.createElement('div');
-        const iconClass = kind === 'booking' ? 'fa-bed' : 'fa-utensils';
         toast.className = 'bg-white border border-[#0B6B3A] shadow-lg rounded-xl px-4 py-3 flex items-center gap-3 text-sm max-w-xs';
-        toast.innerHTML = `<i class="fa-solid ${iconClass} text-[#0B6B3A]"></i><span class="text-black">${message}</span>`;
+        toast.innerHTML = `<i class="fa-solid ${icon} text-[#0B6B3A]"></i><span class="text-black">${esc(message)}</span>`;
         toastContainer.appendChild(toast);
-        setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.4s'; }, 5000);
+        setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity .4s'; }, 5000);
         setTimeout(() => toast.remove(), 5400);
     }
 
     function connectReceptionSocket() {
-        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        const socket = new WebSocket(`${protocol}://${window.location.host}/ws/reception/`);
-        socket.onopen = () => { liveDot.className = 'w-2 h-2 rounded-full bg-[#0B6B3A]'; liveLabel.textContent = 'live updates on'; };
-        socket.onclose = () => { liveDot.className = 'w-2 h-2 rounded-full bg-gray-300'; liveLabel.textContent = 'reconnecting...'; setTimeout(connectReceptionSocket, 3000); };
+        const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+        const socket = new WebSocket(`${protocol}://${location.host}/ws/reception/`);
+        socket.onopen = () => { liveDot.className = 'w-2 h-2 rounded-full bg-white'; liveLabel.textContent = 'live updates on'; };
+        socket.onclose = () => { liveDot.className = 'w-2 h-2 rounded-full bg-white/40'; liveLabel.textContent = 'reconnecting...'; setTimeout(connectReceptionSocket, 3000); };
         socket.onerror = () => { liveDot.className = 'w-2 h-2 rounded-full bg-red-400'; };
-        socket.onmessage = (e) => {
+        socket.onmessage = e => {
             const data = JSON.parse(e.data);
             showToast(data.message, data.kind);
+            if (data.kind === 'message') {
+                loadMessagesPanel();
+                if (currentThread) fetch(`/staff/reception/messages/${currentThread}/`).then(r => r.json()).then(d => renderThread(d, true));
+                return; // messages refresh in place, no page reload needed
+            }
             pendingCount += 1;
             refreshCount.textContent = pendingCount;
             refreshBtn.classList.remove('hidden');
-            refreshBtn.classList.add('inline-flex');
+            refreshBtn.classList.add('flex');
         };
     }
     connectReceptionSocket();
-    refreshBtn.addEventListener('click', () => window.location.reload());
-});
+    refreshBtn.addEventListener('click', () => location.reload());
+})();
 </script>
 {% endblock %}

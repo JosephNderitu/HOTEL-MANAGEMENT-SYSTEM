@@ -1,22 +1,345 @@
 {% extends "dashboard/base_dashboard.html" %}
 {% block dashboard_content %}
-<div class="max-w-lg mx-auto">
-    <h1 class="text-2xl font-bold text-black mb-1">New Booking</h1>
-    <p class="text-gray-500 text-sm mb-6">For phone or walk-in guests.</p>
-    <form method="post" class="bg-white border border-[#0B6B3A] rounded-2xl p-6 space-y-4">
-        {% csrf_token %}
-        {% if form.non_field_errors %}<p class="text-red-600 text-sm">{{ form.non_field_errors.0 }}</p>{% endif %}
-        {% for field in form %}
+<style>
+    :root { --nb-green: #0B6B3A; --nb-green-dark: #095430; --nb-gold: #C9A227; }
+
+    .nb-hero { background: linear-gradient(135deg, #0B6B3A, #095430); border-radius: 18px; padding: 22px 26px; color: #fff; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+    .nb-hero h1 { font-size: 22px; font-weight: 800; }
+    .nb-hero p { font-size: 12.5px; color: rgba(255,255,255,.72); margin-top: 3px; }
+    .nb-back { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: rgba(255,255,255,.8); margin-bottom: 8px; }
+    .nb-back:hover { color: #fff; }
+
+    .nb-layout { display: grid; grid-template-columns: 1fr; gap: 20px; align-items: start; }
+    @media (min-width: 1024px) { .nb-layout { grid-template-columns: minmax(0, 1fr) 340px; } }
+
+    .nb-card { background: #fff; border: 1px solid #eef0ee; border-radius: 18px; padding: 22px; margin-bottom: 16px; }
+    .nb-card h2 { font-size: 14px; font-weight: 700; color: #000; display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+    .nb-card h2 i { color: var(--nb-gold); }
+    .nb-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+    @media (min-width: 640px) {
+        .nb-grid { grid-template-columns: 1fr 1fr; }
+        .nb-field[data-field="booking_type"], .nb-field[data-field="room_type"], .nb-field[data-field="conference_room"],
+        .nb-field[data-field="guest_name"], .nb-field[data-field="source"] { grid-column: span 2; }
+    }
+
+    .nb-field label { display: block; font-size: 12px; font-weight: 600; color: #4b5563; margin-bottom: 5px; }
+    .nb-field input:not([type="checkbox"]):not([type="radio"]), .nb-field select, .nb-field textarea {
+        width: 100%; border: 1px solid #d1d5db; border-radius: 12px; padding: 11px 14px; font-size: 14px; background: #fff; color: #111827; transition: border-color .15s, box-shadow .15s;
+    }
+    .nb-field input:focus, .nb-field select:focus, .nb-field textarea:focus { outline: none; border-color: var(--nb-green); box-shadow: 0 0 0 3px rgba(11,107,58,.13); }
+    .nb-field.has-error input, .nb-field.has-error select { border-color: #dc2626; }
+    .nb-help { font-size: 11.5px; color: #9ca3af; margin-top: 4px; }
+    .nb-hint { font-size: 12px; color: #6b7280; margin-top: 5px; }
+    .nb-hint:empty { display: none; }
+    .nb-hint.bad { color: #dc2626; font-weight: 600; }
+    .nb-error { font-size: 12px; color: #dc2626; margin-top: 4px; font-weight: 600; }
+    .nb-alert { background: #FEF2F2; border: 1px solid #fca5a5; color: #b91c1c; border-radius: 12px; padding: 12px 16px; font-size: 13px; margin-bottom: 16px; }
+    .nb-alert p + p { margin-top: 4px; }
+
+    .nb-seg { display: flex; background: #f3f4f6; border-radius: 12px; padding: 4px; gap: 4px; }
+    .nb-seg button { flex: 1; font-size: 13px; font-weight: 600; padding: 9px 10px; border-radius: 9px; color: #6b7280; transition: background .15s, color .15s; }
+    .nb-seg button.on { background: var(--nb-green); color: #fff; box-shadow: 0 1px 4px rgba(11,107,58,.3); }
+    .nb-seg button:not(.on):hover { color: var(--nb-green); }
+
+    .nb-chips { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+    .nb-chips button { font-size: 11px; font-weight: 700; padding: 3px 12px; border-radius: 9999px; border: 1px solid var(--nb-green); color: var(--nb-green); background: #fff; }
+    .nb-chips button:hover { background: var(--nb-green); color: #fff; }
+
+    /* ---------- summary ---------- */
+    .nb-summary { background: #fff; border: 1px solid var(--nb-green); border-radius: 18px; padding: 22px; }
+    @media (min-width: 1024px) { .nb-summary { position: sticky; top: 84px; } }
+    .nb-summary h2 { font-size: 14px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+    .nb-summary h2 i { color: var(--nb-gold); }
+    .nb-line { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }
+    .nb-line span:first-child { color: #6b7280; flex-shrink: 0; }
+    .nb-line span:last-child { font-weight: 600; text-align: right; color: #111827; word-break: break-word; }
+    .nb-total { background: #F3F8F5; border-radius: 14px; padding: 14px 16px; margin: 14px 0; }
+    .nb-total p:first-child { font-size: 11.5px; color: #6b7280; }
+    .nb-total p:last-child { font-size: 24px; font-weight: 800; color: var(--nb-green); line-height: 1.2; }
+    .nb-total .sub { font-size: 11.5px; color: #6b7280; margin-top: 2px; font-weight: 400; }
+    .nb-avail { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; padding: 10px 14px; border-radius: 12px; margin-bottom: 14px; background: #f3f4f6; color: #6b7280; }
+    .nb-avail.ok { background: #ECFDF3; color: #0B6B3A; }
+    .nb-avail.full { background: #FEF2F2; color: #b91c1c; }
+    .nb-submit { width: 100%; background: var(--nb-green); color: #fff; font-weight: 700; padding: 13px; border-radius: 9999px; transition: background .15s; }
+    .nb-submit:hover { background: var(--nb-green-dark); }
+    .nb-submit:disabled { opacity: .6; cursor: wait; }
+    .nb-cancel { display: block; text-align: center; margin-top: 10px; font-size: 13px; font-weight: 600; color: #6b7280; padding: 10px; border: 2px solid #e5e7eb; border-radius: 9999px; }
+    .nb-cancel:hover { background: #f9fafb; }
+</style>
+
+<div class="max-w-5xl mx-auto">
+    <div class="nb-hero">
         <div>
-            <label class="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">{{ field.label }}</label>
-            {{ field }}
-            {% if field.errors %}<p class="text-red-600 text-xs mt-1">{{ field.errors.0 }}</p>{% endif %}
+            <a href="{% url 'dashboard:reception' %}" class="nb-back"><i class="fa-solid fa-arrow-left"></i>Back to reception</a>
+            <h1>New Booking</h1>
+            <p>For phone and walk-in guests. Online bookings arrive on their own.</p>
         </div>
-        {% endfor %}
-        <div class="flex gap-3 pt-2">
-            <button type="submit" class="flex-1 bg-[#0B6B3A] text-white font-semibold py-3 rounded-full hover:bg-[#095430] transition">Create Booking</button>
-            <a href="{% url 'dashboard:reception' %}" class="flex-1 text-center border-2 border-gray-300 text-gray-600 font-semibold py-3 rounded-full hover:bg-gray-50 transition">Cancel</a>
+        <i class="fa-solid fa-calendar-plus text-4xl text-white/25"></i>
+    </div>
+
+    <form method="post" id="nb-form" class="nb-layout" novalidate>
+        {% csrf_token %}
+
+        <div>
+            {% if form.non_field_errors %}
+            <div class="nb-alert">{% for e in form.non_field_errors %}<p><i class="fa-solid fa-circle-exclamation mr-1.5"></i>{{ e }}</p>{% endfor %}</div>
+            {% endif %}
+
+            {% for section in sections %}
+            <section class="nb-card">
+                <h2><i class="fa-solid {{ section.icon }}"></i>{{ section.title }}</h2>
+                <div class="nb-grid">
+                    {% for field in section.fields %}
+                    {% if field.is_hidden %}{{ field }}{% else %}
+                    <div class="nb-field {% if field.errors %}has-error{% endif %}" data-field="{{ field.name }}">
+                        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                        {{ field }}
+                        {% if field.help_text %}<p class="nb-help">{{ field.help_text }}</p>{% endif %}
+                        <p class="nb-hint" data-hint-for="{{ field.name }}"></p>
+                        {% for e in field.errors %}<p class="nb-error">{{ e }}</p>{% endfor %}
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+            </section>
+            {% endfor %}
         </div>
+
+        <aside class="nb-summary">
+            <h2><i class="fa-solid fa-receipt"></i>Booking summary</h2>
+
+            <div class="nb-line"><span>Type</span><span id="sum-type">-</span></div>
+            <div class="nb-line"><span id="sum-item-label">Room type</span><span id="sum-item">-</span></div>
+            <div class="nb-line"><span>Guest</span><span id="sum-guest">-</span></div>
+            <div class="nb-line"><span>Phone</span><span id="sum-phone">-</span></div>
+            <div class="nb-line"><span>Dates</span><span id="sum-dates">-</span></div>
+            <div class="nb-line"><span id="sum-rate-label">Rate</span><span id="sum-rate">-</span></div>
+
+            <div class="nb-total">
+                <p>Total to pay</p>
+                <p id="sum-total">KSh 0</p>
+                <p class="sub" id="sum-total-sub"></p>
+            </div>
+
+            <div class="nb-avail" id="nb-avail"><i class="fa-solid fa-circle-info"></i><span>Pick dates to check availability</span></div>
+
+            <button type="submit" class="nb-submit" id="nb-submit"><i class="fa-solid fa-check mr-1.5"></i>Create booking</button>
+            <a href="{% url 'dashboard:reception' %}" class="nb-cancel">Cancel</a>
+        </aside>
     </form>
 </div>
+
+{{ rate_data|json_script:"nb-data" }}
+
+<script>
+(function () {
+    const DATA = JSON.parse(document.getElementById('nb-data').textContent);
+    const TODAY = '{% now "Y-m-d" %}';
+    const ROOM_URL = "{% url 'dashboard:reception_check_availability' %}";
+    const HALL_URL = "{% url 'dashboard:reception_check_conference_availability' %}";
+
+    const form = document.getElementById('nb-form');
+    const $ = n => form.querySelector('[name="' + n + '"]');
+    const wrap = n => form.querySelector('.nb-field[data-field="' + n + '"]');
+    const hint = n => form.querySelector('[data-hint-for="' + n + '"]');
+    const out = id => document.getElementById(id);
+    const money = n => 'KSh ' + Math.round(Number(n) || 0).toLocaleString();
+    const addDays = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+    const fmtDate = iso => new Date(iso + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+
+    const typeSel = $('booking_type'), roomSel = $('room_type'), hallSel = $('conference_room');
+    const ci = $('check_in'), co = $('check_out'), amount = $('amount');
+    const nameIn = $('guest_name'), phoneIn = $('guest_phone');
+
+    /* ---------- progressive enhancement ---------- */
+    [ci, co].forEach(i => { if (i && i.type !== 'date') i.type = 'date'; });
+    if (phoneIn) phoneIn.setAttribute('inputmode', 'tel');
+    if (ci) ci.min = TODAY;
+    if (ci && !ci.value) ci.value = TODAY;
+    if (co && !co.value) co.value = addDays(ci ? ci.value : TODAY, 1);
+    if (typeSel && !typeSel.value) typeSel.value = 'room';
+
+    function segment(name) {
+        const sel = $(name);
+        if (!sel || sel.tagName !== 'SELECT') return;
+        const box = document.createElement('div');
+        box.className = 'nb-seg';
+        const sync = () => box.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === sel.value));
+        Array.from(sel.options).forEach(o => {
+            if (!o.value) return;
+            const b = document.createElement('button');
+            b.type = 'button'; b.textContent = o.text; b.dataset.v = o.value;
+            b.addEventListener('click', () => { sel.value = o.value; sel.dispatchEvent(new Event('change', { bubbles: true })); sync(); });
+            box.appendChild(b);
+        });
+        sel.style.display = 'none';
+        sel.after(box);
+        sel.addEventListener('change', sync);
+        sync();
+    }
+    segment('booking_type');
+    segment('source');
+
+    /* ---------- state ---------- */
+    const isConf = () => typeSel && typeSel.value === 'conference';
+    const current = () => {
+        const sel = isConf() ? hallSel : roomSel;
+        return sel && sel.value ? (isConf() ? DATA.halls : DATA.rooms)[sel.value] : null;
+    };
+    const nights = () => (ci && co && ci.value && co.value) ? Math.round((new Date(co.value) - new Date(ci.value)) / 86400000) : 0;
+    let lastKey = null;
+
+    function setHint(name, text, bad) {
+        const h = hint(name);
+        if (!h) return;
+        h.textContent = text || '';
+        h.classList.toggle('bad', !!bad);
+    }
+
+    function renderRateChips(sel) {
+        const h = hint('amount');
+        if (!h) return;
+        h.innerHTML = '';
+        if (!sel) return;
+        const text = document.createElement('span');
+        text.textContent = 'Allowed ' + (isConf() ? 'price' : 'rate') + ': ' + money(sel.min) + ' to ' + money(sel.max);
+        h.appendChild(text);
+        const chips = document.createElement('div');
+        chips.className = 'nb-chips';
+        [['Use minimum', sel.min], ['Use maximum', sel.max]].forEach(([label, v]) => {
+            const b = document.createElement('button');
+            b.type = 'button'; b.textContent = label;
+            b.addEventListener('click', () => { amount.value = Math.round(Number(v)); update(); });
+            chips.appendChild(b);
+        });
+        h.appendChild(chips);
+    }
+
+    /* ---------- main refresh ---------- */
+    function update() {
+        const conf = isConf();
+        const sel = current();
+
+        // show the right picker for the booking type
+        const showRoom = !conf, showHall = conf;
+        if (wrap('room_type')) wrap('room_type').style.display = showRoom ? '' : 'none';
+        if (wrap('conference_room')) wrap('conference_room').style.display = showHall ? '' : 'none';
+        const amountLabel = wrap('amount') && wrap('amount').querySelector('label');
+        if (amountLabel) amountLabel.textContent = conf ? 'Total price (KSh)' : 'Rate per night (KSh)';
+        out('sum-item-label').textContent = conf ? 'Conference room' : 'Room type';
+        out('sum-rate-label').textContent = conf ? 'Price' : 'Rate per night';
+
+        // when the room or hall changes, drop the rate to its minimum unless the current rate already fits
+        const key = (conf ? 'h' : 'r') + ':' + (sel ? (conf ? hallSel.value : roomSel.value) : '');
+        if (amount && sel && key !== lastKey) {
+            const v = Number(amount.value);
+            if (!v || v < Number(sel.min) || v > Number(sel.max)) amount.value = Math.round(Number(sel.min));
+        }
+        lastKey = key;
+        renderRateChips(sel);
+
+        // dates
+        if (co && ci && ci.value) {
+            co.min = conf ? ci.value : addDays(ci.value, 1);
+            if (co.value && co.value < co.min) co.value = co.min;
+        }
+        const n = nights();
+        const dateBad = !conf && ci && co && ci.value && co.value && n < 1;
+        setHint('check_out', dateBad ? 'Check-out must be after check-in.' : '', true);
+
+        // rate outside the allowed range
+        const rate = amount ? Number(amount.value) : 0;
+        const rateBad = sel && amount && amount.value !== '' && (rate < Number(sel.min) || rate > Number(sel.max));
+        if (rateBad) {
+            const h = hint('amount');
+            const warn = document.createElement('p');
+            warn.className = 'nb-error';
+            warn.textContent = 'Outside the allowed range for this selection.';
+            h.appendChild(warn);
+        }
+
+        // summary
+        out('sum-type').textContent = conf ? 'Conference' : 'Room';
+        out('sum-item').textContent = sel ? sel.name : '-';
+        out('sum-guest').textContent = (nameIn && nameIn.value.trim()) || '-';
+        out('sum-phone').textContent = (phoneIn && phoneIn.value.trim()) || '-';
+        if (ci && co && ci.value && co.value) {
+            out('sum-dates').textContent = fmtDate(ci.value) + ' to ' + fmtDate(co.value);
+        } else out('sum-dates').textContent = '-';
+        out('sum-rate').textContent = rate ? money(rate) : '-';
+
+        let total = 0, sub = '';
+        if (conf) {
+            total = rate;
+            sub = n >= 0 && ci && co && ci.value && co.value ? (n + 1) + ' day' + (n + 1 === 1 ? '' : 's') : '';
+        } else if (n > 0) {
+            total = rate * n;
+            sub = n + ' night' + (n === 1 ? '' : 's') + ' at ' + money(rate);
+        }
+        out('sum-total').textContent = money(total);
+        out('sum-total-sub').textContent = sub;
+
+        scheduleAvailability();
+    }
+
+    /* ---------- live availability ---------- */
+    let timer = null, reqId = 0;
+    function setAvail(cls, icon, text) {
+        const box = out('nb-avail');
+        box.className = 'nb-avail ' + cls;
+        box.innerHTML = '<i class="fa-solid ' + icon + '"></i><span></span>';
+        box.querySelector('span').textContent = text;
+    }
+
+    function scheduleAvailability() {
+        clearTimeout(timer);
+        timer = setTimeout(checkAvailability, 350);
+    }
+
+    function checkAvailability() {
+        const conf = isConf(), sel = current();
+        if (!sel || !ci || !co || !ci.value || !co.value) { setAvail('', 'fa-circle-info', 'Pick a ' + (conf ? 'conference room' : 'room type') + ' and dates to check availability'); return; }
+        if (!conf && nights() < 1) { setAvail('', 'fa-circle-info', 'Check-out must be after check-in'); return; }
+        const id = ++reqId;
+        const selId = conf ? hallSel.value : roomSel.value;
+        setAvail('', 'fa-spinner fa-spin', 'Checking availability...');
+        fetch((conf ? HALL_URL : ROOM_URL) + '?check_in=' + ci.value + '&check_out=' + co.value)
+            .then(r => r.json())
+            .then(data => {
+                if (id !== reqId) return;
+                if (data.error) { setAvail('full', 'fa-circle-exclamation', data.error); return; }
+                const list = data[conf ? 'conference_rooms' : 'room_types'] || [];
+                const match = list.find(x => String(x.id) === String(selId));
+                if (!match) { setAvail('', 'fa-circle-info', 'No availability data for this selection'); return; }
+                if (conf) {
+                    match.available ? setAvail('ok', 'fa-circle-check', 'Available for these dates') : setAvail('full', 'fa-circle-xmark', 'Already booked for these dates');
+                } else if (match.available > 0) {
+                    setAvail('ok', 'fa-circle-check', match.available + ' room' + (match.available === 1 ? '' : 's') + ' free for these dates');
+                } else {
+                    setAvail('full', 'fa-circle-xmark', 'Fully booked for these dates');
+                }
+            })
+            .catch(() => { if (id === reqId) setAvail('', 'fa-circle-info', 'Could not check availability'); });
+    }
+
+    /* ---------- wiring ---------- */
+    [typeSel, roomSel, hallSel, ci, co, amount, nameIn, phoneIn].forEach(el => {
+        if (!el) return;
+        el.addEventListener('input', update);
+        el.addEventListener('change', update);
+    });
+
+    form.addEventListener('submit', () => {
+        const b = out('nb-submit');
+        b.disabled = true;
+        b.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i>Saving...';
+    });
+
+    // bring the first server error into view
+    const firstErr = form.querySelector('.has-error, .nb-alert');
+    if (firstErr) firstErr.scrollIntoView({ block: 'center', behavior: 'smooth' });
+
+    update();
+})();
+</script>
 {% endblock %}
