@@ -73,7 +73,6 @@ def _local_day_bounds(date_from, date_to):
         end = timezone.make_aware(end, tz)
     return start, end
 
-
 @login_required
 def dashboard_home(request):
     context = {
@@ -89,10 +88,67 @@ def dashboard_home(request):
 def reception_view(request):
     today = timezone.localdate()
 
+    # ---------- Hero stats: quick pills OR an explicit calendar date range ----------
+    period = request.GET.get('period', 'today')
+    raw_date_from = request.GET.get('date_from', '').strip()
+    raw_date_to = request.GET.get('date_to', '').strip()
+    
+    if raw_date_from and raw_date_to:
+        range_from = _parse_date_input(raw_date_from, today)
+        range_to = _parse_date_input(raw_date_to, today)
+        if range_from > range_to:
+            range_from, range_to = range_to, range_from
+        period = ''  # explicit range overrides the quick pills
+    elif period == 'week':
+        range_from, range_to = today - timedelta(days=today.weekday()), today
+    elif period == 'month':
+        range_from, range_to = today.replace(day=1), today
+    else:
+        period = 'today'
+        range_from, range_to = today, today
+
+    range_start, range_end = _local_day_bounds(range_from, range_to)
+    
+    period_payments = list(Payment.objects.filter(
+        created_at__gte=range_start, created_at__lt=range_end
+    ).select_related('booking', 'order', 'order__table', 'order__bar_tab', 'order__room_booking')
+     .prefetch_related('order__items__menu_item'))
+    
+    period_revenue = sum((p.amount for p in period_payments), Decimal('0'))
+
+    rooms_revenue = conference_revenue = restaurant_revenue = bar_revenue = Decimal('0')
+    for p in period_payments:
+        if p.booking_id:
+            if p.booking.booking_type == 'conference':
+                conference_revenue += p.amount
+            else:
+                rooms_revenue += p.amount
+        elif p.order_id:
+            order = p.order
+            if order.bar_tab_id:
+                bar_revenue += p.amount
+            elif order.table_id:
+                restaurant_revenue += p.amount
+            elif order.room_booking_id:
+                # Orders are split by department at creation, so each room-service
+                # order is purely kitchen or purely bar — has_kitchen_items tells us which.
+                if order.has_kitchen_items:
+                    restaurant_revenue += p.amount
+                else:
+                    bar_revenue += p.amount
+            else:
+                restaurant_revenue += p.amount  # takeaway / conference-catering / event orders
+
+    department_stats = [
+        {'label': 'Rooms', 'value': rooms_revenue, 'icon': 'fa-bed', 'url': reverse('dashboard:rooms')},
+        {'label': 'Restaurant', 'value': restaurant_revenue, 'icon': 'fa-utensils', 'url': reverse('dashboard:restaurant_kitchen')},
+        {'label': 'Bar', 'value': bar_revenue, 'icon': 'fa-martini-glass-citrus', 'url': reverse('dashboard:bar')},
+        {'label': 'Conference', 'value': conference_revenue, 'icon': 'fa-users', 'url': '#'},
+    ]
+
     booking_status = request.GET.get('booking_status', '')
     booking_query = request.GET.get('booking_q', '').strip()
     
-    # 1. Added prefetch_related for room_service_orders__items__menu_item and assigned_room
     bookings_qs = Booking.objects.select_related('room_type', 'conference_room', 'assigned_room').prefetch_related(
         'room_service_orders__items__menu_item'
     ).order_by('-created_at')
@@ -101,34 +157,31 @@ def reception_view(request):
         bookings_qs = bookings_qs.filter(status=booking_status)
     if booking_query:
         bookings_qs = bookings_qs.filter(Q(guest_name__icontains=booking_query) | Q(guest_phone__icontains=booking_query))
+    
     booking_page_obj = Paginator(bookings_qs, 5).get_page(request.GET.get('booking_page'))
 
     order_status = request.GET.get('order_status', '')
-    
-    # 2. Added room_booking__isnull=True to exclude room-service orders
     orders_qs = Order.objects.filter(room_booking__isnull=True).prefetch_related('items__menu_item').order_by('-created_at')
     
     if order_status:
         orders_qs = orders_qs.filter(status=order_status)
+    
     order_page_obj = Paginator(orders_qs, 5).get_page(request.GET.get('order_page'))
 
     arrivals_today = Booking.objects.filter(check_in=today, status__in=['pending', 'confirmed']).count()
     departures_today = Booking.objects.filter(check_out=today, status='checked_in').count()
     pending_orders_count = Order.objects.filter(status='pending').count()
-    today_payments = Payment.objects.filter(created_at__date=today)
-    today_revenue = today_payments.aggregate(total=Sum('amount'))['total'] or 0
     
     revenue_by_method = {
-        method_code: today_payments.filter(method=method_code).aggregate(total=Sum('amount'))['total'] or 0
+        method_code: sum((p.amount for p in period_payments if p.method == method_code), Decimal('0'))
         for method_code, _ in Payment.METHOD_CHOICES
     }
     
-    # 3. Built data-driven stats structures
     stats = [
         {'label': 'Arrivals Today', 'value': arrivals_today, 'money': False},
         {'label': 'Departures Today', 'value': departures_today, 'money': False},
         {'label': 'Pending Orders', 'value': pending_orders_count, 'money': False},
-        {'label': "Today's Revenue", 'value': today_revenue, 'money': True},
+        {'label': f"Revenue ({period.title() if period else 'Custom Range'})", 'value': period_revenue, 'money': True},
     ]
     
     payment_stats = [
@@ -151,8 +204,11 @@ def reception_view(request):
                 'pending_item_count': sum(o.items.count() for o in pending),
             })
 
-    # 4. Updated context payload
     return render(request, 'dashboard/reception.html', {
+        'period': period,
+        'range_from': range_from,
+        'range_to': range_to,
+        'department_stats': department_stats,
         'booking_page_obj': booking_page_obj,
         'order_page_obj': order_page_obj,
         'booking_status': booking_status,
@@ -518,26 +574,32 @@ def room_add_service_order(request, room_id):
     if not items:
         return JsonResponse({'error': 'Add at least one item.'}, status=400)
 
-    order = Order.objects.create(
-        customer_name=booking.guest_name, 
-        customer_phone=booking.guest_phone, 
-        room_booking=booking, 
-        status='pending'
-    )
-    
-    for item in items:
-        try:
-            menu_item = MenuItem.objects.get(id=item['id'], is_available=True)
-        except (MenuItem.DoesNotExist, KeyError):
-            continue
-        tier = item.get('tier') if item.get('tier') in ('regular', 'vip') else 'regular'
-        OrderItem.objects.create(order=order, menu_item=menu_item, tier=tier, quantity=max(int(item.get('qty', 1)), 1))
+    kitchen_items, bar_items = split_order_items_by_department(items)
+    created_order_ids = []
 
-    success, shortfalls = confirm_order_and_deduct_stock(order)
-    if not success:
-        order.delete()
-        return JsonResponse({'error': f"Insufficient stock: {', '.join(shortfalls)}."}, status=409)
-    return JsonResponse({'success': True})
+    with transaction.atomic():
+        for item_group in (kitchen_items, bar_items):
+            if not item_group:
+                continue
+            order = Order.objects.create(
+                customer_name=booking.guest_name, customer_phone=booking.guest_phone,
+                room_booking=booking, status='pending',
+            )
+            for item in item_group:
+                try:
+                    menu_item = MenuItem.objects.get(id=item['id'], is_available=True)
+                except (MenuItem.DoesNotExist, KeyError):
+                    continue
+                tier = item.get('tier') if item.get('tier') in ('regular', 'vip') else 'regular'
+                OrderItem.objects.create(order=order, menu_item=menu_item, tier=tier, quantity=max(int(item.get('qty', 1)), 1))
+
+            success, shortfalls = confirm_order_and_deduct_stock(order)
+            if not success:
+                transaction.set_rollback(True)
+                return JsonResponse({'error': f"Insufficient stock: {', '.join(shortfalls)}."}, status=409)
+            created_order_ids.append(order.id)
+
+    return JsonResponse({'success': True, 'order_ids': created_order_ids})
 
 @staff_module_required('rooms')
 def room_cleaning_checklist(request, room_id):

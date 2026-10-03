@@ -56,6 +56,10 @@
                    class="hidden sm:inline-block bg-[#C9A227] text-black px-5 py-2 rounded-full text-sm font-semibold hover:bg-[#b8931f] transition">
                     Book Now
                 </a>
+                <a href="{% url 'dashboard:home' %}"
+                   class="hidden sm:inline-block bg-[#C9A227] text-black px-5 py-2 rounded-full text-sm font-semibold hover:bg-[#b8931f] transition">
+                    Staff Panel
+                </a>
                 <button id="menu-toggle" aria-label="Toggle menu" aria-expanded="false"
                         class="md:hidden text-[#0B6B3A] text-2xl">
                     <i class="fa-solid fa-bars"></i>
@@ -75,6 +79,9 @@
                 <a href="{% url 'home' %}#rooms"
                    class="bg-[#C9A227] text-black text-center px-5 py-2 rounded-full font-semibold hover:bg-[#b8931f] transition">
                     Book Now
+                </a>
+                <a href="{% url 'dashboard:home' %}" class="bg-[#C9A227] text-black text-center px-5 py-2 rounded-full font-semibold hover:bg-[#b8931f] transition">
+                    Staff Panel
                 </a>
 
                 {% if user.is_authenticated and user.is_staff %}
@@ -146,7 +153,6 @@
                 </div>
             </div>
         </div>
-        <a href="{% url 'dashboard:staff_login' %}" class="hover:text-[#C9A227] transition">Staff Login</a>
         <div class="border-t border-white/10 text-center text-xs py-5 text-gray-500">
             &copy; {% now "Y" %} Queens Garden Hotel. All rights reserved. Home Away From Home since 2010.
         </div>

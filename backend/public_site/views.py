@@ -114,6 +114,9 @@ def submit_booking(request):
     )
     return JsonResponse({'success': True, 'booking_id': booking.id})
 
+from decimal import Decimal
+# ... other imports ...
+from .services import get_available_rooms, split_order_items_by_department
 @require_POST
 def submit_order(request):
     try:
@@ -150,27 +153,41 @@ def submit_order(request):
     if unavailable:
         return JsonResponse({'error': f"Sorry, these items just sold out: {', '.join(unavailable)}. Please remove them and try again."}, status=409)
 
-    order = Order.objects.create(
-        customer_name=customer_name,
-        customer_phone=customer_phone,
-        notes=notes,
-        status='pending',
-        room_booking=room_booking,
-    )
-    for item in items:
-        try:
-            menu_item = MenuItem.objects.get(id=item['id'], is_available=True)
-        except (MenuItem.DoesNotExist, KeyError):
+    kitchen_items, bar_items = split_order_items_by_department(items)
+    created_orders = []
+    
+    for item_group, department in ((kitchen_items, 'kitchen'), (bar_items, 'bar')):
+        if not item_group:
             continue
-        tier = item.get('tier') if item.get('tier') in ('regular', 'vip') else 'regular'
-        OrderItem.objects.create(
-            order=order,
-            menu_item=menu_item,
-            tier=tier,
-            quantity=max(int(item.get('qty', 1)), 1),
+        order = Order.objects.create(
+            customer_name=customer_name,
+            customer_phone=customer_phone,
+            notes=notes,
+            status='pending',
+            room_booking=room_booking,
         )
+        order_total = Decimal('0')
+        for item in item_group:
+            try:
+                menu_item = MenuItem.objects.get(id=item['id'], is_available=True)
+            except (MenuItem.DoesNotExist, KeyError):
+                continue
+            tier = item.get('tier') if item.get('tier') in ('regular', 'vip') else 'regular'
+            qty = max(int(item.get('qty', 1)), 1)
+            oi = OrderItem.objects.create(
+                order=order,
+                menu_item=menu_item,
+                tier=tier,
+                quantity=qty,
+            )
+            order_total += oi.line_total
+        created_orders.append({
+            'order_id': order.id,
+            'department': department,
+            'total': str(order_total)
+        })
 
-    return JsonResponse({'success': True, 'order_id': order.id})
+    return JsonResponse({'success': True, 'orders': created_orders})
 
 def contact(request):
     session_email = request.session.get('contact_email')
