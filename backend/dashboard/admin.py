@@ -81,15 +81,19 @@ class GateLogAdmin(admin.ModelAdmin):
 
 @admin.register(Payment)
 class PaymentAdmin(admin.ModelAdmin):
-    list_display = ('id', 'target_display', 'amount', 'method', 'received_by', 'created_at')
-    list_filter = ('method',)
+    list_display = ('id', 'target_display', 'amount', 'method', 'recorded_from_display', 'received_by', 'created_at')
+    list_filter = ('method', 'recorded_from')
     search_fields = ('reference',)
     date_hierarchy = 'created_at'
-    readonly_fields = ('booking', 'order', 'amount', 'method', 'reference', 'received_by', 'created_at')
-
+    readonly_fields = ('booking', 'order', 'amount', 'method', 'reference', 'received_by', 'recorded_from', 'created_at')
+ 
     @admin.display(description='For')
     def target_display(self, obj):
         return obj.booking or obj.order
-
+ 
+    @admin.display(description='Taken at', ordering='recorded_from')
+    def recorded_from_display(self, obj):
+        return obj.get_recorded_from_display() if obj.recorded_from else 'Not recorded'
+ 
     def has_add_permission(self, request):
         return False

@@ -1,0 +1,250 @@
+{% comment %}
+Shared payment form. Used by reception_payment.html and settle_stay.html now, and by the bar and
+restaurant payment pages later.
+
+Expects:
+  form                   PaymentForm or SettlementForm (amount, method, reference, amount_tendered)
+  due                    the most that can be paid on this screen (a number)
+  submit_label           button text
+  cancel_url             where Cancel goes
+  recorded_from_label    optional, e.g. "Reception"; shows where the payment is being captured
+{% endcomment %}
+<style>
+    .pf [hidden] { display: none !important; }
+    .pf-block { margin-bottom: 20px; }
+    .pf-label { display: block; font-size: 12px; font-weight: 600; color: #4b5563; margin-bottom: 6px; }
+    .pf input:not([type="checkbox"]):not([type="radio"]), .pf select, .pf textarea {
+        width: 100%; border: 1px solid #d1d5db; border-radius: 12px; padding: 12px 14px; font-size: 15px; background: #fff; color: #111827; transition: border-color .15s, box-shadow .15s;
+    }
+    .pf input:focus, .pf select:focus, .pf textarea:focus { outline: none; border-color: #0B6B3A; box-shadow: 0 0 0 3px rgba(11,107,58,.13); }
+    .pf-block.has-error input, .pf-block.has-error select { border-color: #dc2626; }
+
+    .pf-methods { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    @media (min-width: 480px) { .pf-methods { grid-template-columns: repeat(3, 1fr); } }
+    .pf-method { display: flex; flex-direction: column; align-items: center; gap: 6px; border: 1.5px solid #e5e7eb; border-radius: 14px; padding: 13px 6px; font-size: 12.5px; font-weight: 600; color: #4b5563; background: #fff; transition: border-color .15s, background .15s, color .15s; }
+    .pf-method i { font-size: 18px; color: #9ca3af; transition: color .15s; }
+    .pf-method:hover { border-color: #0B6B3A; }
+    .pf-method.on { border-color: #0B6B3A; background: #F3F8F5; color: #0B6B3A; }
+    .pf-method.on i { color: #0B6B3A; }
+
+    .pf-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .pf-chips button { font-size: 11.5px; font-weight: 700; padding: 4px 13px; border-radius: 9999px; border: 1px solid #0B6B3A; color: #0B6B3A; background: #fff; transition: background .15s, color .15s; }
+    .pf-chips button:hover { background: #0B6B3A; color: #fff; }
+
+    .pf-hint { font-size: 12.5px; margin-top: 7px; color: #6b7280; }
+    .pf-hint:empty { display: none; }
+    .pf-hint.ok { color: #0B6B3A; font-weight: 600; }
+    .pf-hint.bad { color: #dc2626; font-weight: 600; }
+    .pf-error { font-size: 12px; color: #dc2626; font-weight: 600; margin-top: 5px; }
+    .pf-alert { background: #FEF2F2; border: 1px solid #fca5a5; color: #b91c1c; border-radius: 12px; padding: 12px 16px; font-size: 13px; margin-bottom: 18px; }
+
+    .pf-change { border-radius: 14px; padding: 14px 16px; text-align: center; margin-bottom: 20px; background: rgba(201,162,39,.15); border: 1px solid #C9A227; }
+    .pf-change .k { font-size: 11px; text-transform: uppercase; font-weight: 700; color: #6b7280; letter-spacing: .05em; }
+    .pf-change .v { font-size: 28px; font-weight: 800; color: #000; line-height: 1.15; }
+    .pf-change.short { background: #FEF2F2; border-color: #fca5a5; }
+    .pf-change.short .v { color: #b91c1c; }
+
+    .pf-where { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #6b7280; margin-bottom: 14px; }
+    .pf-where i { color: #C9A227; }
+    .pf-submit { width: 100%; background: #C9A227; color: #000; font-weight: 700; font-size: 15px; padding: 14px; border-radius: 9999px; transition: background .15s; }
+    .pf-submit:hover { background: #b8931f; }
+    .pf-submit:disabled { opacity: .6; cursor: wait; }
+    .pf-cancel { display: block; text-align: center; margin-top: 10px; font-size: 13px; font-weight: 600; color: #6b7280; padding: 11px; border: 2px solid #e5e7eb; border-radius: 9999px; }
+    .pf-cancel:hover { background: #f9fafb; }
+</style>
+
+<form method="post" class="pf" id="pf-form" data-due="{{ due|stringformat:'f' }}" novalidate>
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+    <div class="pf-alert">{% for e in form.non_field_errors %}<p><i class="fa-solid fa-circle-exclamation mr-1.5"></i>{{ e }}</p>{% endfor %}</div>
+    {% endif %}
+
+    <div class="pf-block {% if form.method.errors %}has-error{% endif %}">
+        <label class="pf-label">How did the guest pay?</label>
+        <div class="pf-methods" id="pf-methods"></div>
+        {{ form.method }}
+        <p class="pf-error" id="pf-method-err" hidden>Choose a payment method.</p>
+        {% for e in form.method.errors %}<p class="pf-error">{{ e }}</p>{% endfor %}
+    </div>
+
+    <div class="pf-block {% if form.amount.errors %}has-error{% endif %}">
+        <label class="pf-label" for="{{ form.amount.id_for_label }}">Amount being paid (KSh)</label>
+        {{ form.amount }}
+        <div class="pf-chips" id="pf-amount-chips"></div>
+        <p class="pf-hint" id="pf-after"></p>
+        {% for e in form.amount.errors %}<p class="pf-error">{{ e }}</p>{% endfor %}
+    </div>
+
+    <div class="pf-block {% if form.amount_tendered.errors %}has-error{% endif %}" id="pf-tender-block" hidden>
+        <label class="pf-label" for="{{ form.amount_tendered.id_for_label }}">Cash received from the guest (KSh)</label>
+        {{ form.amount_tendered }}
+        <div class="pf-chips" id="pf-tender-chips"></div>
+        {% for e in form.amount_tendered.errors %}<p class="pf-error">{{ e }}</p>{% endfor %}
+    </div>
+
+    <div class="pf-change" id="pf-change" hidden>
+        <p class="k" id="pf-change-k">Change due</p>
+        <p class="v" id="pf-change-v">KSh 0</p>
+    </div>
+
+    <div class="pf-block {% if form.reference.errors %}has-error{% endif %}" id="pf-ref-block" hidden>
+        <label class="pf-label" id="pf-ref-label" for="{{ form.reference.id_for_label }}">Reference</label>
+        {{ form.reference }}
+        <p class="pf-hint" id="pf-ref-hint">Helps match this payment to the statement later.</p>
+        {% for e in form.reference.errors %}<p class="pf-error">{{ e }}</p>{% endfor %}
+    </div>
+
+    {% for field in form %}
+        {% if field.name != 'amount' and field.name != 'amount_tendered' and field.name != 'method' and field.name != 'reference' %}
+            {% if field.is_hidden %}{{ field }}{% else %}
+            <div class="pf-block">
+                <label class="pf-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% for e in field.errors %}<p class="pf-error">{{ e }}</p>{% endfor %}
+            </div>
+            {% endif %}
+        {% endif %}
+    {% endfor %}
+
+    {% if recorded_from_label %}
+    <p class="pf-where"><i class="fa-solid fa-location-dot"></i>Being recorded at <b class="text-black">{{ recorded_from_label }}</b></p>
+    {% endif %}
+
+    <button type="submit" class="pf-submit" id="pf-submit"><i class="fa-solid fa-check mr-1.5"></i>{{ submit_label|default:"Record payment" }}</button>
+    <a href="{{ cancel_url }}" class="pf-cancel">Cancel</a>
+</form>
+
+<script>
+(function () {
+    const form = document.getElementById('pf-form');
+    const q = n => form.querySelector('[name="' + n + '"]');
+    const el = id => document.getElementById(id);
+    const method = q('method'), amount = q('amount'), tendered = q('amount_tendered'), ref = q('reference');
+    const due = parseFloat(form.dataset.due) || 0;
+    const money = n => 'KSh ' + (Number(n) || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
+    const num = input => (input ? parseFloat(input.value) : 0) || 0;
+
+    const ICONS = { cash: 'fa-money-bill-wave', mpesa: 'fa-mobile-screen-button', swipe: 'fa-credit-card' };
+    const REFS = {
+        mpesa: { label: 'M-Pesa confirmation code', ph: 'e.g. SJK4X9L2QP', upper: true },
+        swipe: { label: 'Swipe slip or approval code', ph: 'Number printed on the card slip' },
+        bank: { label: 'Bank reference or slip number', ph: 'Transfer or deposit reference' },
+    };
+    const refKind = v => v === 'mpesa' ? 'mpesa' : v === 'swipe' ? 'swipe' : (v && v.indexOf('bank') === 0) ? 'bank' : null;
+
+    /* ---------- payment method tiles built from the select ---------- */
+    const tiles = el('pf-methods');
+    if (method && method.tagName === 'SELECT') {
+        Array.from(method.options).forEach(o => {
+            if (!o.value) return;
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'pf-method';
+            b.dataset.v = o.value;
+            const icon = ICONS[o.value] || (o.value.indexOf('bank') === 0 ? 'fa-building-columns' : 'fa-wallet');
+            b.innerHTML = '<i class="fa-solid ' + icon + '"></i><span></span>';
+            b.querySelector('span').textContent = o.text;
+            b.addEventListener('click', () => {
+                method.value = o.value;
+                method.dispatchEvent(new Event('change', { bubbles: true }));
+                el('pf-method-err').hidden = true;
+                const focusTarget = o.value === 'cash' ? tendered : ref;
+                if (focusTarget) focusTarget.focus();
+            });
+            tiles.appendChild(b);
+        });
+        method.style.display = 'none';
+    }
+
+    function chip(label, onClick) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.textContent = label;
+        b.addEventListener('click', onClick);
+        return b;
+    }
+
+    function setHint(node, text, cls) {
+        node.textContent = text || '';
+        node.className = 'pf-hint' + (cls ? ' ' + cls : '');
+    }
+
+    /* ---------- refresh everything that depends on method and amounts ---------- */
+    function update() {
+        const m = method ? method.value : '';
+        const isCash = m === 'cash';
+        const a = num(amount);
+
+        tiles.querySelectorAll('.pf-method').forEach(b => b.classList.toggle('on', b.dataset.v === m));
+
+        // cash-only block
+        el('pf-tender-block').hidden = !isCash;
+        if (!isCash && tendered && tendered.value) tendered.value = '';
+
+        // reference block for everything that is not cash
+        const kind = refKind(m);
+        el('pf-ref-block').hidden = !kind;
+        if (kind && ref) {
+            el('pf-ref-label').textContent = REFS[kind].label;
+            ref.placeholder = REFS[kind].ph;
+            ref.style.textTransform = REFS[kind].upper ? 'uppercase' : '';
+        }
+
+        // amount chips and the balance-after line
+        const chips = el('pf-amount-chips');
+        chips.innerHTML = '';
+        if (due > 0) {
+            chips.appendChild(chip('Full balance', () => { amount.value = due; update(); }));
+            if (due >= 200) chips.appendChild(chip('Half', () => { amount.value = Math.round(due / 2); update(); }));
+        }
+        const after = el('pf-after');
+        if (a > due + 0.009) setHint(after, 'That is more than the ' + money(due) + ' owed.', 'bad');
+        else if (a > 0 && due - a < 0.01) setHint(after, 'Clears the balance in full.', 'ok');
+        else if (a > 0) setHint(after, 'Balance left after this payment: ' + money(due - a));
+        else setHint(after, 'Balance due: ' + money(due));
+
+        // cash tender chips and change
+        const tChips = el('pf-tender-chips');
+        tChips.innerHTML = '';
+        if (isCash && a > 0) {
+            const options = [a];
+            const rounded = Math.ceil(a / 100) * 100;
+            if (rounded > a) options.push(rounded);
+            [500, 1000, 2000, 5000].forEach(d => { if (d >= a && options.indexOf(d) === -1 && options.length < 5) options.push(d); });
+            options.slice(0, 5).forEach((v, i) => tChips.appendChild(chip(i === 0 ? 'Exact' : money(v), () => { tendered.value = v; update(); })));
+        }
+        const t = num(tendered);
+        const box = el('pf-change');
+        if (isCash && t > 0 && a > 0) {
+            box.hidden = false;
+            if (t >= a) { box.classList.remove('short'); el('pf-change-k').textContent = 'Change due'; el('pf-change-v').textContent = money(t - a); }
+            else { box.classList.add('short'); el('pf-change-k').textContent = 'Still short by'; el('pf-change-v').textContent = money(a - t); }
+        } else box.hidden = true;
+    }
+
+    /* ---------- guard rails before the form leaves the page ---------- */
+    form.addEventListener('submit', e => {
+        const m = method ? method.value : '';
+        const a = num(amount), t = num(tendered);
+        let problem = '';
+        if (!m) { el('pf-method-err').hidden = false; problem = 'method'; }
+        else if (a <= 0) problem = 'Enter the amount being paid.';
+        else if (a > due + 0.01) problem = 'The amount is more than what is owed.';
+        else if (m === 'cash' && tendered && tendered.value && t < a) problem = 'Cash received is less than the amount being paid.';
+        if (problem) {
+            e.preventDefault();
+            if (problem !== 'method') setHint(el('pf-after'), problem, 'bad');
+            else tiles.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            return;
+        }
+        const b = el('pf-submit');
+        b.disabled = true;   // one click, one payment
+        b.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i>Saving...';
+    });
+
+    [method, amount, tendered, ref].forEach(i => { if (i) { i.addEventListener('input', update); i.addEventListener('change', update); } });
+    if (amount) amount.setAttribute('inputmode', 'decimal');
+    if (tendered) tendered.setAttribute('inputmode', 'decimal');
+    update();
+})();
+</script>

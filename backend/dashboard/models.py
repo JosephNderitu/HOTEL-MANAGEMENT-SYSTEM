@@ -142,6 +142,18 @@ class Payment(models.Model):
         ('bank_coop', 'Bank - Cooperative'),
         ('swipe', 'Swipe'),
     ]
+    RECORDED_FROM_CHOICES = [
+        ('reception', 'Reception'),
+        ('rooms', 'Rooms'),
+        ('restaurant', 'Restaurant'),
+        ('bar', 'Bar'),
+    ]
+ 
+    recorded_from = models.CharField(
+        max_length=15, choices=RECORDED_FROM_CHOICES, blank=True, db_index=True,
+        editable=False,  # never appears on a form, only the view that takes the payment can set it
+        help_text="Which desk captured this payment. Set automatically by the view, not by the user.",
+    )
     booking = models.ForeignKey('public_site.Booking', on_delete=models.PROTECT, null=True, blank=True, related_name='payments')
     order = models.ForeignKey('public_site.Order', on_delete=models.PROTECT, null=True, blank=True, related_name='payments')
     amount = models.DecimalField(max_digits=10, decimal_places=2)

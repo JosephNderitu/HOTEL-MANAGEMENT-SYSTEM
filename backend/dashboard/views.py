@@ -593,9 +593,9 @@ def _render_new_booking(request, form):
 
 @staff_module_required('reception')
 def reception_settle_stay(request, booking_id):
-    return _settle_stay_view(request, booking_id, back_url_name='dashboard:reception')
-
-def _settle_stay_view(request, booking_id, back_url_name):
+    return _settle_stay_view(request, booking_id, back_url_name='dashboard:reception', recorded_from='reception')
+ 
+def _settle_stay_view(request, booking_id, back_url_name, recorded_from='reception'):
     booking = get_object_or_404(Booking, id=booking_id)
     debts = []
     if booking.balance_due > 0:
@@ -603,15 +603,23 @@ def _settle_stay_view(request, booking_id, back_url_name):
     for order in booking.room_service_orders.filter(status='confirmed').order_by('created_at'):
         if order.balance_due > 0:
             debts.append(('order', order, order.balance_due))
-    total_due = sum(d[2] for d in debts)
-
+    total_due = sum((d[2] for d in debts), Decimal('0'))
+ 
     if request.method == 'POST':
         form = SettlementForm(request.POST)
         if form.is_valid():
+            started = timezone.now()
             settled, change = settle_booking_stay(
                 booking, form.cleaned_data['amount'], form.cleaned_data.get('amount_tendered'),
                 form.cleaned_data['method'], form.cleaned_data.get('reference', ''), request.user,
             )
+            # settle_booking_stay creates the Payment rows, so stamp the ones it just made for this
+            # guest (room payment and any room service payments) with the desk that took them.
+            Payment.objects.filter(
+                Q(booking=booking) | Q(order__room_booking=booking),
+                created_at__gte=started, recorded_from='',
+            ).update(recorded_from=recorded_from)
+ 
             if change > 0:
                 messages.success(request, f"Settled KSh {settled:,.0f}. CHANGE DUE: KSh {change:,.0f}")
             else:
@@ -619,11 +627,13 @@ def _settle_stay_view(request, booking_id, back_url_name):
             return redirect(back_url_name)
     else:
         form = SettlementForm(initial={'amount': total_due})
-
+ 
     return render(request, 'dashboard/settle_stay.html', {
-        'form': form, 'booking': booking, 'debts': debts, 'total_due': total_due, 'back_url_name': back_url_name,
+        'form': form, 'booking': booking, 'debts': debts, 'total_due': total_due,
+        'back_url_name': back_url_name,
+        'recorded_from_label': dict(Payment.RECORDED_FROM_CHOICES).get(recorded_from, ''),
     })
-    
+   
 @staff_module_required('reception')
 def reception_confirm_all_orders(request, booking_id):
     if request.method != 'POST':
@@ -650,23 +660,28 @@ def reception_record_payment(request, target_type, target_id):
     if target_type not in ('booking', 'order'):
         messages.error(request, "Invalid payment target.")
         return redirect('dashboard:reception')
-
+ 
     model = Booking if target_type == 'booking' else Order
     target = get_object_or_404(model, id=target_id)
-
+ 
     if request.method == 'POST':
         with transaction.atomic():
             locked_target = model.objects.select_for_update().get(id=target.id)
-            remaining = locked_target.total_balance_due if target_type == 'booking' else locked_target.balance_due
+            # Payment.clean() caps a payment at balance_due, so that is the figure used here too
+            remaining = locked_target.balance_due
             if remaining <= 0:
-                messages.error(request, f"This {target_type} is already fully paid — no new payment was recorded.", extra_tags='swal-error')
+                if target_type == 'booking' and locked_target.room_service_balance_due > 0:
+                    messages.warning(request, "The room is fully paid but room service is still owing. Settle the whole stay together.")
+                    return redirect('dashboard:reception_settle_stay', booking_id=locked_target.id)
+                messages.error(request, f"This {target_type} is already fully paid, no new payment was recorded.", extra_tags='swal-error')
                 return redirect('dashboard:reception')
-
+ 
             instance = Payment(booking=locked_target) if target_type == 'booking' else Payment(order=locked_target)
             form = PaymentForm(request.POST, instance=instance)
             if form.is_valid():
                 payment = form.save(commit=False)
                 payment.received_by = request.user
+                payment.recorded_from = 'reception'
                 payment.save()
                 if payment.change_given > 0:
                     messages.success(request, f"Payment recorded. CHANGE DUE: KSh {payment.change_given:,.0f}")
@@ -674,10 +689,11 @@ def reception_record_payment(request, target_type, target_id):
                     messages.success(request, f"Payment of KSh {payment.amount:,.0f} recorded.")
                 return redirect('dashboard:reception')
     else:
-        form = PaymentForm()
-
+        form = PaymentForm(initial={'amount': target.balance_due})
+ 
     return render(request, 'dashboard/reception_payment.html', {
         'form': form, 'target': target, 'target_type': target_type,
+        'recorded_from_label': 'Reception',
     })
 
 @staff_module_required('reception')
@@ -1040,7 +1056,7 @@ def room_settle_stay(request, booking_id):
         return redirect('dashboard:rooms')
     
     booking = get_object_or_404(Booking, id=booking_id)
-    response = _settle_stay_view(request, booking_id, back_url_name='dashboard:rooms')
+    response = _settle_stay_view(request, booking_id, back_url_name='dashboard:rooms', recorded_from='rooms')
     
     if request.method == 'POST' and booking.total_balance_due <= 0 and booking.status == 'checked_in':
         booking.refresh_from_db()
