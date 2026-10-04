@@ -1,56 +1,98 @@
 {% extends "dashboard/base_dashboard.html" %}
 {% block dashboard_content %}
-<div class="max-w-md mx-auto">
-    <h1 class="text-2xl font-bold text-black mb-1">Record Payment</h1>
-    <p class="text-gray-500 text-sm mb-1">Order #{{ order.id }} — {{ order.customer_name }} ({{ order.get_order_type_display }})</p>
-    <p class="text-sm mb-6">
-        Total: <span class="font-semibold">KSh {{ order.total_amount|floatformat:0 }}</span> &middot;
-        Balance due: <span class="font-semibold text-red-600">KSh {{ order.balance_due|floatformat:0 }}</span>
-    </p>
-    <form method="post" class="bg-white border border-[#0B6B3A] rounded-2xl p-6 space-y-4">
-        {% csrf_token %}
-        {% for field in form %}
+<style>
+    .pg-hero { background: linear-gradient(135deg, #0B6B3A, #095430); border-radius: 18px; padding: 22px 26px; color: #fff; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+    .pg-hero h1 { font-size: 22px; font-weight: 800; }
+    .pg-hero p { font-size: 12.5px; color: rgba(255,255,255,.75); margin-top: 3px; }
+    .pg-back { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: rgba(255,255,255,.8); margin-bottom: 8px; }
+    .pg-back:hover { color: #fff; }
+
+    .pg-layout { display: grid; grid-template-columns: 1fr; gap: 20px; align-items: start; }
+    @media (min-width: 1024px) { .pg-layout { grid-template-columns: minmax(0, 1fr) 360px; } }
+    .pg-card { background: #fff; border: 1px solid #eef0ee; border-radius: 18px; padding: 24px; }
+    .pg-card h2 { font-size: 14px; font-weight: 700; color: #000; display: flex; align-items: center; gap: 8px; margin-bottom: 18px; }
+    .pg-card h2 i { color: #C9A227; }
+
+    .pg-summary { background: #fff; border: 1px solid #0B6B3A; border-radius: 18px; padding: 22px; order: -1; }
+    @media (min-width: 1024px) { .pg-summary { order: 0; position: sticky; top: 84px; } }
+    .pg-who { display: flex; gap: 12px; align-items: center; padding-bottom: 14px; border-bottom: 1px solid #f3f4f6; margin-bottom: 4px; }
+    .pg-who .badge { width: 40px; height: 40px; border-radius: 12px; background: #F3F8F5; color: #0B6B3A; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+    .pg-who p:first-child { font-weight: 700; color: #000; font-size: 14px; }
+    .pg-who p:last-child { font-size: 12px; color: #6b7280; }
+    .pg-items { max-height: 170px; overflow-y: auto; margin: 6px 0; }
+    .pg-items li { display: flex; justify-content: space-between; font-size: 12.5px; padding: 5px 0; color: #374151; }
+    .pg-items li.gone { text-decoration: line-through; color: #9ca3af; }
+    .pg-line { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; padding: 9px 0; border-bottom: 1px solid #f3f4f6; }
+    .pg-line span:first-child { color: #6b7280; }
+    .pg-line span:last-child { font-weight: 600; color: #111827; text-align: right; }
+    .pg-due { background: #FEF2F2; border-radius: 14px; padding: 14px 16px; margin: 14px 0 10px; }
+    .pg-due p:first-child { font-size: 11.5px; color: #6b7280; }
+    .pg-due p:last-child { font-size: 26px; font-weight: 800; color: #dc2626; line-height: 1.2; }
+    .pg-due.clear { background: #ECFDF3; }
+    .pg-due.clear p:last-child { color: #0B6B3A; }
+    .pg-bar { height: 8px; background: #e5e7eb; border-radius: 9999px; overflow: hidden; }
+    .pg-bar div { height: 100%; background: #0B6B3A; border-radius: 9999px; }
+    .pg-bar-cap { font-size: 11.5px; color: #6b7280; margin-top: 6px; }
+    .pg-rs { background: #FEF9EC; border: 1px solid #C9A227; border-radius: 12px; padding: 12px 14px; font-size: 12.5px; margin-top: 14px; line-height: 1.5; }
+</style>
+
+<div class="max-w-5xl mx-auto">
+    <div class="pg-hero">
         <div>
-            <label class="block text-xs font-semibold text-gray-500 mb-1 uppercase">{{ field.label }}</label>
-            {{ field }}
+            <a href="{% url 'dashboard:restaurant_kitchen' %}" class="pg-back"><i class="fa-solid fa-arrow-left"></i>Back to restaurant</a>
+            <h1>Record Payment</h1>
+            <p>Order #{{ order.id }}, {{ order.customer_name }}{% if order.room_booking_id %} | Room service{% endif %}</p>
         </div>
-        {% endfor %}
+        <i class="fa-solid fa-hand-holding-dollar text-4xl text-white/25"></i>
+    </div>
 
-        <div id="change-display" class="hidden bg-[#C9A227]/15 border border-[#C9A227] rounded-lg px-4 py-3 text-center">
-            <p class="text-xs text-gray-600 uppercase font-semibold">Change Due</p>
-            <p class="text-2xl font-bold text-black" id="change-amount">KSh 0</p>
+    <div class="pg-layout">
+        <div class="pg-card">
+            <h2><i class="fa-solid fa-wallet"></i>Payment details</h2>
+            {% url 'dashboard:restaurant_kitchen' as back_link %}
+            {% include "dashboard/_payment_form.html" with form=form due=order.balance_due submit_label="Record payment" cancel_url=back_link recorded_from_label=recorded_from_label %}
         </div>
 
-        <div class="flex gap-3 pt-2">
-            <button type="submit" class="flex-1 bg-[#C9A227] text-black font-semibold py-3 rounded-full hover:bg-[#b8931f] transition">Record Payment</button>
-            <a href="{% url 'dashboard:restaurant_kitchen' %}" class="flex-1 text-center border-2 border-gray-300 text-gray-600 font-semibold py-3 rounded-full hover:bg-gray-50 transition">Cancel</a>
-        </div>
-    </form>
+        <aside class="pg-summary">
+            <div class="pg-who">
+                <div class="badge"><i class="fa-solid {% if order.room_booking_id %}fa-bell-concierge{% elif order.bar_tab_id %}fa-martini-glass-citrus{% else %}fa-utensils{% endif %}"></i></div>
+                <div>
+                    <p>{% if order.room_booking.assigned_room %}Room {{ order.room_booking.assigned_room.number }}, {% endif %}{{ order.customer_name }}</p>
+                    <p>
+                        {% if order.room_booking_id %}Room service
+                        {% elif order.table %}Table {{ order.table.number }}
+                        {% elif order.bar_tab %}Bar tab
+                        {% else %}{{ order.get_order_type_display }}{% endif %}
+                        | Order #{{ order.id }}
+                    </p>
+                </div>
+            </div>
+
+            <ul class="pg-items">
+                {% for item in order.items.all %}
+                <li class="{% if item.is_cancelled %}gone{% endif %}"><span>{{ item.quantity }}x {{ item.menu_item.name }}</span><span>KSh {{ item.line_total|floatformat:"0g" }}</span></li>
+                {% endfor %}
+            </ul>
+
+            <div class="pg-line"><span>Total</span><span>KSh {{ order.total_amount|floatformat:"0g" }}</span></div>
+            <div class="pg-line"><span>Paid so far</span><span>KSh {{ order.amount_paid|floatformat:"0g" }}</span></div>
+
+            {% widthratio order.amount_paid order.total_amount 100 as pct %}
+            <div class="pg-due {% if order.balance_due <= 0 %}clear{% endif %}">
+                <p>Balance due</p>
+                <p>KSh {{ order.balance_due|floatformat:"0g" }}</p>
+            </div>
+            <div class="pg-bar"><div style="width: {{ pct }}%;"></div></div>
+            <p class="pg-bar-cap">{{ pct }}% paid</p>
+
+            {% if order.room_booking_id %}
+            <div class="pg-rs">
+                <b>Room service order.</b>
+                {% if order.confirmed_from %}Confirmed at {{ order.get_confirmed_from_display }}{% if order.confirmed_at %}, {{ order.confirmed_at|date:"H:i" }}{% endif %}. {% endif %}
+                It is also on the guest's room bill. What is paid here comes off the amount reception collects when the guest settles the stay.
+            </div>
+            {% endif %}
+        </aside>
+    </div>
 </div>
-
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    const amountEl = document.getElementById('id_amount');
-    const tenderedEl = document.getElementById('id_amount_tendered');
-    const display = document.getElementById('change-display');
-    const output = document.getElementById('change-amount');
-
-    function updateChange() {
-        const amount = parseFloat(amountEl.value) || 0;
-        const tendered = parseFloat(tenderedEl.value) || 0;
-        const change = tendered - amount;
-        if (tendered > 0 && change >= 0) {
-            output.textContent = `KSh ${change.toLocaleString()}`;
-            display.classList.remove('hidden');
-        } else {
-            display.classList.add('hidden');
-        }
-    }
-
-    if (amountEl && tenderedEl) {
-        amountEl.addEventListener('input', updateChange);
-        tenderedEl.addEventListener('input', updateChange);
-    }
-});
-</script>
 {% endblock %}

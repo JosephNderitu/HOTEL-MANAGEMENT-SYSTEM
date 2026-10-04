@@ -510,6 +510,18 @@ class Order(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='kitchen_orders_viewed'
     )
+    CONFIRMED_FROM_CHOICES = [
+        ('reception', 'Reception'),
+        ('rooms', 'Rooms'),
+        ('restaurant', 'Restaurant'),
+        ('bar', 'Bar'),
+    ]
+    confirmed_from = models.CharField(max_length=15, choices=CONFIRMED_FROM_CHOICES, blank=True, editable=False)
+    confirmed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        editable=False, related_name='orders_confirmed',
+    )
+    confirmed_at = models.DateTimeField(null=True, blank=True, editable=False)
 
     @property
     def total_amount(self):

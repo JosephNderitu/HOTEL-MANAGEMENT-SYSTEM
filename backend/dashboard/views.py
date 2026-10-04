@@ -73,6 +73,57 @@ def _local_day_bounds(date_from, date_to):
         end = timezone.make_aware(end, tz)
     return start, end
 
+def _stamp_confirmation(order, user, desk):
+    """Records which desk confirmed an order. Only the first confirmation is kept."""
+    Order.objects.filter(pk=order.pk, confirmed_from='').update(
+        confirmed_from=desk, confirmed_by=user, confirmed_at=timezone.now(),
+    )
+ 
+def _room_service_feed(department):
+    """
+    Confirmed room service orders for 'bar' or 'restaurant' that still need serving
+    or still owe money. Unserved first (oldest first), then served-awaiting-payment.
+    """
+    qs = Order.objects.filter(room_booking__isnull=False, status='confirmed').select_related(
+        'room_booking', 'room_booking__assigned_room', 'confirmed_by',
+    ).prefetch_related('items__menu_item', 'payments').order_by('created_at')
+ 
+    now = timezone.now()
+    feed = []
+    for o in qs:
+        active = [i for i in o.items.all() if not i.is_cancelled]
+        if not active:
+            continue
+        # orders are split by department when placed, so each one is purely kitchen or bar
+        if (department == 'restaurant') != o.has_kitchen_items:
+            continue
+ 
+        o.rs_total, o.rs_paid = o.total_amount, o.amount_paid
+        o.rs_due = o.rs_total - o.rs_paid
+        served = all(i.prep_status == 'served' for i in active)
+        if served and o.rs_due <= 0:
+            continue
+ 
+        o.active_items = active
+        o.item_total = len(active)
+        o.served_count = sum(1 for i in active if i.prep_status == 'served')
+        o.is_served = served
+        if served:
+            o.rs_state = 'served'
+        elif any(i.prep_status != 'queued' for i in active) or (department == 'restaurant' and o.kitchen_is_viewed):
+            o.rs_state = 'progress'
+        else:
+            o.rs_state = 'waiting'
+ 
+        mins = max(int((now - o.created_at).total_seconds() // 60), 0)
+        o.age_label = f"{mins}m" if mins < 60 else (f"{mins // 60}h {mins % 60:02d}m" if mins < 1440 else f"{mins // 1440}d")
+        o.age_urgent = (not served) and mins >= 30
+        o.confirmed_label = dict(Order.CONFIRMED_FROM_CHOICES).get(o.confirmed_from, '')
+        feed.append(o)
+ 
+    feed.sort(key=lambda o: (o.is_served, o.created_at))
+    return feed
+
 @login_required
 def dashboard_home(request):
     context = {
@@ -511,7 +562,8 @@ def reception_order_action(request, order_id, action):
         if not success:
             messages.error(request, f"Cannot confirm, insufficient stock: {', '.join(shortfalls)}.")
             return redirect('dashboard:reception')
-
+        _stamp_confirmation(order, request.user, 'reception')  
+        
     elif action == 'cancel' and order.status in ('pending', 'confirmed'):
         if order.status == 'confirmed':
             with transaction.atomic():
@@ -646,6 +698,7 @@ def reception_confirm_all_orders(request, booking_id):
         success, shortfalls = confirm_order_and_deduct_stock(order)
         if success:
             confirmed_count += 1
+            _stamp_confirmation(order, request.user, 'reception')
         else:
             shortfall_items.extend(shortfalls)
 
@@ -1110,6 +1163,7 @@ def room_add_service_order(request, room_id):
             if not success:
                 transaction.set_rollback(True)
                 return JsonResponse({'error': f"Insufficient stock: {', '.join(shortfalls)}."}, status=409)
+            _stamp_confirmation(order, request.user, 'rooms')
             created_order_ids.append(order.id)
 
     return JsonResponse({'success': True, 'order_ids': created_order_ids})
@@ -1443,7 +1497,8 @@ def restaurant_tables_view(request):
         'bank_total': (revenue_by_method.get('bank_equity', 0)
                        + revenue_by_method.get('bank_family', 0)
                        + revenue_by_method.get('bank_coop', 0)),
-        'trend_url': reverse('dashboard:restaurant_revenue_trend')
+        'trend_url': reverse('dashboard:restaurant_revenue_trend'),
+        'rs_orders': _room_service_feed('restaurant'),
     })
 
 @staff_module_required('restaurant_kitchen')
@@ -1923,27 +1978,34 @@ VAT_RATE = Decimal('0.16')  # menu prices are treated as VAT-inclusive
 @staff_module_required('restaurant_kitchen')
 def restaurant_record_payment(request, order_id):
     order = get_object_or_404(Order, id=order_id)
-
-    if order.room_booking_id or order.bar_tab_id:
+ 
+    # table / takeaway / event orders, plus room service orders that are kitchen meals
+    belongs_here = not order.bar_tab_id and (not order.room_booking_id or order.has_kitchen_items)
+    if not belongs_here:
         messages.error(request, "This order belongs to another department and can't be settled from Restaurant & Kitchen.", extra_tags='swal-error')
         return redirect('dashboard:restaurant_kitchen')
-
+ 
+    if order.status != 'confirmed':
+        messages.error(request, "Only confirmed orders can be paid.", extra_tags='swal-error')
+        return redirect('dashboard:restaurant_kitchen')
+ 
     if not order.is_fully_served:
         messages.error(request, _order_not_served_message(order), extra_tags='swal-warning')
         return redirect('dashboard:restaurant_kitchen')
-
+ 
     if request.method == 'POST':
         with transaction.atomic():
             locked_order = Order.objects.select_for_update().get(id=order.id)
             if locked_order.balance_due <= 0:
-                messages.error(request, f"Order #{locked_order.id} is already fully paid — no new payment was recorded.", extra_tags='swal-error')
+                messages.error(request, f"Order #{locked_order.id} is already fully paid, no new payment was recorded.", extra_tags='swal-error')
                 return redirect('dashboard:restaurant_kitchen')
-
+ 
             instance = Payment(order=locked_order)
             form = PaymentForm(request.POST, instance=instance)
             if form.is_valid():
                 payment = form.save(commit=False)
                 payment.received_by = request.user
+                payment.recorded_from = 'restaurant'
                 payment.save()
                 if payment.change_given > 0:
                     messages.success(request, f"Payment recorded. CHANGE DUE: KSh {payment.change_given:,.0f}")
@@ -1952,8 +2014,10 @@ def restaurant_record_payment(request, order_id):
                 return redirect('dashboard:restaurant_kitchen')
     else:
         form = PaymentForm(initial={'amount': order.balance_due})
-
-    return render(request, 'dashboard/restaurant_payment.html', {'form': form, 'order': order})
+ 
+    return render(request, 'dashboard/restaurant_payment.html', {
+        'form': form, 'order': order, 'recorded_from_label': 'Restaurant',
+    })
 
 @staff_module_required('restaurant_kitchen')
 def restaurant_new_offsite_order(request):
@@ -2084,9 +2148,12 @@ def restaurant_set_table_status(request, table_id, new_status):
 @staff_module_required('restaurant_kitchen')
 def restaurant_split_order(request, order_id):
     order = get_object_or_404(Order, id=order_id)
-    active_items = order.items.filter(is_cancelled=False)
-
-    # NEW
+    order_items = order.items.filter(is_cancelled=False)
+    back_url = (
+        f"{reverse('dashboard:restaurant_table_pos', args=[order.table_id])}?order={order.id}"
+        if order.table_id else reverse('dashboard:restaurant_kitchen')
+    )
+ 
     if order.payments.exists():
         messages.error(
             request,
@@ -2095,28 +2162,38 @@ def restaurant_split_order(request, order_id):
             extra_tags='swal-error',
         )
         return redirect('dashboard:restaurant_kitchen')
-
+ 
     if request.method == 'POST':
         selected_ids = request.POST.getlist('item_ids')
-        if not selected_ids:
+        chosen = order_items.filter(id__in=selected_ids)
+        if not chosen.exists():
             messages.error(request, "Select at least one item to move to the new bill.")
             return redirect('dashboard:restaurant_split_order', order_id=order.id)
-
-        new_order = Order.objects.create(
-            customer_name=f"{order.customer_name} (split)",
-            customer_phone=order.customer_phone,
-            table=order.table,
-            order_type=order.order_type,
-            status='confirmed',
-        )
-        active_items.filter(id__in=selected_ids).update(order=new_order)
-        messages.success(request, f"Moved {len(selected_ids)} item(s) to a new bill, Order #{new_order.id}.")
-        if order.table_id:
-            return redirect('dashboard:restaurant_table_pos', table_id=order.table_id)
-        return redirect('dashboard:restaurant_kitchen')
-
-    return render(request, 'dashboard/restaurant_split_order.html', {'order': order, 'active_items': active_items})
-
+        if chosen.count() >= order_items.count():
+            messages.error(request, "Leave at least one item on the original bill.")
+            return redirect('dashboard:restaurant_split_order', order_id=order.id)
+ 
+        with transaction.atomic():
+            new_order = Order.objects.create(
+                customer_name=f"{order.customer_name} (split)",
+                customer_phone=order.customer_phone,
+                table=order.table,
+                order_type=order.order_type,
+                status='confirmed',
+            )
+            moved = chosen.count()
+            chosen.update(order=new_order)
+            _stamp_confirmation(new_order, request.user, 'restaurant')
+ 
+        messages.success(request, f"Moved {moved} item(s) to a new bill, Order #{new_order.id}.")
+        return redirect(back_url)
+ 
+    return render(request, 'dashboard/restaurant_split_order.html', {
+        'order': order,
+        'active_items': order_items.select_related('menu_item'),
+        'back_url': back_url,
+    })
+ 
 def _group_payments_by_day(payments):
     """Cash basis: bucket payments by the local date the money was received."""
     days = {}
@@ -2310,6 +2387,7 @@ def bar_tabs_view(request):
                        + revenue_by_method.get('bank_coop', 0)),
         'active_hh': active_hh,
         'trend_url': reverse('dashboard:bar_revenue_trend'),
+        'rs_orders': _room_service_feed('bar'),
     })
 
 @staff_module_required('bar')
@@ -2417,6 +2495,8 @@ def bar_advance_item(request, item_id, new_status):
         order_item.prep_status = new_status
         order_item.save(update_fields=['prep_status'])
     tab = order_item.order.bar_tab
+    if tab is None:  # room service order: go back to the bar overview
+        return redirect(reverse('dashboard:bar') + '#room-service')
     return redirect(f"{reverse('dashboard:bar_tab_pos', args=[tab.id])}?order={order_item.order_id}")
 
 @staff_module_required('bar')
@@ -2481,48 +2561,61 @@ def bar_cancel_order(request, order_id):
 
     return redirect('dashboard:bar_tab_pos', tab_id=tab.id)
 
+def _bar_back(order):
+    """Tab orders go back to their tab, room service orders back to the bar overview."""
+    if order.bar_tab_id:
+        return redirect('dashboard:bar_tab_pos', tab_id=order.bar_tab_id)
+    return redirect(reverse('dashboard:bar') + '#room-service')
+ 
 @staff_module_required('bar')
 def bar_record_payment(request, order_id):
     order = get_object_or_404(Order, id=order_id)
-
-    if not order.bar_tab_id:
+ 
+    belongs_here = (not order.has_kitchen_items) if order.room_booking_id else bool(order.bar_tab_id)
+    if not belongs_here:
         messages.error(request, "This order belongs to another department and can't be settled from the Bar.", extra_tags='swal-error')
         return redirect('dashboard:bar')
-
+ 
+    if order.status != 'confirmed':
+        messages.error(request, "Only confirmed orders can be paid.", extra_tags='swal-error')
+        return _bar_back(order)
+ 
     if not order.is_fully_served:
         messages.error(request, _order_not_served_message(order), extra_tags='swal-warning')
-        return redirect('dashboard:bar_tab_pos', tab_id=order.bar_tab_id)
-
+        return _bar_back(order)
+ 
     if request.method == 'POST':
         with transaction.atomic():
             locked_order = Order.objects.select_for_update().get(id=order.id)
             if locked_order.balance_due <= 0:
-                messages.error(request, f"Order #{locked_order.id} is already fully paid — no new payment was recorded.", extra_tags='swal-error')
-                return redirect('dashboard:bar_tab_pos', tab_id=order.bar_tab_id)
-
+                messages.error(request, f"Order #{locked_order.id} is already fully paid, no new payment was recorded.", extra_tags='swal-error')
+                return _bar_back(order)
+ 
             instance = Payment(order=locked_order)
             form = PaymentForm(request.POST, instance=instance)
             if form.is_valid():
                 payment = form.save(commit=False)
                 payment.received_by = request.user
+                payment.recorded_from = 'bar'
                 payment.save()
-
+ 
                 tab = locked_order.bar_tab
-                if not tab.open_orders:
+                if tab and not tab.open_orders:   # room service orders have no tab to close
                     tab.status = 'closed'
                     tab.closed_at = timezone.now()
                     tab.save(update_fields=['status', 'closed_at'])
                     messages.success(request, f"Payment recorded. Tab for {tab.customer_name} is now closed.")
+                elif payment.change_given > 0:
+                    messages.success(request, f"Payment recorded. CHANGE DUE: KSh {payment.change_given:,.0f}")
                 else:
-                    if payment.change_given > 0:
-                        messages.success(request, f"Payment recorded. CHANGE DUE: KSh {payment.change_given:,.0f}")
-                    else:
-                        messages.success(request, f"Payment of KSh {payment.amount:,.0f} recorded.")
+                    messages.success(request, f"Payment of KSh {payment.amount:,.0f} recorded.")
                 return redirect('dashboard:bar')
     else:
         form = PaymentForm(initial={'amount': order.balance_due})
-
-    return render(request, 'dashboard/bar_payment.html', {'form': form, 'order': order})
+ 
+    return render(request, 'dashboard/bar_payment.html', {
+        'form': form, 'order': order, 'recorded_from_label': 'Bar',
+    })
 
 @staff_module_required('bar')
 def bar_wastage_log(request):

@@ -117,6 +117,7 @@
     {% endif %}
 </div>
 {% endif %}
+{% include "dashboard/_room_service_feed.html" with rs_orders=rs_orders dept="bar" %}
 
 <!-- Open a tab (collapsible) -->
 <div id="openTabPanel" class="bar-panel p-5 mb-6 max-w-md hidden">

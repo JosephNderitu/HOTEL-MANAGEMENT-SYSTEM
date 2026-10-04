@@ -1,21 +1,128 @@
 {% extends "dashboard/base_dashboard.html" %}
 {% block dashboard_content %}
-<div class="max-w-lg mx-auto">
-    <h1 class="text-2xl font-bold text-black mb-1">Split Bill — Order #{{ order.id }}</h1>
-    <p class="text-gray-500 text-sm mb-6">Select the items that should move to a new, separate bill.</p>
+<style>
+    .sp-hero { background: linear-gradient(135deg, #0B6B3A, #095430); border-radius: 18px; padding: 22px 26px; color: #fff; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+    .sp-hero h1 { font-size: 22px; font-weight: 800; }
+    .sp-hero p { font-size: 12.5px; color: rgba(255,255,255,.75); margin-top: 3px; }
+    .sp-back { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: rgba(255,255,255,.8); margin-bottom: 8px; }
+    .sp-back:hover { color: #fff; }
 
-    <form method="post" class="bg-white border border-[#0B6B3A] rounded-2xl p-6">
+    .sp-layout { display: grid; grid-template-columns: 1fr; gap: 20px; align-items: start; }
+    @media (min-width: 1024px) { .sp-layout { grid-template-columns: minmax(0, 1fr) 360px; } }
+    .sp-card { background: #fff; border: 1px solid #eef0ee; border-radius: 18px; padding: 24px; }
+    .sp-card h2 { font-size: 14px; font-weight: 700; color: #000; display: flex; align-items: center; gap: 8px; }
+    .sp-card h2 i { color: #C9A227; }
+    .sp-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0 16px; flex-wrap: wrap; }
+    .sp-bar p { font-size: 12.5px; color: #6b7280; }
+    .sp-links button { font-size: 12px; font-weight: 700; color: #0B6B3A; padding: 4px 10px; border-radius: 9999px; }
+    .sp-links button:hover { background: #F3F8F5; }
+
+    .sp-row { display: flex; align-items: center; gap: 14px; border: 1.5px solid #e5e7eb; border-radius: 14px; padding: 13px 16px; margin-bottom: 8px; cursor: pointer; transition: border-color .15s, background .15s; }
+    .sp-row:hover { border-color: #0B6B3A; }
+    .sp-row.on { border-color: #0B6B3A; background: #F3F8F5; }
+    .sp-row input { position: absolute; opacity: 0; pointer-events: none; }
+    .sp-tick { width: 22px; height: 22px; border-radius: 7px; border: 2px solid #d1d5db; display: flex; align-items: center; justify-content: center; color: transparent; font-size: 11px; flex-shrink: 0; transition: all .15s; }
+    .sp-row.on .sp-tick { background: #0B6B3A; border-color: #0B6B3A; color: #fff; }
+    .sp-row input:focus-visible + .sp-tick { outline: 2px solid #C9A227; outline-offset: 2px; }
+    .sp-name { flex: 1; font-size: 14px; font-weight: 600; color: #111827; min-width: 0; }
+    .sp-vip { font-size: 10px; font-weight: 700; color: #C9A227; margin-left: 6px; }
+    .sp-amt { font-size: 13px; font-weight: 700; color: #111827; white-space: nowrap; }
+
+    .sp-summary { background: #fff; border: 1px solid #0B6B3A; border-radius: 18px; padding: 22px; }
+    @media (min-width: 1024px) { .sp-summary { position: sticky; top: 84px; } }
+    .sp-summary h2 { font-size: 14px; font-weight: 700; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+    .sp-summary h2 i { color: #C9A227; }
+    .sp-box { border-radius: 14px; padding: 14px 16px; margin-bottom: 10px; }
+    .sp-box p:first-child { font-size: 11.5px; color: #6b7280; }
+    .sp-box p:nth-child(2) { font-size: 22px; font-weight: 800; line-height: 1.2; }
+    .sp-box p:last-child { font-size: 11.5px; color: #6b7280; margin-top: 1px; }
+    .sp-new { background: #F3F8F5; } .sp-new p:nth-child(2) { color: #0B6B3A; }
+    .sp-stay { background: #FAFAF8; border: 1px solid #eef0ee; } .sp-stay p:nth-child(2) { color: #111827; }
+    .sp-msg { font-size: 12.5px; font-weight: 600; color: #6b7280; margin: 12px 0; min-height: 18px; }
+    .sp-msg.bad { color: #dc2626; }
+    .sp-submit { width: 100%; background: #C9A227; color: #000; font-weight: 700; padding: 13px; border-radius: 9999px; transition: background .15s; }
+    .sp-submit:hover:not(:disabled) { background: #b8931f; }
+    .sp-submit:disabled { background: #f3f4f6; color: #9ca3af; cursor: not-allowed; }
+    .sp-cancel { display: block; text-align: center; margin-top: 10px; font-size: 13px; font-weight: 600; color: #6b7280; padding: 10px; border: 2px solid #e5e7eb; border-radius: 9999px; }
+    .sp-cancel:hover { background: #f9fafb; }
+</style>
+
+<div class="max-w-5xl mx-auto">
+    <div class="sp-hero">
+        <div>
+            <a href="{{ back_url }}" class="sp-back"><i class="fa-solid fa-arrow-left"></i>Back to the order</a>
+            <h1>Split Bill</h1>
+            <p>Order #{{ order.id }}{% if order.table %} | Table {{ order.table.number }}{% endif %} | {{ order.customer_name }}</p>
+        </div>
+        <i class="fa-solid fa-scissors text-4xl text-white/25"></i>
+    </div>
+
+    {% if messages %}{% for message in messages %}
+    <div class="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-2.5 mb-4">{{ message }}</div>
+    {% endfor %}{% endif %}
+
+    <form method="post" id="split-form" class="sp-layout" data-count="{{ active_items|length }}">
         {% csrf_token %}
-        <div class="space-y-2 mb-5">
+
+        <div class="sp-card">
+            <h2><i class="fa-solid fa-list-check"></i>Pick the items for the new bill</h2>
+            <div class="sp-bar">
+                <p>Tick what moves to a separate bill. At least one item has to stay on this one.</p>
+                <div class="sp-links"><button type="button" id="sp-clear">Clear</button></div>
+            </div>
+
             {% for item in active_items %}
-            <label class="flex items-center justify-between border border-gray-200 rounded-lg px-4 py-3 cursor-pointer hover:border-[#0B6B3A] transition">
-                <span class="text-sm">{{ item.quantity }}x {{ item.menu_item.name }}{% if item.tier == 'vip' %} <span class="text-[9px] text-[#C9A227] font-bold">VIP</span>{% endif %}</span>
-                <input type="checkbox" name="item_ids" value="{{ item.id }}" class="w-4 h-4 accent-[#0B6B3A]">
+            <label class="sp-row" data-amount="{{ item.line_total|stringformat:'f' }}">
+                <input type="checkbox" name="item_ids" value="{{ item.id }}">
+                <span class="sp-tick"><i class="fa-solid fa-check"></i></span>
+                <span class="sp-name">{{ item.quantity }}x {{ item.menu_item.name }}{% if item.tier == 'vip' %}<span class="sp-vip">VIP</span>{% endif %}</span>
+                <span class="sp-amt">KSh {{ item.line_total|floatformat:"0g" }}</span>
             </label>
             {% endfor %}
         </div>
-        <button type="submit" class="w-full bg-[#C9A227] text-black font-semibold py-3 rounded-full hover:bg-[#b8931f] transition">Create New Bill</button>
-        <a href="{% url 'dashboard:restaurant_table_pos' order.table.id %}?order={{ order.id }}" class="block text-center text-gray-500 text-sm mt-3 hover:underline">Cancel</a>
+
+        <aside class="sp-summary">
+            <h2><i class="fa-solid fa-receipt"></i>After the split</h2>
+            <div class="sp-box sp-new"><p>New bill</p><p id="sp-new-amt">KSh 0</p><p id="sp-new-cnt">No items selected</p></div>
+            <div class="sp-box sp-stay"><p>Stays on order #{{ order.id }}</p><p id="sp-stay-amt">KSh 0</p><p id="sp-stay-cnt"></p></div>
+            <p class="sp-msg" id="sp-msg"></p>
+            <button type="submit" class="sp-submit" id="sp-submit" disabled><i class="fa-solid fa-scissors mr-1.5"></i>Create new bill</button>
+            <a href="{{ back_url }}" class="sp-cancel">Cancel</a>
+        </aside>
     </form>
 </div>
+
+<script>
+(function () {
+    const form = document.getElementById('split-form');
+    const rows = Array.from(form.querySelectorAll('.sp-row'));
+    const total = rows.length;
+    const money = n => 'KSh ' + Math.round(n).toLocaleString();
+    const grand = rows.reduce((s, r) => s + parseFloat(r.dataset.amount), 0);
+    const el = id => document.getElementById(id);
+
+    function update() {
+        let n = 0, amt = 0;
+        rows.forEach(r => {
+            const on = r.querySelector('input').checked;
+            r.classList.toggle('on', on);
+            if (on) { n++; amt += parseFloat(r.dataset.amount); }
+        });
+        el('sp-new-amt').textContent = money(amt);
+        el('sp-new-cnt').textContent = n ? n + ' item' + (n === 1 ? '' : 's') : 'No items selected';
+        el('sp-stay-amt').textContent = money(grand - amt);
+        el('sp-stay-cnt').textContent = (total - n) + ' item' + (total - n === 1 ? '' : 's');
+
+        const msg = el('sp-msg'), btn = el('sp-submit');
+        if (n === 0) { msg.textContent = 'Select at least one item.'; msg.className = 'sp-msg'; btn.disabled = true; }
+        else if (n >= total) { msg.textContent = 'Leave at least one item on the original bill.'; msg.className = 'sp-msg bad'; btn.disabled = true; }
+        else { msg.textContent = ''; btn.disabled = false; }
+    }
+
+    rows.forEach(r => r.querySelector('input').addEventListener('change', update));
+    el('sp-clear').addEventListener('click', () => { rows.forEach(r => { r.querySelector('input').checked = false; }); update(); });
+    form.addEventListener('submit', () => { const b = el('sp-submit'); b.disabled = true; b.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i>Splitting...'; });
+    update();
+})();
+</script>
 {% endblock %}

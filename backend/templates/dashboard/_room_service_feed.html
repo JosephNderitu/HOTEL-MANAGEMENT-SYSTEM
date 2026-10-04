@@ -1,0 +1,316 @@
+{% comment %}
+Room service orders confirmed elsewhere (reception or rooms) that belong to this department.
+Used by bar_tabs.html and restaurant_tables.html.
+
+Expects:
+  rs_orders   list from _room_service_feed(...) in views.py
+  dept        "bar" or "restaurant"
+{% endcomment %}
+<style>
+    #room-service [hidden] { display: none !important; }
+    .rs-head { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
+    .rs-title { font-size: 16px; font-weight: 700; color: #000; display: flex; align-items: center; gap: 8px; }
+    .rs-title > i { color: #C9A227; }
+    .rs-count { background: #0B6B3A; color: #fff; font-size: 11px; font-weight: 700; padding: 1px 9px; border-radius: 9999px; }
+    .rs-sub { font-size: 12.5px; color: #6b7280; margin-top: 3px; }
+
+    .rs-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .rs-searchbox { position: relative; }
+    .rs-searchbox i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 11px; color: #9ca3af; }
+    .rs-search { border: 1px solid #d1d5db; border-radius: 9999px; padding: 7px 14px 7px 32px; font-size: 13px; width: 200px; background: #fff; }
+    .rs-search:focus { outline: none; border-color: #0B6B3A; box-shadow: 0 0 0 3px rgba(11,107,58,.12); }
+    .rs-chips { display: flex; gap: 6px; overflow-x: auto; max-width: 100%; padding-bottom: 2px; scrollbar-width: none; }
+    .rs-chips::-webkit-scrollbar { display: none; }
+    .rs-chip { font-size: 12px; font-weight: 600; padding: 6px 13px; border-radius: 9999px; border: 1px solid #e2e5e2; color: #6b7280; background: #fff; white-space: nowrap; transition: all .15s; }
+    .rs-chip b { margin-left: 5px; font-weight: 700; opacity: .65; }
+    .rs-chip:hover:not(.on) { border-color: #0B6B3A; color: #0B6B3A; }
+    .rs-chip.on { background: #0B6B3A; border-color: #0B6B3A; color: #fff; }
+    @media (max-width: 560px) { .rs-tools { width: 100%; } .rs-searchbox { width: 100%; } .rs-search { width: 100%; } }
+
+    .rs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 14px; }
+    .rs-card { position: relative; width: 100%; display: flex; flex-direction: column; align-items: center; text-align: center; background: #fff; border: 1px solid #0B6B3A; border-radius: 14px; padding: 18px 12px 14px; transition: box-shadow .2s, transform .15s; cursor: pointer; }
+    .rs-card:hover { box-shadow: 0 6px 18px rgba(11,107,58,.15); transform: translateY(-1px); }
+    .rs-card:focus-visible { outline: 2px solid #C9A227; outline-offset: 2px; }
+    .rs-age { position: absolute; top: 10px; right: 12px; font-size: 10.5px; font-weight: 600; color: #9ca3af; display: flex; align-items: center; gap: 4px; }
+    .rs-age.urgent { color: #dc2626; }
+    .rs-icon { width: 38px; height: 38px; border-radius: 9999px; background: #F3F8F5; color: #0B6B3A; display: flex; align-items: center; justify-content: center; font-size: 15px; margin-bottom: 8px; }
+    .rs-room { font-weight: 700; color: #000; font-size: 15px; line-height: 1.2; }
+    .rs-guest { font-size: 12px; color: #6b7280; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 2px 0 9px; }
+    .rs-pill { font-size: 11px; font-weight: 600; padding: 3px 12px; border-radius: 9999px; }
+    .rs-pill-waiting { background: #f3f4f6; color: #6b7280; }
+    .rs-pill-progress { background: #FEF9EC; color: #92722a; border: 1px solid #C9A227; }
+    .rs-pill-served { background: #ECFDF3; color: #0B6B3A; border: 1px solid #86d6a6; }
+    .rs-prog { display: block; width: 100%; height: 4px; background: #eef0ee; border-radius: 9999px; overflow: hidden; margin: 12px 0 9px; }
+    .rs-prog span { display: block; height: 100%; background: #0B6B3A; border-radius: 9999px; }
+    .rs-money { font-size: 11.5px; font-weight: 700; }
+    .rs-money.owing { color: #b7791f; }
+    .rs-money.paid { color: #0B6B3A; }
+
+    .rs-nomatch { text-align: center; color: #9ca3af; font-size: 13px; padding: 28px 0; }
+    .rs-empty { background: #fff; border: 1px dashed #d1d5db; border-radius: 14px; padding: 26px 16px; text-align: center; font-size: 13px; color: #9ca3af; }
+    .rs-empty i { display: block; font-size: 20px; color: #d1d5db; margin-bottom: 8px; }
+
+    .rs-pager { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-top: 16px; font-size: 12.5px; color: #6b7280; }
+    .rs-pager div { display: flex; align-items: center; gap: 8px; }
+    .rs-pager button { padding: 6px 14px; border: 1px solid #0B6B3A; border-radius: 8px; color: #0B6B3A; background: #fff; font-weight: 600; font-size: 12.5px; }
+    .rs-pager button:hover:not(:disabled) { background: #0B6B3A; color: #fff; }
+    .rs-pager button:disabled { opacity: .35; cursor: default; }
+    .rs-pg { font-weight: 700; color: #111827; min-width: 44px; text-align: center; }
+
+    /* ---------- detail sheet ---------- */
+    .rs-modal { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; padding: 16px; }
+    .rs-sheet { position: relative; background: #fff; border-radius: 18px; width: 100%; max-width: 460px; max-height: 90vh; overflow-y: auto; padding: 22px; }
+    .rs-x { position: absolute; top: 14px; right: 16px; color: #9ca3af; font-size: 16px; }
+    .rs-x:hover { color: #111827; }
+    @keyframes rsUp { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+    @media (max-width: 560px) {
+        .rs-modal { align-items: flex-end; padding: 0; }
+        .rs-sheet { border-radius: 20px 20px 0 0; max-width: none; animation: rsUp .22s ease; padding-bottom: 28px; }
+    }
+    .rs-d-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding-right: 26px; }
+    .rs-d-room { font-size: 19px; font-weight: 800; color: #000; line-height: 1.2; }
+    .rs-d-sub { font-size: 12px; color: #6b7280; margin-top: 2px; }
+    .rs-tag { font-size: 10.5px; font-weight: 700; background: #FEF9EC; color: #92722a; border: 1px solid #C9A227; padding: 2px 10px; border-radius: 9999px; white-space: nowrap; }
+    .rs-origin { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: #0B6B3A; background: #F3F8F5; border-radius: 10px; padding: 9px 12px; margin: 14px 0; }
+    .rs-origin i { margin-top: 2px; }
+    .rs-origin.unknown { color: #6b7280; background: #f3f4f6; }
+    .rs-d-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #9ca3af; margin-bottom: 4px; }
+    .rs-d-items li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid #f3f4f6; font-size: 13px; }
+    .rs-vip { font-size: 10px; font-weight: 700; color: #C9A227; margin-left: 6px; }
+    .rs-ipill { font-size: 10.5px; font-weight: 700; padding: 2px 9px; border-radius: 9999px; white-space: nowrap; }
+    .rs-i-queued { background: #f3f4f6; color: #6b7280; }
+    .rs-i-preparing { background: #FEF3C7; color: #92400E; }
+    .rs-i-ready { background: #DBEAFE; color: #1E40AF; }
+    .rs-i-served { background: #DCFCE7; color: #166534; }
+    .rs-step { font-size: 11px; font-weight: 700; background: #0B6B3A; color: #fff; padding: 4px 13px; border-radius: 9999px; }
+    .rs-step:hover { background: #095430; }
+    .rs-step:disabled { opacity: .5; cursor: wait; }
+    .rs-d-money { background: #FAFAF8; border-radius: 12px; padding: 12px 14px; margin: 14px 0; }
+    .rs-d-money div { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; color: #4b5563; }
+    .rs-d-money div:last-child { font-weight: 800; color: #000; border-top: 1px solid #e5e7eb; margin-top: 4px; padding-top: 8px; }
+    .rs-d-money .due { color: #b7791f; }
+    .rs-btn { display: block; width: 100%; text-align: center; background: #C9A227; color: #000; font-weight: 700; font-size: 14px; padding: 12px; border-radius: 9999px; transition: background .15s; }
+    .rs-btn:hover { background: #b8931f; }
+    .rs-btn.off { background: #f3f4f6; color: #9ca3af; cursor: not-allowed; }
+    .rs-btn.off:hover { background: #f3f4f6; }
+    .rs-btn.done { background: #ECFDF3; color: #0B6B3A; cursor: default; }
+    .rs-link { display: block; text-align: center; margin-top: 10px; font-size: 12.5px; font-weight: 600; color: #0B6B3A; }
+    .rs-link:hover { text-decoration: underline; }
+    .rs-hint { font-size: 11.5px; color: #9ca3af; text-align: center; margin-top: 8px; }
+</style>
+
+<section id="room-service" class="mb-10" style="scroll-margin-top: 80px;">
+    <div class="rs-head">
+        <div>
+            <h2 class="rs-title">
+                <i class="fa-solid fa-bell-concierge"></i>
+                {% if dept == 'bar' %}Room Service Drinks{% else %}Room Service Meals{% endif %}
+                {% if rs_orders %}<span class="rs-count">{{ rs_orders|length }}</span>{% endif %}
+            </h2>
+            <p class="rs-sub">Ordered from guest rooms and confirmed at reception or rooms. Tap an order to serve it and take payment.</p>
+        </div>
+
+        {% if rs_orders %}
+        <div class="rs-tools">
+            <div class="rs-searchbox"><i class="fa-solid fa-magnifying-glass"></i><input type="search" class="rs-search" placeholder="Room, guest or order no"></div>
+            <div class="rs-chips">
+                <button type="button" class="rs-chip on" data-f="all">All<b>0</b></button>
+                <button type="button" class="rs-chip" data-f="waiting">Waiting<b>0</b></button>
+                <button type="button" class="rs-chip" data-f="progress">In progress<b>0</b></button>
+                <button type="button" class="rs-chip" data-f="served">Served<b>0</b></button>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if rs_orders %}
+    <div class="rs-grid">
+        {% for o in rs_orders %}
+        <div class="rs-item" data-id="{{ o.id }}" data-state="{{ o.rs_state }}" data-search="room {{ o.room_booking.assigned_room.number|lower }} {{ o.customer_name|lower }} {{ o.id }}">
+            <button type="button" class="rs-card" data-open="{{ o.id }}">
+                <span class="rs-age {% if o.age_urgent %}urgent{% endif %}"><i class="fa-regular fa-clock"></i>{{ o.age_label }}</span>
+                <span class="rs-icon"><i class="fa-solid fa-bell-concierge"></i></span>
+                <span class="rs-room">{% if o.room_booking.assigned_room %}Room {{ o.room_booking.assigned_room.number }}{% else %}No room{% endif %}</span>
+                <span class="rs-guest">{{ o.customer_name }}</span>
+                <span class="rs-pill rs-pill-{{ o.rs_state }}">{% if o.rs_state == 'waiting' %}Waiting{% elif o.rs_state == 'progress' %}In progress{% else %}Served{% endif %}</span>
+                <span class="rs-prog"><span style="width: {% widthratio o.served_count o.item_total 100 %}%;"></span></span>
+                {% if o.rs_due > 0 %}<span class="rs-money owing">Owing KSh {{ o.rs_due|floatformat:"0g" }}</span>{% else %}<span class="rs-money paid">Paid</span>{% endif %}
+            </button>
+
+            <div class="rs-detail" hidden>
+                <div class="rs-d-head">
+                    <div>
+                        <p class="rs-d-room">{% if o.room_booking.assigned_room %}Room {{ o.room_booking.assigned_room.number }}{% else %}Room not assigned{% endif %}</p>
+                        <p class="rs-d-sub">{{ o.customer_name }} | Order #{{ o.id }} | {{ o.created_at|timesince }} ago</p>
+                    </div>
+                    <span class="rs-tag">Room service</span>
+                </div>
+
+                {% if o.confirmed_from %}
+                <p class="rs-origin"><i class="fa-solid fa-circle-check"></i>
+                    <span>Confirmed at <b>{{ o.confirmed_label }}</b>{% if o.confirmed_by %} by {{ o.confirmed_by.get_full_name|default:o.confirmed_by.username }}{% endif %}{% if o.confirmed_at %}, {{ o.confirmed_at|date:"H:i" }}{% endif %}</span></p>
+                {% else %}
+                <p class="rs-origin unknown"><i class="fa-solid fa-circle-check"></i><span>Confirmed from the guest's room order. The desk was not recorded.</span></p>
+                {% endif %}
+
+                <p class="rs-d-label">Items</p>
+                <ul class="rs-d-items">
+                    {% for item in o.active_items %}
+                    <li>
+                        <span><b>{{ item.quantity }}x</b> {{ item.menu_item.name }}{% if item.tier == 'vip' %}<span class="rs-vip">VIP</span>{% endif %}</span>
+                        <span class="flex items-center gap-2" style="flex-shrink: 0;">
+                            <span class="rs-ipill rs-i-{{ item.prep_status }}">{{ item.get_prep_status_display }}</span>
+                            {% if dept == 'bar' %}
+                                {% if item.prep_status == 'queued' %}<form method="post" class="rs-advance" action="{% url 'dashboard:bar_advance_item' item.id 'preparing' %}">{% csrf_token %}<button class="rs-step">Start</button></form>
+                                {% elif item.prep_status == 'preparing' %}<form method="post" class="rs-advance" action="{% url 'dashboard:bar_advance_item' item.id 'ready' %}">{% csrf_token %}<button class="rs-step">Ready</button></form>
+                                {% elif item.prep_status == 'ready' %}<form method="post" class="rs-advance" action="{% url 'dashboard:bar_advance_item' item.id 'served' %}">{% csrf_token %}<button class="rs-step">Serve</button></form>{% endif %}
+                            {% endif %}
+                        </span>
+                    </li>
+                    {% endfor %}
+                </ul>
+
+                {% if o.notes %}<p class="text-xs text-gray-500 italic mt-2"><i class="fa-solid fa-note-sticky mr-1"></i>{{ o.notes }}</p>{% endif %}
+
+                <div class="rs-d-money">
+                    <div><span>Order total</span><span>KSh {{ o.rs_total|floatformat:"0g" }}</span></div>
+                    <div><span>Paid so far</span><span>KSh {{ o.rs_paid|floatformat:"0g" }}</span></div>
+                    <div><span>Balance</span><span class="{% if o.rs_due > 0 %}due{% endif %}">KSh {{ o.rs_due|floatformat:"0g" }}</span></div>
+                </div>
+
+                {% if o.rs_due > 0 %}
+                    {% if o.is_served %}
+                    <a class="rs-btn" href="{% if dept == 'bar' %}{% url 'dashboard:bar_record_payment' o.id %}{% else %}{% url 'dashboard:restaurant_record_payment' o.id %}{% endif %}"><i class="fa-solid fa-credit-card mr-1.5"></i>Record payment</a>
+                    {% else %}
+                    <span class="rs-btn off"><i class="fa-solid fa-lock mr-1.5"></i>Record payment</span>
+                    <p class="rs-hint">Payment opens once every item is served.</p>
+                    {% endif %}
+                {% else %}
+                <span class="rs-btn done"><i class="fa-solid fa-circle-check mr-1.5"></i>Fully paid</span>
+                {% endif %}
+
+                {% if dept == 'restaurant' %}
+                <a href="{% url 'dashboard:restaurant_kitchen_display' %}" class="rs-link"><i class="fa-solid fa-fire-burner mr-1"></i>Serve items in the kitchen display</a>
+                {% endif %}
+                {% if o.rs_due > 0 %}<p class="rs-hint">Also billed to the guest's room. Whatever is paid here comes off the bill reception settles.</p>{% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    <p class="rs-nomatch" hidden>No orders match.</p>
+    <div class="rs-pager"></div>
+    {% else %}
+    <div class="rs-empty"><i class="fa-solid fa-bell-concierge"></i>No room service {% if dept == 'bar' %}drinks{% else %}meals{% endif %} waiting right now.</div>
+    {% endif %}
+
+    <div class="rs-modal" id="rs-modal" hidden>
+        <div class="rs-sheet" role="dialog" aria-modal="true">
+            <button type="button" class="rs-x" data-close aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+            <div id="rs-modal-body"></div>
+        </div>
+    </div>
+</section>
+
+<script>
+(function () {
+    const sec = document.getElementById('room-service');
+    if (!sec || sec.dataset.bound) return;
+    sec.dataset.bound = '1';
+
+    // state survives the background refresh because the section element itself is never replaced
+    const st = { f: 'all', page: 1, q: '', open: null };
+    const pageSize = () => (window.innerWidth < 640 ? 6 : 10);
+
+    function apply() {
+        const all = Array.from(sec.querySelectorAll('.rs-item'));
+        const counts = { all: all.length, waiting: 0, progress: 0, served: 0 };
+        all.forEach(i => { counts[i.dataset.state] = (counts[i.dataset.state] || 0) + 1; });
+        sec.querySelectorAll('.rs-chip').forEach(c => {
+            c.classList.toggle('on', c.dataset.f === st.f);
+            const b = c.querySelector('b');
+            if (b) b.textContent = counts[c.dataset.f] || 0;
+        });
+        const box = sec.querySelector('.rs-search');
+        if (box && box.value !== st.q) box.value = st.q;
+
+        const q = st.q.trim().toLowerCase();
+        const match = all.filter(i => (st.f === 'all' || i.dataset.state === st.f) && (!q || i.dataset.search.indexOf(q) > -1));
+        const size = pageSize(), pages = Math.max(1, Math.ceil(match.length / size));
+        if (st.page > pages) st.page = pages;
+        const start = (st.page - 1) * size;
+
+        all.forEach(i => { i.hidden = true; });
+        match.slice(start, start + size).forEach(i => { i.hidden = false; });
+
+        const none = sec.querySelector('.rs-nomatch');
+        if (none) none.hidden = !(all.length && !match.length);
+
+        const pager = sec.querySelector('.rs-pager');
+        if (pager) {
+            pager.innerHTML = pages < 2 ? '' :
+                '<span>Showing ' + (start + 1) + ' to ' + Math.min(start + size, match.length) + ' of ' + match.length + '</span>' +
+                '<div><button type="button" data-go="' + (st.page - 1) + '"' + (st.page === 1 ? ' disabled' : '') + '>Previous</button>' +
+                '<span class="rs-pg">' + st.page + ' / ' + pages + '</span>' +
+                '<button type="button" data-go="' + (st.page + 1) + '"' + (st.page === pages ? ' disabled' : '') + '>Next</button></div>';
+        }
+    }
+
+    function openSheet(id) {
+        const d = sec.querySelector('.rs-item[data-id="' + id + '"] .rs-detail');
+        if (!d) return false;
+        sec.querySelector('#rs-modal-body').innerHTML = d.innerHTML;
+        sec.querySelector('#rs-modal').hidden = false;
+        document.body.style.overflow = 'hidden';
+        st.open = id;
+        return true;
+    }
+    function closeSheet() {
+        const m = sec.querySelector('#rs-modal');
+        if (m) m.hidden = true;
+        document.body.style.overflow = '';
+        st.open = null;
+    }
+
+    async function refresh() {
+        try {
+            const r = await fetch(location.pathname + location.search, { credentials: 'same-origin' });
+            const doc = new DOMParser().parseFromString(await r.text(), 'text/html');
+            const fresh = doc.getElementById('room-service');
+            if (!fresh) return;
+            sec.innerHTML = fresh.innerHTML;
+            apply();
+            if (st.open && !openSheet(st.open)) closeSheet();   // order finished meanwhile, close its sheet
+        } catch (e) { /* offline, try again next round */ }
+    }
+
+    sec.addEventListener('click', e => {
+        const card = e.target.closest('[data-open]');
+        if (card) { openSheet(card.dataset.open); return; }
+        const chip = e.target.closest('.rs-chip');
+        if (chip) { st.f = chip.dataset.f; st.page = 1; apply(); return; }
+        const go = e.target.closest('[data-go]');
+        if (go && !go.disabled) { st.page = parseInt(go.dataset.go, 10); apply(); sec.scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }
+        if (e.target.closest('[data-close]') || e.target.id === 'rs-modal') closeSheet();
+    });
+    sec.addEventListener('input', e => {
+        if (e.target.classList.contains('rs-search')) { st.q = e.target.value; st.page = 1; apply(); }
+    });
+    // Start / Ready / Serve without leaving the sheet
+    sec.addEventListener('submit', async e => {
+        const f = e.target.closest('form.rs-advance');
+        if (!f) return;
+        e.preventDefault();
+        const b = f.querySelector('button');
+        if (b) b.disabled = true;
+        try { await fetch(f.action, { method: 'POST', body: new FormData(f), credentials: 'same-origin' }); } catch (err) { /* refresh below shows the truth */ }
+        await refresh();
+    });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && st.open) closeSheet(); });
+    let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(apply, 150); });
+
+    // reception confirms on another screen, so pick up new orders quietly (never while a sheet is open)
+    setInterval(() => { if (!document.hidden && !st.open) refresh(); }, 45000);
+
+    apply();
+})();
+</script>
